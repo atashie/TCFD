@@ -11,6 +11,15 @@ from rich.panel import Panel
 from isimip_pipeline import __version__
 from isimip_pipeline.config import load_config, Config
 from isimip_pipeline.processing_log import load_processing_log
+from isimip_pipeline.errors import (
+    print_error,
+    no_netcdf_files_error,
+    selection_file_not_found_error,
+    directory_not_found_error,
+    variable_not_found_error,
+    isimip_search_error,
+    no_search_results_error,
+)
 from isimip_pipeline.discovery import find_local_datasets, display_local_results
 from isimip_pipeline.duplicate_handler import (
     build_output_folder_name,
@@ -25,6 +34,7 @@ from isimip_pipeline.search.result_table import (
     group_by_variable_timestep,
     display_grouped_results,
 )
+from isimip_pipeline.logging_config import setup_logging, get_logger
 
 app = typer.Typer(
     name="isimip-pipeline",
@@ -60,19 +70,39 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
+# Global logger instance
+logger = None
+
+
 @app.callback()
 def main(
     version: bool = typer.Option(
         None,
         "--version",
-        "-v",
         callback=version_callback,
         is_eager=True,
         help="Show version and exit.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable verbose logging output.",
+    ),
+    log_file: Optional[Path] = typer.Option(
+        None,
+        "--log-file",
+        help="Write logs to file.",
+    ),
 ):
     """ISIMIP Pipeline - Climate data automation tool."""
-    pass
+    global logger
+    level = "DEBUG" if verbose else "INFO"
+    logger = setup_logging(
+        level=level,
+        log_file=log_file,
+        format_style="detailed" if verbose else "simple",
+    )
 
 
 @app.command()
@@ -166,7 +196,7 @@ def search(
             console.print(f"\n[green]Results saved to:[/green] {output}")
 
     except Exception as e:
-        console.print(f"[red]Error searching ISIMIP: {e}[/red]")
+        print_error(isimip_search_error(str(e)), console)
         raise typer.Exit(1)
 
 
@@ -470,7 +500,7 @@ def download(
 
     # Load selection
     if not selection.exists():
-        console.print(f"[red]Selection file not found:[/red] {selection}")
+        print_error(selection_file_not_found_error(selection), console)
         raise typer.Exit(1)
 
     with open(selection) as f:
@@ -572,13 +602,13 @@ def process(
 
     # Validate input directory
     if not input_dir.exists():
-        console.print(f"[red]Input directory not found:[/red] {input_dir}")
+        print_error(directory_not_found_error(input_dir, "Input"), console)
         raise typer.Exit(1)
 
     # Find NetCDF files
     files = find_netcdf_files(input_dir)
     if not files:
-        console.print(f"[red]No NetCDF files found in:[/red] {input_dir}")
+        print_error(no_netcdf_files_error(input_dir), console)
         raise typer.Exit(1)
 
     console.print(f"[dim]Found {len(files)} NetCDF files[/dim]")
@@ -590,8 +620,7 @@ def process(
     # Auto-detect variable if not specified
     if variable:
         if variable not in groups:
-            console.print(f"[red]Variable '{variable}' not found in files[/red]")
-            console.print(f"[dim]Available: {', '.join(groups.keys())}[/dim]")
+            print_error(variable_not_found_error(variable, list(groups.keys())), console)
             raise typer.Exit(1)
         variables_to_process = [variable]
         detected_variable = variable
