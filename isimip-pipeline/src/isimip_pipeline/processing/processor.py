@@ -18,6 +18,10 @@ from isimip_pipeline.processing.alignment import (
     verify_spatial_grids,
     SpatialGridMismatchError,
 )
+from isimip_pipeline.processing.validation import (
+    generate_validation_report,
+    validate_dataset,
+)
 from isimip_pipeline.processing.features import (
     FeatureExtractor,
     kernel_smooth,
@@ -289,6 +293,7 @@ class DataProcessor:
         variable: str,
         scenarios: Optional[List[str]] = None,
         align_datasets: bool = True,
+        validate_input: bool = True,
     ) -> xr.Dataset:
         """Process all NetCDF files in directory using vectorized operations.
 
@@ -297,6 +302,7 @@ class DataProcessor:
             variable: Variable name to process.
             scenarios: List of scenarios to process (default: auto-detect).
             align_datasets: Whether to align spatial/temporal grids (default: True).
+            validate_input: Whether to validate input data before processing (default: True).
 
         Returns:
             xarray Dataset with processed features.
@@ -310,6 +316,26 @@ class DataProcessor:
 
         # Load data with alignment
         combined = load_and_aggregate(files, variable, align=align_datasets)
+
+        # Validate input data if requested
+        if validate_input:
+            try:
+                validation_report = generate_validation_report(combined, variable)
+                if validation_report.summary["data_quality"] == "unusable":
+                    raise ValueError(
+                        f"Input data quality too poor for {variable}: "
+                        f"{validation_report.summary['data_loss_percentage']:.1f}% data loss"
+                    )
+                elif validation_report.summary["data_quality"] == "poor":
+                    import warnings
+                    warnings.warn(
+                        f"Input data quality is poor for {variable}: "
+                        f"{validation_report.summary['data_loss_percentage']:.1f}% data loss. "
+                        f"Processing may produce unreliable results."
+                    )
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Validation check failed: {e}")
 
         # Extract lat/lon
         lat = combined.lat.values

@@ -135,13 +135,15 @@ datasets:
 - [x] Optional regridding with xesmf integration
 - [x] Comprehensive test suite (25+ tests)
 
-### Phase 9: Data Validation
-- [ ] Implement `processing/validation.py`
-- [ ] Detect fill values (1.00000002004088e+20)
-- [ ] Check for missing data patterns
-- [ ] Flag spatial/temporal gaps
-- [ ] Statistical outlier detection
-- [ ] Generate validation report
+### Phase 9: Data Validation - COMPLETE
+- [x] Implement `processing/validation.py` (514 lines)
+- [x] Fill value detection (ISIMIP standard, custom patterns)
+- [x] Missing data pattern analysis
+- [x] Spatial gap detection (complete/partial)
+- [x] Temporal gap detection (period identification)
+- [x] Statistical outlier detection (IQR and z-score methods)
+- [x] Validation report generation with quality flags
+- [x] Comprehensive test suite (50+ tests)
 
 ### Phase 10: Feature Extraction
 - [ ] Implement `processing/features.py`
@@ -558,6 +560,73 @@ print(f"Resolution: {grid_info.lon_resolution}°")
 - **Multi-model**: Aligns ensemble datasets from different sources
 - **Optional Regridding**: Integration with xesmf for grid transformation
 
+### validation.py (Phase 9)
+
+```python
+from isimip_pipeline.processing.validation import (
+    generate_validation_report,
+    validate_dataset,
+    detect_fill_values,
+    find_missing_data_patterns,
+    detect_spatial_gaps,
+    detect_temporal_gaps,
+    detect_outliers,
+    ValidationReport,
+    DataQualityLevel,
+)
+
+# Generate comprehensive validation report
+report = generate_validation_report(
+    ds,
+    variable="temperature",
+    include_fill_values=True,
+    include_gaps=True,
+    include_outliers=True
+)
+
+# Check report quality
+print(f"Data quality: {report.summary['data_quality']}")
+print(f"Data loss: {report.summary['data_loss_percentage']:.1f}%")
+print(f"Issues found: {len(report.issues)}")
+
+# Validate and raise on poor data
+validate_dataset(ds, "temperature", raise_on_error=True)
+
+# Detect specific issues
+fill_info = detect_fill_values(ds, "temperature")
+if fill_info:
+    print(f"Fill values: {fill_info.fill_value_count} ({fill_info.fill_value_percentage:.1f}%)")
+
+# Check for spatial gaps
+spatial_gaps = detect_spatial_gaps(ds, "temperature")
+print(f"Missing grid cells: {spatial_gaps['n_missing_cells']}")
+
+# Check for temporal gaps
+temporal_gaps = detect_temporal_gaps(ds, "temperature")
+print(f"Gap periods: {temporal_gaps['n_gap_periods']}")
+
+# Detect outliers
+outliers = detect_outliers(ds, "temperature", method="iqr", threshold=3)
+if outliers:
+    print(f"Outliers: {outliers['n_outliers']} ({outliers['outlier_percentage']:.1f}%)")
+```
+
+**Key Features:**
+- **Fill Value Detection**: Identifies standard (1e20, -9999) and custom fill values
+- **Missing Data Analysis**: Characterizes patterns and coverage
+- **Spatial Gap Detection**: Finds completely and partially missing grid cells
+- **Temporal Gap Detection**: Identifies time periods with data loss
+- **Outlier Detection**: IQR and z-score methods
+- **Quality Reporting**: Multi-level quality assessment (excellent/good/acceptable/poor/unusable)
+- **Integration**: Automatic validation in processing pipeline
+
+**Quality Levels:**
+- `EXCELLENT`: <1% data loss
+- `GOOD`: 1-5% data loss
+- `ACCEPTABLE`: 5-10% data loss
+- `POOR`: 10-25% data loss (processing may fail)
+- `UNUSABLE`: >25% data loss (processing rejected)
+
 ---
 
 ## Progress Log
@@ -572,6 +641,7 @@ print(f"Resolution: {grid_info.lon_resolution}°")
 | 2026-01-13 | Sprint 5 | Complete | Process command enhancements |
 | 2026-01-13 | Sprint 6 | Complete | Testing, documentation, integration |
 | 2026-01-13 | Phase 8 | Complete | Data alignment (spatial, temporal, calendars) |
+| 2026-01-13 | Phase 9 | Complete | Data validation (fill values, gaps, outliers) |
 
 ---
 
