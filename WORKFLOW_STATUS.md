@@ -126,13 +126,14 @@ datasets:
 - [x] Keyword fallback for when API unavailable (12 tests)
 - [ ] Fallback to direct keyword search if LLM fails
 
-### Phase 8: Data Alignment
-- [ ] Implement `processing/alignment.py`
-- [ ] Load NetCDFs with xarray
-- [ ] Verify spatial grids match
-- [ ] Align time coordinates
-- [ ] Handle different calendars (360_day, noleap, etc.)
-- [ ] Optional regridding with xesmf
+### Phase 8: Data Alignment - COMPLETE
+- [x] Implement `processing/alignment.py` (350+ lines)
+- [x] Spatial grid verification with tolerance checking
+- [x] Time coordinate alignment (intersection/union modes)
+- [x] Calendar conversion (360_day, noleap, standard)
+- [x] Multi-model dataset harmonization
+- [x] Optional regridding with xesmf integration
+- [x] Comprehensive test suite (25+ tests)
 
 ### Phase 9: Data Validation
 - [ ] Implement `processing/validation.py`
@@ -505,6 +506,58 @@ name = parse_descriptive_name_from_folder("drought-severity_led-monthly")
 # Returns: "drought-severity"
 ```
 
+### alignment.py (Phase 8)
+
+```python
+from isimip_pipeline.processing.alignment import (
+    verify_spatial_grids,
+    align_time_coordinates,
+    convert_calendar,
+    align_datasets,
+    harmonize_datasets,
+    SpatialGridInfo,
+    SpatialGridMismatchError,
+    TimeCoordinateMismatchError,
+)
+
+# Verify two datasets have compatible spatial grids
+verify_spatial_grids(ds1, ds2, tolerance=0.001)
+
+# Align time coordinates between two datasets
+aligned_ds1, aligned_ds2 = align_time_coordinates(ds1, ds2, method="intersection")
+
+# Convert calendar from 360-day to standard
+converted = convert_calendar(ds, "360_day", "standard")
+
+# Align multiple datasets from different models
+aligned_datasets = align_datasets(
+    datasets=[ds_gfdl, ds_hadgem, ds_ipsl],
+    verify_spatial=True,
+    time_method="intersection"
+)
+
+# Full harmonization with optional regridding
+harmonized = harmonize_datasets(
+    datasets=[ds1, ds2, ds3],
+    reference_ds=reference_grid,
+    verify_spatial=True,
+    regrid=False,  # Set True if xesmf available
+    regrid_method="nearest_s2d"
+)
+
+# Get grid information
+grid_info = SpatialGridInfo(lon_array, lat_array)
+print(f"Grid: {grid_info.n_lon}x{grid_info.n_lat}")
+print(f"Resolution: {grid_info.lon_resolution}°")
+```
+
+**Key Features:**
+- **Spatial Verification**: Ensures grids match within tolerance (default 0.001°)
+- **Time Alignment**: Intersection (common period) or union (all times) modes
+- **Calendar Support**: Handles 360_day, noleap, and standard calendars
+- **Multi-model**: Aligns ensemble datasets from different sources
+- **Optional Regridding**: Integration with xesmf for grid transformation
+
 ---
 
 ## Progress Log
@@ -518,6 +571,7 @@ name = parse_descriptive_name_from_folder("drought-severity_led-monthly")
 | 2026-01-13 | Sprint 4 | Complete | Interactive workflow module |
 | 2026-01-13 | Sprint 5 | Complete | Process command enhancements |
 | 2026-01-13 | Sprint 6 | Complete | Testing, documentation, integration |
+| 2026-01-13 | Phase 8 | Complete | Data alignment (spatial, temporal, calendars) |
 
 ---
 

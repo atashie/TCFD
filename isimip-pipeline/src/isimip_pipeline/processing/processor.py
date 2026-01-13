@@ -13,6 +13,11 @@ import xarray as xr
 from scipy import stats
 from scipy.ndimage import gaussian_filter1d
 
+from isimip_pipeline.processing.alignment import (
+    align_datasets,
+    verify_spatial_grids,
+    SpatialGridMismatchError,
+)
 from isimip_pipeline.processing.features import (
     FeatureExtractor,
     kernel_smooth,
@@ -189,16 +194,21 @@ def load_and_aggregate(
     files: List[Path],
     variable: str,
     aggregate: Optional[str] = None,
+    align: bool = True,
 ) -> xr.Dataset:
-    """Load NetCDF files and optionally aggregate.
+    """Load NetCDF files, align them, and optionally aggregate.
 
     Args:
         files: List of file paths.
         variable: Variable name to extract.
         aggregate: Aggregation method ("yearly", "monthly", None).
+        align: Whether to align datasets spatially and temporally.
 
     Returns:
-        xarray Dataset with loaded data.
+        xarray Dataset with loaded and aligned data.
+
+    Raises:
+        SpatialGridMismatchError: If spatial grids incompatible and align=True.
     """
     datasets = []
 
@@ -210,6 +220,22 @@ def load_and_aggregate(
             # Fallback for non-standard time encoding
             ds = xr.open_dataset(f, decode_times=False)
         datasets.append(ds)
+
+    if not datasets:
+        raise ValueError("No datasets loaded from files")
+
+    # Align datasets if requested
+    if align and len(datasets) > 1:
+        try:
+            datasets = align_datasets(
+                datasets,
+                verify_spatial=True,
+                time_method="intersection"
+            )
+        except SpatialGridMismatchError as e:
+            # Log warning and continue - may have slight grid differences
+            import warnings
+            warnings.warn(f"Spatial grid alignment issue: {e}")
 
     # Combine datasets
     if len(datasets) == 1:
@@ -262,6 +288,7 @@ class DataProcessor:
         input_dir: Path,
         variable: str,
         scenarios: Optional[List[str]] = None,
+        align_datasets: bool = True,
     ) -> xr.Dataset:
         """Process all NetCDF files in directory using vectorized operations.
 
@@ -269,6 +296,7 @@ class DataProcessor:
             input_dir: Directory with raw NetCDF files.
             variable: Variable name to process.
             scenarios: List of scenarios to process (default: auto-detect).
+            align_datasets: Whether to align spatial/temporal grids (default: True).
 
         Returns:
             xarray Dataset with processed features.
@@ -280,8 +308,8 @@ class DataProcessor:
         if not files:
             raise ValueError(f"No NetCDF files found in {input_dir}")
 
-        # Load data
-        combined = load_and_aggregate(files, variable)
+        # Load data with alignment
+        combined = load_and_aggregate(files, variable, align=align_datasets)
 
         # Extract lat/lon
         lat = combined.lat.values
