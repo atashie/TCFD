@@ -566,11 +566,14 @@ def catalog(
 @app.command()
 def run(
     query: str = typer.Argument(..., help="Natural language search query"),
+    name: Optional[str] = typer.Option(
+        None, "--name", "-n", help="Descriptive name for output folder (e.g., 'drought-severity')"
+    ),
     scenarios: Optional[str] = typer.Option(
         None, "--scenarios", "-s", help="Comma-separated scenarios (e.g., ssp126,ssp370,ssp585)"
     ),
     output: Optional[Path] = typer.Option(
-        None, "--output", "-o", help="Output directory for all files"
+        None, "--output", "-o", help="Override output directory (ignores --name)"
     ),
     limit: int = typer.Option(
         20, "--limit", "-l", help="Maximum datasets to download"
@@ -600,14 +603,14 @@ def run(
     4. Generate an interactive HTML QA report
     5. Clean up temp files (unless --keep-raw is specified)
 
-    By default, raw NetCDF files are downloaded to a temp folder and
-    automatically deleted after processing to save disk space.
+    Output is saved to ./outputs/{name}_{variable}/ by default.
+    Use --name to specify a descriptive name (e.g., 'drought-severity').
 
     Examples:
-        isimip-pipeline run "wildfire burnt area"
-        isimip-pipeline run "drought exposure" --scenarios ssp126,ssp585
-        isimip-pipeline run "fire" --skip-download  # Use existing files
-        isimip-pipeline run "flood" -o ./my_output -l 10
+        isimip-pipeline run "drought exposure" --name drought-severity
+        isimip-pipeline run "wildfire burnt area" -n fire-risk
+        isimip-pipeline run "drought" --scenarios ssp126,ssp585
+        isimip-pipeline run "flood" -o ./custom_output  # Override path
         isimip-pipeline run "drought" --keep-raw  # Preserve raw files
     """
     import tempfile
@@ -625,22 +628,11 @@ def run(
 
     cfg = get_config(config)
 
-    # Set up output directory structure
-    if output:
-        base_dir = Path(output)
-    else:
-        # Create timestamped output directory
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_dir = Path(f"./isimip_run_{timestamp}")
-
-    raw_dir = base_dir / "raw"
-    processed_dir = base_dir / "processed"
-    reports_dir = base_dir / "reports"
-
+    # Output directory will be determined after search (needs variable name)
+    # For now, just show the query
     console.print(Panel(
         f"[bold]Running full pipeline[/bold]\n"
-        f"Query: {query}\n"
-        f"Output: {base_dir}",
+        f"Query: {query}",
         title="ISIMIP Pipeline"
     ))
 
@@ -689,6 +681,29 @@ def run(
         if not datasets:
             console.print("[red]No datasets found matching query[/red]")
             raise typer.Exit(1)
+
+        # Extract variable name from datasets
+        variables_found = set(ds.variable for ds in datasets if ds.variable)
+        variable_name = list(variables_found)[0] if variables_found else "unknown"
+
+        # Set up output directory structure: ./outputs/{name}_{variable}/
+        if output:
+            # User specified custom output path
+            base_dir = Path(output)
+        else:
+            # Use default naming convention
+            descriptive_name = name if name else query.lower().replace(" ", "-")[:30]
+            # Clean up the name (remove special chars)
+            import re
+            descriptive_name = re.sub(r'[^a-z0-9-]', '', descriptive_name)
+            folder_name = f"{descriptive_name}_{variable_name}"
+            base_dir = Path("./outputs") / folder_name
+
+        raw_dir = base_dir / "raw"
+        processed_dir = base_dir / "processed"
+        reports_dir = base_dir / "reports"
+
+        console.print(f"[dim]Output directory: {base_dir}[/dim]")
 
         # Save ALL available datasets before limiting
         base_dir.mkdir(parents=True, exist_ok=True)

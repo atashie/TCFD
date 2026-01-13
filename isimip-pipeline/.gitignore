@@ -41,6 +41,7 @@ htmlcov/
 
 # Test outputs (don't commit test run data)
 test_*/
+outputs/
 *.html
 !docs/*.html
 
