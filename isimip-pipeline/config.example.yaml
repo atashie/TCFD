@@ -1,0 +1,28 @@
+# ISIMIP Pipeline Configuration
+# Copy to ~/.isimip-pipeline/config.yaml and fill in your values
+
+paths:
+  download_dir: "./data/raw"
+  processed_dir: "./data/processed"
+  reports_dir: "./reports"
+
+api:
+  you_api_key: "your-you-com-api-key-here"
+  you_agent_id: "52a88ef1-ff18-4485-bba8-cb5977baf136"
+  isimip_timeout: 30  # seconds
+
+processing:
+  smoothing_bandwidth: 15        # years for kernel smoothing
+  trend_method: "theil_sen"      # or "ols"
+  significance_method: "spearman"
+  percentile_bins: 100
+  decades: [10, 20, 30, 40, 50, 60, 70, 80, 90]
+
+download:
+  max_concurrent: 4
+  chunk_size: 8192
+  retry_attempts: 3
+
+visualization:
+  map_projection: "equirectangular"
+  color_scale: "viridis"

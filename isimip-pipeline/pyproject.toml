@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "isimip-pipeline"
+version = "0.1.0"
+description = "Automated ISIMIP climate data discovery, download, and processing pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "typer[all]>=0.9.0",
+    "pyyaml>=6.0",
+    "httpx>=0.25.0",
+    "isimip-client>=1.0.0",
+    "xarray>=2024.1.0",
+    "netcdf4>=1.6.0",
+    "scipy>=1.11.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "plotly>=5.18.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+isimip-pipeline = "isimip_pipeline.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/isimip_pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
