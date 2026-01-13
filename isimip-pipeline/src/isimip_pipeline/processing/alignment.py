@@ -247,16 +247,21 @@ def convert_calendar(
             new_times = []
             for day_num in time_values:
                 # In 360-day calendar, each month = 30 days
-                year_fraction = day_num / 360
+                # Convert numpy int64 to Python int for timedelta
+                day_int = int(day_num)
+                year_fraction = day_int / 360
                 years_passed = int(year_fraction)
                 days_in_year = int((year_fraction - years_passed) * 365)
 
-                new_date = ref_date + timedelta(days=day_num)
+                new_date = ref_date + timedelta(days=day_int)
                 new_times.append(new_date)
 
             ds = ds.assign_coords(time=new_times)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as e:
             warnings.warn(f"Could not convert {source_calendar} to {target_calendar}")
+            raise TimeCoordinateMismatchError(
+                f"Calendar conversion from {source_calendar} to {target_calendar} failed: {e}"
+            )
 
     elif source_calendar == "noleap" and target_calendar == "standard":
         # Noleap calendar: 365 days per year, no leap years
@@ -280,8 +285,11 @@ def convert_calendar(
                 new_times.append(new_date)
 
             ds = ds.assign_coords(time=new_times)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as e:
             warnings.warn(f"Could not convert {source_calendar} to {target_calendar}")
+            raise TimeCoordinateMismatchError(
+                f"Calendar conversion from {source_calendar} to {target_calendar} failed: {e}"
+            )
 
     else:
         warnings.warn(f"Calendar conversion {source_calendar}->{target_calendar} not supported")

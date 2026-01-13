@@ -281,5 +281,6 @@ class TestDiscoveryIntegration:
         assert len(results_370) == 2
 
         results_585 = find_local_datasets(sample_log, scenario="ssp585")
-        assert len(results_585) == 1
-        assert results_585[0].variable == "led"
+        # Both drought-severity and drought-annual have ssp585
+        assert len(results_585) == 2
+        assert all(e.variable == "led" for e in results_585)

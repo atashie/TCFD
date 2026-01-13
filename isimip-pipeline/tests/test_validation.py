@@ -60,7 +60,9 @@ def dataset_with_fill_values():
     lat = np.arange(-90, 90, 10)
     lon = np.arange(-180, 180, 10)
 
-    data = 273.15 + 20 * np.sin(np.arange(len(time))[:, None, None] / 365)
+    # Create full-sized array with realistic temperature values
+    base = 273.15 + 20 * np.sin(np.arange(len(time))[:, None, None] / 365)
+    data = np.broadcast_to(base, (len(time), len(lat), len(lon))).copy()
 
     # Add common fill values
     data[0:10, 0, 0] = 1.00000002e20  # ISIMIP fill value
@@ -94,7 +96,9 @@ def dataset_with_gaps():
     lat = np.arange(-90, 90, 10)
     lon = np.arange(-180, 180, 10)
 
-    data = 273.15 + 20 * np.sin(np.arange(len(time))[:, None, None] / 365)
+    # Create full-sized array with realistic temperature values
+    base = 273.15 + 20 * np.sin(np.arange(len(time))[:, None, None] / 365)
+    data = np.broadcast_to(base, (len(time), len(lat), len(lon))).copy()
 
     # Create spatial gaps (missing entire regions)
     data[:, 0:2, 0:2] = np.nan  # Northwest quadrant
@@ -231,7 +235,7 @@ class TestSpatialGapDetection:
         gaps = detect_spatial_gaps(dataset_with_gaps, "temperature", threshold=0.2)
 
         if gaps is not None:
-            assert "partially_missing_cells" in gaps
+            assert "n_partially_missing_cells" in gaps
 
     def test_calculate_cell_coverage(self, dataset_with_gaps):
         """Should calculate coverage for each grid cell."""
@@ -348,7 +352,8 @@ class TestOutlierDetection:
 
         # Create data with some outliers
         data = 273.15 + 5 * np.random.randn(100, 10, 10)
-        data[np.random.choice(1000, 20, replace=False)] = 500
+        # Use flat indexing for 3D array (100*10*10 = 10000 elements)
+        data.flat[np.random.choice(data.size, 20, replace=False)] = 500
 
         ds = xr.Dataset(
             {"temperature": (["time", "lat", "lon"], data)},

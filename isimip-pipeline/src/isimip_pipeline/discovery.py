@@ -110,11 +110,10 @@ def verify_dataset_integrity(entry: DatasetEntry) -> bool:
         expected_file = processed_dir / f"{entry.variable}_processed.nc"
         if expected_file.exists():
             return True
-        # If file doesn't exist but directory does, still consider it valid
-        # (file may be being processed or may be in a different location)
-        return True
+        # Processed directory exists but expected file is missing
+        return False
 
-    # Even if no processed files, output directory existing is enough
+    # No processed directory - output exists, processing not started yet
     return True
 
 

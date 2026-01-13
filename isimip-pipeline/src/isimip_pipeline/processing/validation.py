@@ -350,11 +350,13 @@ def detect_outliers(
 
     outlier_values = data[outlier_mask]
     outlier_percentage = (n_outliers / len(data)) * 100
+    outlier_locations = np.where(outlier_mask)[0]  # Flat indices of outliers
 
     return {
         "n_outliers": n_outliers,
         "outlier_percentage": outlier_percentage,
         "outlier_values": outlier_values,
+        "outlier_locations": outlier_locations,
         "min_outlier": float(np.min(outlier_values)),
         "max_outlier": float(np.max(outlier_values)),
     }

@@ -65,12 +65,13 @@ def generate_unique_name(
     # Build folder name template
     base_folder = f"{clean_name}_{variable}-{timestep}"
 
-    # Check if this exact name exists
+    # Check if any entry with this variable+timestep exists
     potential_dup = log.find_by_variable_timestep(variable, timestep)
-    if potential_dup is None or potential_dup.descriptive_name == clean_name:
-        # No conflict or exact match
+    if potential_dup is None:
+        # No conflict - safe to use base name
         return base_folder
 
+    # Duplicate exists - need to generate unique suffix
     # Find the highest numbered variant that exists
     max_num = 2
     for entry in log.datasets:
