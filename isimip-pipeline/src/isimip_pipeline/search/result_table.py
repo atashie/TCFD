@@ -1,6 +1,7 @@
 """Result table display and export for ISIMIP search results."""
 
 import json
+import re
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,55 @@ from rich.table import Table
 from rich.console import Console
 
 from isimip_pipeline.search.isimip_query import DatasetInfo
+
+
+# Default time coverage by simulation round
+SIMULATION_ROUND_DEFAULTS = {
+    "ISIMIP3b": "2015-2100",
+    "ISIMIP3a": "1850-2014",
+    "ISIMIP2b": "2006-2099",
+    "ISIMIP2a": "1971-2010",
+}
+
+
+def extract_time_coverage(datasets: List[DatasetInfo]) -> str:
+    """Extract time coverage from dataset names or use defaults.
+
+    Attempts to parse year ranges from filenames. Falls back to
+    simulation round defaults if years cannot be extracted.
+
+    Args:
+        datasets: List of DatasetInfo objects.
+
+    Returns:
+        Time coverage string like "2015-2100".
+    """
+    if not datasets:
+        return "unknown"
+
+    # Pattern to match 4-digit years in filenames
+    # Uses lookahead/lookbehind for non-digit boundaries (handles underscore-separated years)
+    year_pattern = re.compile(r'(?<![0-9])(19\d{2}|20\d{2}|21\d{2})(?![0-9])')
+
+    all_years = []
+
+    for ds in datasets:
+        # Extract years from filename
+        matches = year_pattern.findall(ds.name)
+        if matches:
+            all_years.extend(int(y) for y in matches)
+
+    if all_years:
+        min_year = min(all_years)
+        max_year = max(all_years)
+        return f"{min_year}-{max_year}"
+
+    # Fallback to simulation round defaults
+    for ds in datasets:
+        if ds.simulation_round in SIMULATION_ROUND_DEFAULTS:
+            return SIMULATION_ROUND_DEFAULTS[ds.simulation_round]
+
+    return "unknown"
 
 
 class ResultTable:
@@ -263,16 +313,17 @@ def group_by_variable_timestep(
         if ds.simulation_round:
             grouped[key]['simulation_rounds'].add(ds.simulation_round)
 
-    # Convert sets to sorted lists and add count
+    # Convert sets to sorted lists and add file_count
     result = {}
     for key, group in grouped.items():
+        datasets = group['datasets']
         result[key] = {
-            'datasets': group['datasets'],
-            'count': len(group['datasets']),
+            'datasets': datasets,
+            'file_count': len(datasets),
             'scenarios': sorted(group['scenarios']),
             'models': sorted(group['models']),
             'simulation_rounds': sorted(group['simulation_rounds']),
-            'time_coverage': '2006-2100',  # Placeholder; could be extracted
+            'time_coverage': extract_time_coverage(datasets),
         }
 
     return result
@@ -302,7 +353,7 @@ def display_grouped_results(
 
     for idx, ((variable, timestep), group) in enumerate(sorted(grouped.items()), 1):
         console.print(f"[cyan]{idx}. {variable} ({timestep})[/cyan]")
-        console.print(f"   Files: {group['count']}")
+        console.print(f"   Files: {group['file_count']}")
 
         if group['scenarios']:
             scenarios_str = ', '.join(group['scenarios'][:5])

@@ -290,6 +290,97 @@ class TestGroupByVariableTimestep:
         assert ("led", "monthly") in grouped
 
 
+class TestTimeCoverageExtraction:
+    """Test time coverage extraction from dataset names."""
+
+    def test_extract_time_coverage_from_name(self):
+        """Should extract time coverage from dataset name with years."""
+        from isimip_pipeline.search.result_table import extract_time_coverage
+
+        datasets = [
+            DatasetInfo(
+                id="1",
+                name="model_ssp126_led_global_annual_2015_2100.nc",
+                url="https://example.com/1.nc",
+                simulation_round="ISIMIP3b",
+                variable="led",
+            ),
+        ]
+
+        coverage = extract_time_coverage(datasets)
+        assert "2015" in coverage
+        assert "2100" in coverage
+
+    def test_extract_time_coverage_multiple_datasets(self):
+        """Should extract combined time coverage from multiple datasets."""
+        from isimip_pipeline.search.result_table import extract_time_coverage
+
+        datasets = [
+            DatasetInfo(
+                id="1",
+                name="model_led_2006_2050.nc",
+                url="https://example.com/1.nc",
+                simulation_round="ISIMIP3b",
+                variable="led",
+            ),
+            DatasetInfo(
+                id="2",
+                name="model_led_2051_2100.nc",
+                url="https://example.com/2.nc",
+                simulation_round="ISIMIP3b",
+                variable="led",
+            ),
+        ]
+
+        coverage = extract_time_coverage(datasets)
+        # Should get min-max range across all files
+        assert "2006" in coverage
+        assert "2100" in coverage
+
+    def test_extract_time_coverage_isimip3b_default(self):
+        """Should use ISIMIP3b default range when years not in name."""
+        from isimip_pipeline.search.result_table import extract_time_coverage
+
+        datasets = [
+            DatasetInfo(
+                id="1",
+                name="model_ssp126_led.nc",
+                url="https://example.com/1.nc",
+                simulation_round="ISIMIP3b",
+                variable="led",
+            ),
+        ]
+
+        coverage = extract_time_coverage(datasets)
+        # ISIMIP3b typically covers 2015-2100
+        assert coverage == "2015-2100"
+
+    def test_extract_time_coverage_isimip2b_default(self):
+        """Should use ISIMIP2b default range when years not in name."""
+        from isimip_pipeline.search.result_table import extract_time_coverage
+
+        datasets = [
+            DatasetInfo(
+                id="1",
+                name="model_rcp85_led.nc",
+                url="https://example.com/1.nc",
+                simulation_round="ISIMIP2b",
+                variable="led",
+            ),
+        ]
+
+        coverage = extract_time_coverage(datasets)
+        # ISIMIP2b typically covers 2006-2099
+        assert coverage == "2006-2099"
+
+    def test_extract_time_coverage_empty_list(self):
+        """Should handle empty dataset list."""
+        from isimip_pipeline.search.result_table import extract_time_coverage
+
+        coverage = extract_time_coverage([])
+        assert coverage == "unknown"
+
+
 class TestDisplayGroupedResults:
     """Test displaying grouped results to terminal."""
 

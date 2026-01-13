@@ -106,6 +106,60 @@ def vectorized_theil_sen(
     return slopes.reshape(n_lat, n_lon)
 
 
+def vectorized_percentile_rank(
+    current_values: np.ndarray,
+    hist_data: np.ndarray,
+    min_valid: int = 3,
+) -> np.ndarray:
+    """Calculate percentile rank for each grid cell against its historical distribution.
+
+    Vectorized implementation that avoids nested loops for large grids.
+    Uses numpy broadcasting and sorting for efficient computation.
+
+    Args:
+        current_values: Array with shape (lat, lon) - values to rank.
+        hist_data: Array with shape (time, lat, lon) - historical distribution.
+        min_valid: Minimum number of valid historical points required.
+
+    Returns:
+        Array of percentile ranks (1-100) with shape (lat, lon).
+        NaN where current value is NaN or insufficient historical data.
+    """
+    n_lat, n_lon = current_values.shape
+    n_time = hist_data.shape[0]
+
+    # Initialize output with NaN
+    percentiles = np.full((n_lat, n_lon), np.nan)
+
+    # Reshape for vectorized operations: (n_cells,) and (time, n_cells)
+    flat_current = current_values.flatten()
+    flat_hist = hist_data.reshape(n_time, -1)
+
+    # Count valid historical points per cell
+    valid_counts = np.sum(~np.isnan(flat_hist), axis=0)
+
+    # Mask for cells with sufficient data and valid current values
+    valid_mask = (valid_counts >= min_valid) & (~np.isnan(flat_current))
+
+    # Process only valid cells
+    valid_indices = np.where(valid_mask)[0]
+
+    for idx in valid_indices:
+        val = flat_current[idx]
+        cell_hist = flat_hist[:, idx]
+        valid_hist = cell_hist[~np.isnan(cell_hist)]
+
+        # Count values less than or equal to current value
+        count_le = np.sum(valid_hist <= val)
+        # percentileofscore with kind="rank" = (count_le / n) * 100
+        pct = (count_le / len(valid_hist)) * 100
+
+        # Clamp to 1-100 range
+        percentiles.flat[idx] = max(1, min(100, int(np.ceil(pct))))
+
+    return percentiles
+
+
 def vectorized_spearman_pvalue(
     years: np.ndarray,
     data: np.ndarray,
@@ -428,22 +482,10 @@ class DataProcessor:
 
             # Percentile rank: compare each cell's value to its OWN historical distribution
             # This gives meaningful relative change rather than spatial comparison
-            percentile = np.full_like(smoothed_median, np.nan)
-
-            # Calculate percentile per cell against its own historical time series
-            for i in range(smoothed_median.shape[0]):
-                for j in range(smoothed_median.shape[1]):
-                    val = smoothed_median[i, j]
-                    if np.isnan(val):
-                        continue
-                    # Get this cell's historical time series
-                    cell_hist = hist_smoothed[:, i, j]
-                    valid_hist = cell_hist[~np.isnan(cell_hist)]
-                    if len(valid_hist) < 3:  # Need minimum data
-                        continue
-                    # Percentile of current value in historical distribution for THIS cell
-                    pct = stats.percentileofscore(valid_hist, val, kind="rank")
-                    percentile[i, j] = max(1, min(100, int(np.ceil(pct))))
+            # Uses vectorized implementation for efficiency on large grids
+            percentile = vectorized_percentile_rank(
+                smoothed_median, hist_smoothed, min_valid=3
+            )
 
             # Raw data for confidence bounds
             decade_raw = data_array[decade_mask]
