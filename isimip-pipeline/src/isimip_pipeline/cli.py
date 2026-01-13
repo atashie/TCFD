@@ -470,6 +470,100 @@ def report(
 
 
 @app.command()
+def catalog(
+    show_all: bool = typer.Option(
+        False, "--all", "-a", help="Show all variable details"
+    ),
+    variable: Optional[str] = typer.Option(
+        None, "--variable", "-v", help="Show details for specific variable"
+    ),
+    reset: bool = typer.Option(
+        False, "--reset", help="Reset catalog to empty"
+    ),
+):
+    """View or manage the persistent ISIMIP metrics catalog.
+
+    The catalog tracks all variables, scenarios, and models encountered
+    during search operations, building a local knowledge base over time.
+
+    Examples:
+        isimip-pipeline catalog           # Show summary
+        isimip-pipeline catalog --all     # Show all variables
+        isimip-pipeline catalog -v led    # Show details for 'led'
+        isimip-pipeline catalog --reset   # Clear catalog
+    """
+    from rich.table import Table
+    from isimip_pipeline.catalog import load_catalog, save_catalog, ISIMIPCatalog
+
+    catalog_data = load_catalog()
+
+    if reset:
+        save_catalog(ISIMIPCatalog())
+        console.print("[yellow]Catalog reset to empty[/yellow]")
+        return
+
+    if len(catalog_data.variables) == 0:
+        console.print("[yellow]Catalog is empty. Run a search to populate it.[/yellow]")
+        console.print("[dim]Example: isimip-pipeline run \"drought exposure\" --limit 5[/dim]")
+        return
+
+    summary = catalog_data.get_summary()
+
+    if variable:
+        # Show specific variable
+        if variable not in catalog_data.variables:
+            console.print(f"[red]Variable '{variable}' not found in catalog[/red]")
+            console.print(f"[dim]Available: {', '.join(catalog_data.variables.keys())}[/dim]")
+            return
+
+        var_info = catalog_data.variables[variable]
+        console.print(f"\n[bold]{variable}[/bold]")
+        if var_info.long_name:
+            console.print(f"  Name: {var_info.long_name}")
+        if var_info.unit:
+            console.print(f"  Unit: {var_info.unit}")
+        console.print(f"  Files: {var_info.file_count}")
+        console.print(f"  Scenarios: {', '.join(sorted(var_info.scenarios)) or 'None'}")
+        console.print(f"  Models: {', '.join(sorted(var_info.models)) or 'None'}")
+        console.print(f"  Simulation rounds: {', '.join(sorted(var_info.simulation_rounds)) or 'None'}")
+        if var_info.last_seen:
+            console.print(f"  Last seen: {var_info.last_seen.strftime('%Y-%m-%d %H:%M')}")
+        return
+
+    # Show summary
+    console.print("\n[bold]ISIMIP Metrics Catalog[/bold]")
+    console.print(f"  Variables tracked: {summary['total_variables']}")
+    console.print(f"  Total files seen: {summary['total_files']}")
+    console.print(f"  Scenarios: {', '.join(summary['all_scenarios']) or 'None'}")
+    if summary['last_updated']:
+        console.print(f"  Last updated: {summary['last_updated']}")
+
+    if show_all:
+        # Show table of all variables
+        console.print("")
+        table = Table(title="Variables")
+        table.add_column("Variable", style="cyan")
+        table.add_column("Long Name")
+        table.add_column("Files", justify="right")
+        table.add_column("Scenarios")
+        table.add_column("Models")
+
+        for name, var_info in sorted(catalog_data.variables.items()):
+            table.add_row(
+                name,
+                var_info.long_name or "",
+                str(var_info.file_count),
+                ", ".join(sorted(var_info.scenarios)[:3]) + ("..." if len(var_info.scenarios) > 3 else ""),
+                ", ".join(sorted(var_info.models)[:2]) + ("..." if len(var_info.models) > 2 else ""),
+            )
+
+        console.print(table)
+    else:
+        console.print(f"\n[dim]Variables: {', '.join(sorted(catalog_data.variables.keys()))}[/dim]")
+        console.print("[dim]Use --all for details or -v <variable> for specific info[/dim]")
+
+
+@app.command()
 def run(
     query: str = typer.Argument(..., help="Natural language search query"),
     scenarios: Optional[str] = typer.Option(
@@ -601,6 +695,11 @@ def run(
         all_datasets_file = base_dir / "all_available_datasets.json"
         export_selection(datasets, all_datasets_file, query=query)
         console.print(f"[dim]Saved all {len(datasets)} available datasets to {all_datasets_file.name}[/dim]")
+
+        # Update persistent ISIMIP catalog
+        from isimip_pipeline.catalog import update_catalog_from_datasets
+        catalog = update_catalog_from_datasets(datasets)
+        console.print(f"[dim]Updated ISIMIP catalog ({len(catalog.variables)} variables tracked)[/dim]")
 
         # Limit results for download
         if len(datasets) > limit:
