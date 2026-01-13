@@ -10,6 +10,8 @@ from isimip_pipeline.search.result_table import (
     format_results,
     export_selection,
     group_by_attributes,
+    group_by_variable_timestep,
+    display_grouped_results,
 )
 from isimip_pipeline.search.isimip_query import DatasetInfo
 
@@ -164,3 +166,189 @@ class TestFormatResults:
         output = format_results([])
 
         assert "no" in output.lower() or "0" in output
+
+
+class TestGroupByVariableTimestep:
+    """Test grouping datasets by variable and timestep."""
+
+    def test_group_by_variable_timestep_basic(self, sample_datasets):
+        """Should group datasets by (variable, timestep) tuple."""
+        grouped = group_by_variable_timestep(sample_datasets)
+
+        # Should have two groups: led-annual and led-monthly
+        assert len(grouped) == 2
+        assert ("led", "annual") in grouped
+        assert ("led", "monthly") in grouped
+
+    def test_group_by_variable_timestep_counts(self, sample_datasets):
+        """Should count files correctly in each group."""
+        grouped = group_by_variable_timestep(sample_datasets)
+
+        # led-annual: 2 files (ssp126, ssp370)
+        # led-monthly: 1 file (ssp126)
+        assert grouped[("led", "annual")]["file_count"] == 2
+        assert grouped[("led", "monthly")]["file_count"] == 1
+
+    def test_group_by_variable_timestep_scenarios(self, sample_datasets):
+        """Should extract unique scenarios from each group."""
+        grouped = group_by_variable_timestep(sample_datasets)
+
+        # led-annual has ssp126 and ssp370
+        scenarios_annual = grouped[("led", "annual")]["scenarios"]
+        assert "ssp126" in scenarios_annual
+        assert "ssp370" in scenarios_annual
+
+        # led-monthly has only ssp126
+        scenarios_monthly = grouped[("led", "monthly")]["scenarios"]
+        assert "ssp126" in scenarios_monthly
+
+    def test_group_by_variable_timestep_models(self, sample_datasets):
+        """Should extract unique models from each group."""
+        grouped = group_by_variable_timestep(sample_datasets)
+
+        # led-annual has gfdl-esm4
+        models_annual = grouped[("led", "annual")]["models"]
+        assert "gfdl-esm4" in models_annual
+
+        # led-monthly has ukesm1-0-ll
+        models_monthly = grouped[("led", "monthly")]["models"]
+        assert "ukesm1-0-ll" in models_monthly
+
+    def test_group_by_variable_timestep_simulation_rounds(self, sample_datasets):
+        """Should extract simulation rounds from each group."""
+        grouped = group_by_variable_timestep(sample_datasets)
+
+        # All datasets are ISIMIP3b
+        assert "ISIMIP3b" in grouped[("led", "annual")]["simulation_rounds"]
+        assert "ISIMIP3b" in grouped[("led", "monthly")]["simulation_rounds"]
+
+    def test_group_by_variable_timestep_empty_list(self):
+        """Should handle empty dataset list."""
+        grouped = group_by_variable_timestep([])
+
+        assert len(grouped) == 0
+
+    def test_group_by_variable_timestep_single_dataset(self):
+        """Should handle single dataset."""
+        dataset = DatasetInfo(
+            id="1",
+            name="test.nc",
+            url="https://example.com/test.nc",
+            simulation_round="ISIMIP3b",
+            climate_scenario="ssp126",
+            variable="led",
+            model="gfdl-esm4",
+            timestep="monthly",
+        )
+
+        grouped = group_by_variable_timestep([dataset])
+
+        assert len(grouped) == 1
+        assert ("led", "monthly") in grouped
+        assert grouped[("led", "monthly")]["file_count"] == 1
+
+    def test_group_by_variable_timestep_multiple_variables(self):
+        """Should correctly group multiple different variables."""
+        datasets = [
+            DatasetInfo(
+                id="1",
+                name="led_annual.nc",
+                url="https://example.com/led_annual.nc",
+                simulation_round="ISIMIP3b",
+                climate_scenario="ssp126",
+                variable="led",
+                model="gfdl-esm4",
+                timestep="annual",
+            ),
+            DatasetInfo(
+                id="2",
+                name="burntarea_monthly.nc",
+                url="https://example.com/burntarea_monthly.nc",
+                simulation_round="ISIMIP3b",
+                climate_scenario="ssp126",
+                variable="burntarea",
+                model="gfdl-esm4",
+                timestep="monthly",
+            ),
+            DatasetInfo(
+                id="3",
+                name="led_monthly.nc",
+                url="https://example.com/led_monthly.nc",
+                simulation_round="ISIMIP3b",
+                climate_scenario="ssp126",
+                variable="led",
+                model="gfdl-esm4",
+                timestep="monthly",
+            ),
+        ]
+
+        grouped = group_by_variable_timestep(datasets)
+
+        assert len(grouped) == 3
+        assert ("led", "annual") in grouped
+        assert ("burntarea", "monthly") in grouped
+        assert ("led", "monthly") in grouped
+
+
+class TestDisplayGroupedResults:
+    """Test displaying grouped results to terminal."""
+
+    def test_display_grouped_results_with_data(self, sample_datasets, capsys):
+        """Should display grouped results without errors."""
+        from rich.console import Console
+
+        grouped = group_by_variable_timestep(sample_datasets)
+        console = Console()
+
+        # Should not raise an error
+        try:
+            display_grouped_results(grouped, console)
+        except Exception as e:
+            pytest.fail(f"display_grouped_results raised {type(e).__name__}: {e}")
+
+    def test_display_grouped_results_empty(self, capsys):
+        """Should handle empty grouped results."""
+        from rich.console import Console
+
+        console = Console()
+
+        # Should not raise an error with empty dict
+        try:
+            display_grouped_results({}, console)
+        except Exception as e:
+            pytest.fail(f"display_grouped_results raised {type(e).__name__}: {e}")
+
+    def test_display_grouped_results_single_group(self, capsys):
+        """Should display single group correctly."""
+        from rich.console import Console
+
+        dataset = DatasetInfo(
+            id="1",
+            name="test.nc",
+            url="https://example.com/test.nc",
+            simulation_round="ISIMIP3b",
+            climate_scenario="ssp126",
+            variable="led",
+            model="gfdl-esm4",
+            timestep="monthly",
+        )
+
+        grouped = group_by_variable_timestep([dataset])
+        console = Console()
+
+        try:
+            display_grouped_results(grouped, console)
+        except Exception as e:
+            pytest.fail(f"display_grouped_results raised {type(e).__name__}: {e}")
+
+    def test_display_grouped_results_multiple_groups(self, sample_datasets, capsys):
+        """Should display multiple groups correctly."""
+        from rich.console import Console
+
+        grouped = group_by_variable_timestep(sample_datasets)
+        console = Console()
+
+        try:
+            display_grouped_results(grouped, console)
+        except Exception as e:
+            pytest.fail(f"display_grouped_results raised {type(e).__name__}: {e}")

@@ -458,3 +458,60 @@ class DataProcessor:
         write_netcdf(result, output_path)
 
         return output_path
+
+
+def detect_timestep_from_files(files: List[Path]) -> str:
+    """Detect timestep from NetCDF files by inspecting time dimension.
+
+    Inspects the time dimension of the first file to determine if data is
+    daily, monthly, annual, or seasonal. Falls back to filename pattern
+    matching if file inspection fails.
+
+    Args:
+        files: List of NetCDF file paths.
+
+    Returns:
+        Timestep string: "daily", "monthly", "annual", "seasonal", or "unknown"
+    """
+    if not files:
+        return "unknown"
+
+    # Try opening first file and checking time dimension
+    try:
+        with xr.open_dataset(files[0]) as ds:
+            if "time" in ds.dims:
+                # Get time differences in days
+                time_vals = ds.time.values
+                if len(time_vals) > 1:
+                    time_diff = np.diff(time_vals[:min(3, len(time_vals))])
+                    # Convert to days (handle different time representations)
+                    try:
+                        avg_diff = np.mean(time_diff).astype("timedelta64[D]").astype(int)
+                    except (ValueError, TypeError):
+                        # Fallback: assume numeric (days)
+                        avg_diff = int(np.mean(time_diff))
+
+                    if avg_diff <= 1:
+                        return "daily"
+                    elif avg_diff <= 31:
+                        return "monthly"
+                    elif avg_diff <= 120:
+                        return "seasonal"
+                    else:
+                        return "annual"
+    except Exception:
+        # File inspection failed, try filename pattern
+        pass
+
+    # Fallback: parse from filename pattern
+    filename = files[0].name.lower()
+    if "_annual_" in filename or "_yearly_" in filename:
+        return "annual"
+    elif "_monthly_" in filename:
+        return "monthly"
+    elif "_daily_" in filename:
+        return "daily"
+    elif "_seasonal_" in filename:
+        return "seasonal"
+
+    return "unknown"

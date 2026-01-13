@@ -219,3 +219,107 @@ def format_results(datasets: List[DatasetInfo]) -> str:
         lines.append(f"\n  ... and {len(datasets) - 20} more")
 
     return "\n".join(lines)
+
+
+def group_by_variable_timestep(
+    datasets: List[DatasetInfo],
+) -> Dict[tuple, Dict[str, Any]]:
+    """Group datasets by (variable, timestep) with metadata.
+
+    Creates a grouped structure that shows the different variable+timestep
+    combinations available in the search results, with summary information
+    about each group.
+
+    Args:
+        datasets: List of DatasetInfo objects.
+
+    Returns:
+        Dict mapping (variable, timestep) tuples to group metadata dicts.
+        Each group dict contains:
+        - 'datasets': List[DatasetInfo]
+        - 'count': int (number of files)
+        - 'scenarios': List[str]
+        - 'models': List[str]
+        - 'simulation_rounds': List[str]
+        - 'time_coverage': str (e.g., '2006-2100')
+    """
+    grouped = defaultdict(lambda: {
+        'datasets': [],
+        'scenarios': set(),
+        'models': set(),
+        'simulation_rounds': set(),
+    })
+
+    for ds in datasets:
+        var = ds.variable or 'unknown'
+        ts = ds.timestep or 'unknown'
+        key = (var, ts)
+
+        grouped[key]['datasets'].append(ds)
+        if ds.climate_scenario:
+            grouped[key]['scenarios'].add(ds.climate_scenario)
+        if ds.model:
+            grouped[key]['models'].add(ds.model)
+        if ds.simulation_round:
+            grouped[key]['simulation_rounds'].add(ds.simulation_round)
+
+    # Convert sets to sorted lists and add count
+    result = {}
+    for key, group in grouped.items():
+        result[key] = {
+            'datasets': group['datasets'],
+            'count': len(group['datasets']),
+            'scenarios': sorted(group['scenarios']),
+            'models': sorted(group['models']),
+            'simulation_rounds': sorted(group['simulation_rounds']),
+            'time_coverage': '2006-2100',  # Placeholder; could be extracted
+        }
+
+    return result
+
+
+def display_grouped_results(
+    grouped: Dict[tuple, Dict[str, Any]],
+    console: Optional[Console] = None,
+) -> None:
+    """Display grouped results with summary per group.
+
+    Shows each variable+timestep combination as a group with details
+    about scenarios, models, and file count.
+
+    Args:
+        grouped: Dict from group_by_variable_timestep.
+        console: Rich Console instance (creates new if None).
+    """
+    if console is None:
+        console = Console()
+
+    if not grouped:
+        console.print("[yellow]No dataset groups found.[/yellow]")
+        return
+
+    console.print(f"\n[bold]Found {len(grouped)} dataset group(s):[/bold]\n")
+
+    for idx, ((variable, timestep), group) in enumerate(sorted(grouped.items()), 1):
+        console.print(f"[cyan]{idx}. {variable} ({timestep})[/cyan]")
+        console.print(f"   Files: {group['count']}")
+
+        if group['scenarios']:
+            scenarios_str = ', '.join(group['scenarios'][:5])
+            if len(group['scenarios']) > 5:
+                scenarios_str += f", ... ({len(group['scenarios'])} total)"
+            console.print(f"   Scenarios: {scenarios_str}")
+
+        if group['models']:
+            models_str = ', '.join(group['models'][:3])
+            if len(group['models']) > 3:
+                models_str += f", ... ({len(group['models'])} total)"
+            console.print(f"   Models: {models_str}")
+
+        if group['simulation_rounds']:
+            console.print(f"   Rounds: {', '.join(group['simulation_rounds'])}")
+
+        if group['time_coverage']:
+            console.print(f"   Coverage: {group['time_coverage']}")
+
+        console.print()

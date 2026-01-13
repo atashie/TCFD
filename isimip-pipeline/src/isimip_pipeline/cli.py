@@ -10,6 +10,21 @@ from rich.panel import Panel
 
 from isimip_pipeline import __version__
 from isimip_pipeline.config import load_config, Config
+from isimip_pipeline.processing_log import load_processing_log
+from isimip_pipeline.discovery import find_local_datasets, display_local_results
+from isimip_pipeline.duplicate_handler import (
+    build_output_folder_name,
+    check_for_duplicate,
+)
+from isimip_pipeline.interactive import (
+    save_selection_metadata,
+    save_all_available_datasets,
+    extract_variable_timestep_from_datasets,
+)
+from isimip_pipeline.search.result_table import (
+    group_by_variable_timestep,
+    display_grouped_results,
+)
 
 app = typer.Typer(
     name="isimip-pipeline",
@@ -156,6 +171,278 @@ def search(
 
 
 @app.command()
+def find(
+    query: Optional[str] = typer.Argument(
+        None, help="Search query (optional)"
+    ),
+    variable: Optional[str] = typer.Option(
+        None, "--variable", "-v", help="Filter by variable (e.g., 'led')"
+    ),
+    timestep: Optional[str] = typer.Option(
+        None, "--timestep", "-t", help="Filter by timestep (e.g., 'monthly')"
+    ),
+    scenario: Optional[str] = typer.Option(
+        None, "--scenario", "-s", help="Filter by scenario (e.g., 'ssp126')"
+    ),
+    detailed: bool = typer.Option(
+        False, "--detailed", "-d", help="Show detailed information"
+    ),
+):
+    """Search locally processed datasets.
+
+    Searches your local database of processed datasets stored in
+    outputs/processed_data_log.yaml
+
+    Examples:
+        isimip-pipeline find                    # List all datasets
+        isimip-pipeline find drought            # Search by query
+        isimip-pipeline find -v led -t monthly  # Filter by variable and timestep
+        isimip-pipeline find drought -d         # Detailed view
+    """
+    # Load processing log
+    log_path = Path("./outputs/processed_data_log.yaml")
+
+    try:
+        log = load_processing_log(log_path)
+
+        if not log.datasets:
+            console.print("[yellow]No datasets found in local log.[/yellow]")
+            console.print(
+                "[dim]Run 'isimip-pipeline run' or 'isimip-pipeline interactive' "
+                "to process and store datasets.[/dim]"
+            )
+            return
+
+        # Search with filters
+        results = find_local_datasets(
+            log,
+            query=query,
+            variable=variable,
+            timestep=timestep,
+            scenario=scenario,
+        )
+
+        if not results:
+            console.print("[yellow]No datasets match your search criteria.[/yellow]")
+            return
+
+        # Display results
+        display_local_results(results, console, detailed=detailed)
+
+    except Exception as e:
+        console.print(f"[red]Error searching local datasets: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def interactive(
+    query: str = typer.Argument(..., help="Natural language search query"),
+    local_only: bool = typer.Option(
+        False, "--local-only", help="Only search local datasets"
+    ),
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="Path to config file"
+    ),
+):
+    """Run interactive dataset discovery and selection workflow.
+
+    Guides you through the workflow:
+    1. Search local datasets
+    2. Search ISIMIP if not found locally
+    3. Select dataset group
+    4. Check for duplicates
+
+    After selection, you'll be guided to download and process the data.
+
+    Examples:
+        isimip-pipeline interactive "drought exposure"
+        isimip-pipeline interactive "wildfire" --local-only
+    """
+    from isimip_pipeline.search.llm_parser import parse_natural_query, LLMParser
+    from isimip_pipeline.search.isimip_query import ISIMIPQuery
+    from rich.prompt import Prompt
+
+    cfg = get_config(config)
+
+    console.print(Panel(
+        f"[bold]Interactive Dataset Workflow[/bold]\nQuery: {query}",
+        title="ISIMIP Pipeline"
+    ))
+
+    # =========================================================================
+    # STEP 1: LOCAL SEARCH
+    # =========================================================================
+    console.print("\n[bold cyan]Step 1/4: Searching local datasets...[/bold cyan]")
+
+    log_path = Path("./outputs/processed_data_log.yaml")
+    log = load_processing_log(log_path)
+
+    local_results = find_local_datasets(log, query=query)
+
+    if local_results:
+        console.print(f"[green]Found {len(local_results)} local dataset(s)[/green]")
+        display_local_results(local_results, console, detailed=True)
+
+        use_existing = Prompt.ask(
+            "[bold]Use one of these existing datasets?[/bold]",
+            choices=["y", "n"],
+            default="n",
+        )
+
+        if use_existing.lower() == "y":
+            console.print("[green]Using existing dataset[/green]")
+            if local_results:
+                console.print(f"[dim]Dataset: {local_results[0].output_path}[/dim]")
+            return
+
+    # =========================================================================
+    # STEP 2: REMOTE SEARCH
+    # =========================================================================
+    if not local_only:
+        console.print("\n[bold cyan]Step 2/4: Searching ISIMIP repository...[/bold cyan]")
+
+        try:
+            # Parse query
+            if cfg.api.you_api_key:
+                parsed = parse_natural_query(
+                    query,
+                    api_key=cfg.api.you_api_key,
+                    agent_id=cfg.api.you_agent_id or "",
+                )
+            else:
+                parser = LLMParser(api_key="", agent_id="")
+                parsed = parser.keyword_fallback(query)
+
+            filters = parsed.filters
+            if parsed.explanation:
+                console.print(f"[dim]Interpretation: {parsed.explanation}[/dim]")
+
+            # Search ISIMIP
+            isimip = ISIMIPQuery(timeout=cfg.api.isimip_timeout)
+
+            if not any([filters.variable, filters.simulation_round, filters.climate_scenario]):
+                datasets = isimip.search_by_query(query)
+            else:
+                datasets = isimip.search(filters)
+
+            if not datasets:
+                console.print("[red]No datasets found in ISIMIP[/red]")
+                raise typer.Exit(1)
+
+            console.print(f"[green]Found {len(datasets)} datasets[/green]")
+
+            # Group by variable+timestep
+            grouped = group_by_variable_timestep(datasets)
+
+            if not grouped:
+                console.print("[red]No dataset groups found[/red]")
+                raise typer.Exit(1)
+
+            # =========================================================================
+            # STEP 3: USER SELECTION
+            # =========================================================================
+            console.print("\n[bold cyan]Step 3/4: Select dataset group[/bold cyan]")
+
+            display_grouped_results(grouped, console)
+
+            # Let user pick a group
+            group_choice = Prompt.ask(
+                "[bold]Select group number[/bold]",
+                choices=[str(i) for i in range(1, len(grouped) + 1)],
+            )
+
+            group_idx = int(group_choice) - 1
+            selected_group_key = sorted(grouped.keys())[group_idx]
+            selected_group = grouped[selected_group_key][
+                "datasets"
+            ]
+            variable, timestep = selected_group_key
+
+            console.print(
+                f"[green]Selected: {variable} ({timestep})[/green]"
+            )
+            console.print(f"[dim]Files: {len(selected_group)}[/dim]")
+
+            # Get descriptive name
+            default_name = query.lower().replace(" ", "-")[:30]
+            descriptive_name = Prompt.ask(
+                "[bold]Enter descriptive name[/bold]",
+                default=default_name,
+            )
+
+            # =========================================================================
+            # STEP 4: DUPLICATE CHECK
+            # =========================================================================
+            console.print("\n[bold cyan]Step 4/4: Checking for duplicates...[/bold cyan]")
+
+            log = load_processing_log(log_path)
+            existing = check_for_duplicate(log, variable, timestep)
+
+            if existing:
+                console.print(
+                    f"[yellow]⚠️  Duplicate detected[/yellow]\n"
+                    f"Dataset '{variable}-{timestep}' already exists:\n"
+                    f"  Name: {existing.descriptive_name}\n"
+                    f"  Created: {existing.created_date.strftime('%Y-%m-%d')}\n"
+                    f"  Path: {existing.output_path}"
+                )
+
+                action = Prompt.ask(
+                    "[bold]What would you like to do?[/bold]",
+                    choices=["skip", "new", "overwrite", "abort"],
+                    default="skip",
+                )
+
+                if action == "skip":
+                    console.print("[dim]Using existing dataset[/dim]")
+                    return
+                elif action == "abort":
+                    console.print("[yellow]Operation cancelled[/yellow]")
+                    return
+                elif action == "overwrite":
+                    from isimip_pipeline.duplicate_handler import generate_unique_name
+                    folder_name = build_output_folder_name(
+                        descriptive_name, variable, timestep
+                    )
+                else:  # new
+                    from isimip_pipeline.duplicate_handler import generate_unique_name
+                    folder_name = generate_unique_name(
+                        descriptive_name, variable, timestep, log
+                    )
+            else:
+                console.print("[green]No duplicates found[/green]")
+                folder_name = build_output_folder_name(
+                    descriptive_name, variable, timestep
+                )
+
+            # Save selection and all datasets
+            output_dir = Path("./outputs") / folder_name
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            save_selection_metadata(
+                output_dir,
+                selected_group,
+                query=query,
+                descriptive_name=descriptive_name,
+            )
+            save_all_available_datasets(output_dir, datasets, query=query)
+
+            console.print(f"\n[bold green]Ready to process![/bold green]")
+            console.print(f"Output directory: [cyan]{output_dir}[/cyan]")
+            console.print(
+                f"\n[bold]Next steps:[/bold]\n"
+                f"1. Download: isimip-pipeline download -s {output_dir}/selection.json\n"
+                f"2. Process: isimip-pipeline process {output_dir}/raw"
+            )
+
+        except Exception as e:
+            console.print(f"[red]Error during interactive workflow: {e}[/red]")
+            raise typer.Exit(1)
+    else:
+        console.print("[yellow]Local-only mode, no remote search[/yellow]")
+
+
+@app.command()
 def download(
     selection: Path = typer.Option(
         ..., "--selection", "-s", help="JSON file with dataset selection"
@@ -256,18 +543,25 @@ def process(
     5. Lower confidence bound
     6. Upper confidence bound
 
+    Auto-detects variable, timestep, and descriptive name from folder structure.
+    Updates processing log after successful completion.
+
     Examples:
-        isimip-pipeline process ./data/raw
+        isimip-pipeline process ./outputs/drought-severity_led-monthly/raw
         isimip-pipeline process ./data/raw --output ./data/processed
         isimip-pipeline process ./data/raw -v burntarea -s ssp126,ssp585
     """
+    from datetime import datetime
     from rich.progress import Progress, SpinnerColumn, TextColumn
+    from rich.prompt import Prompt
     from isimip_pipeline.processing.processor import (
         DataProcessor,
         find_netcdf_files,
         group_files_by_variable,
+        detect_timestep_from_files,
     )
     from isimip_pipeline.processing.output import write_netcdf
+    from isimip_pipeline.interactive import parse_descriptive_name_from_folder, load_selection_metadata
 
     cfg = get_config(config)
 
@@ -293,21 +587,59 @@ def process(
     groups = group_files_by_variable(files)
     console.print(f"[dim]Variables detected: {', '.join(groups.keys())}[/dim]")
 
-    # Determine which variable to process
+    # Auto-detect variable if not specified
     if variable:
         if variable not in groups:
             console.print(f"[red]Variable '{variable}' not found in files[/red]")
             console.print(f"[dim]Available: {', '.join(groups.keys())}[/dim]")
             raise typer.Exit(1)
         variables_to_process = [variable]
+        detected_variable = variable
     else:
         variables_to_process = list(groups.keys())
+        detected_variable = variables_to_process[0] if variables_to_process else "unknown"
+
+    # Auto-detect timestep from files
+    detected_timestep = detect_timestep_from_files(files)
+    console.print(f"[dim]Detected timestep: {detected_timestep}[/dim]")
+
+    # Auto-detect descriptive name from folder structure
+    input_parent = input_dir.parent
+    folder_name = input_parent.name
+    detected_name = parse_descriptive_name_from_folder(folder_name)
+    console.print(f"[dim]Detected name: {detected_name}[/dim]")
+
+    # Try to load selection metadata for query info
+    detected_query = ""
+    try:
+        selection = load_selection_metadata(input_parent)
+        detected_query = selection.get("query", "")
+    except FileNotFoundError:
+        pass
 
     # Parse scenarios
     scenario_list = None
     if scenarios:
         scenario_list = [s.strip() for s in scenarios.split(",")]
         console.print(f"[dim]Scenarios: {', '.join(scenario_list)}[/dim]")
+
+    # Display detected metadata for user confirmation
+    console.print(f"\n[bold]Detected metadata:[/bold]")
+    console.print(f"  Variable: [cyan]{detected_variable}[/cyan]")
+    console.print(f"  Timestep: [cyan]{detected_timestep}[/cyan]")
+    console.print(f"  Name: [cyan]{detected_name}[/cyan]")
+    console.print(f"  Files: [cyan]{len(files)}[/cyan]")
+
+    # Confirm with user before processing
+    proceed = Prompt.ask(
+        "[bold]Proceed with these settings?[/bold]",
+        choices=["y", "n"],
+        default="y",
+    )
+
+    if proceed.lower() != "y":
+        console.print("[yellow]Processing cancelled[/yellow]")
+        raise typer.Exit(0)
 
     # Set up output directory
     output_dir = output or cfg.paths.processed_dir
@@ -319,6 +651,10 @@ def process(
         bandwidth=cfg.processing.smoothing_bandwidth,
         percentile_bins=cfg.processing.percentile_bins,
     )
+
+    # Track processed files for logging
+    processed_files = []
+    processed_successfully = True
 
     # Process each variable
     with Progress(
@@ -339,16 +675,63 @@ def process(
                 # Save output
                 output_path = output_dir / f"{var}_processed.nc"
                 write_netcdf(result, output_path)
+                processed_files.append(str(output_path))
 
                 progress.update(task, description=f"[green]Completed {var}[/green]")
                 console.print(f"  [green]Saved:[/green] {output_path}")
 
             except Exception as e:
+                processed_successfully = False
                 progress.update(task, description=f"[red]Failed {var}[/red]")
                 console.print(f"  [red]Error processing {var}: {e}[/red]")
 
-    console.print(f"\n[green]Processing complete![/green]")
+    if not processed_successfully:
+        console.print(f"\n[yellow]Processing completed with errors[/yellow]")
+    else:
+        console.print(f"\n[green]Processing complete![/green]")
+
     console.print(f"[dim]Output directory: {output_dir}[/dim]")
+
+    # Update processing log if processing was successful
+    if processed_successfully and processed_files:
+        console.print("\n[dim]Updating processing log...[/dim]")
+
+        try:
+            from isimip_pipeline.processing_log import (
+                load_processing_log,
+                save_processing_log,
+                DatasetEntry,
+            )
+
+            log_path = Path("./outputs/processed_data_log.yaml")
+            log = load_processing_log(log_path)
+
+            # Extract scenarios from processed data or use defaults
+            climate_scenarios = scenario_list or ["unknown"]
+
+            # Create entry for the log
+            entry = DatasetEntry(
+                descriptive_name=detected_name,
+                variable=detected_variable,
+                timestep=detected_timestep,
+                created_date=datetime.now(),
+                output_path=str(input_parent),
+                file_count=len(files),
+                time_periods=["2006-2100"],  # Could be extracted from data
+                climate_scenarios=climate_scenarios,
+                gcm_models=["unknown"],  # Could be extracted from filenames
+                lsm_models=["unknown"],  # Could be extracted from filenames
+                simulation_round="unknown",  # Could be extracted from data
+                query=detected_query,
+            )
+
+            log.add_entry(entry)
+            save_processing_log(log, log_path)
+
+            console.print("[green]Processing log updated[/green]")
+
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not update processing log: {e}[/yellow]")
 
 
 @app.command()
@@ -682,21 +1065,22 @@ def run(
             console.print("[red]No datasets found matching query[/red]")
             raise typer.Exit(1)
 
-        # Extract variable name from datasets
+        # Extract variable and timestep from datasets
         variables_found = set(ds.variable for ds in datasets if ds.variable)
         variable_name = list(variables_found)[0] if variables_found else "unknown"
 
-        # Set up output directory structure: ./outputs/{name}_{variable}/
+        timesteps_found = set(ds.timestep for ds in datasets if ds.timestep)
+        timestep_name = list(timesteps_found)[0] if timesteps_found else "unknown"
+
+        # Set up output directory structure: ./outputs/{name}_{variable}-{timestep}/
         if output:
             # User specified custom output path
             base_dir = Path(output)
         else:
-            # Use default naming convention
+            # Use default naming convention with timestep
             descriptive_name = name if name else query.lower().replace(" ", "-")[:30]
-            # Clean up the name (remove special chars)
-            import re
-            descriptive_name = re.sub(r'[^a-z0-9-]', '', descriptive_name)
-            folder_name = f"{descriptive_name}_{variable_name}"
+            # Use build_output_folder_name for consistent naming
+            folder_name = build_output_folder_name(descriptive_name, variable_name, timestep_name)
             base_dir = Path("./outputs") / folder_name
 
         raw_dir = base_dir / "raw"
