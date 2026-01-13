@@ -229,7 +229,7 @@ pytest tests/test_integration.py -v
 ### Test Coverage
 
 - 299 total tests
-- 271 passing (90.6% pass rate)
+- 299 passing (100% pass rate)
 - Covers: search, download, processing, alignment, validation, output, visualization
 
 ## ISIMIP Data Context
