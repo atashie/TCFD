@@ -1,0 +1,228 @@
+{
+  "query": "baseflow groundwater discharge qg ISIMIP3b",
+  "urls": [
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/gfdl-esm4/future/cwatm_gfdl-esm4_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/gfdl-esm4/future/cwatm_gfdl-esm4_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/gfdl-esm4/future/cwatm_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/gfdl-esm4/historical/cwatm_gfdl-esm4_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ipsl-cm6a-lr/future/cwatm_ipsl-cm6a-lr_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ipsl-cm6a-lr/future/cwatm_ipsl-cm6a-lr_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ipsl-cm6a-lr/future/cwatm_ipsl-cm6a-lr_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ipsl-cm6a-lr/historical/cwatm_ipsl-cm6a-lr_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mpi-esm1-2-hr/future/cwatm_mpi-esm1-2-hr_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mpi-esm1-2-hr/future/cwatm_mpi-esm1-2-hr_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mpi-esm1-2-hr/future/cwatm_mpi-esm1-2-hr_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mpi-esm1-2-hr/historical/cwatm_mpi-esm1-2-hr_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mri-esm2-0/future/cwatm_mri-esm2-0_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mri-esm2-0/future/cwatm_mri-esm2-0_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mri-esm2-0/future/cwatm_mri-esm2-0_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mri-esm2-0/historical/cwatm_mri-esm2-0_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ukesm1-0-ll/future/cwatm_ukesm1-0-ll_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ukesm1-0-ll/future/cwatm_ukesm1-0-ll_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ukesm1-0-ll/future/cwatm_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+    "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ukesm1-0-ll/historical/cwatm_ukesm1-0-ll_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc"
+  ],
+  "datasets": [
+    {
+      "name": "cwatm_gfdl-esm4_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/gfdl-esm4/future/cwatm_gfdl-esm4_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216487299,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "gfdl-esm4",
+        "climate_scenario": "ssp126"
+      }
+    },
+    {
+      "name": "cwatm_gfdl-esm4_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/gfdl-esm4/future/cwatm_gfdl-esm4_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216439440,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "gfdl-esm4",
+        "climate_scenario": "ssp370"
+      }
+    },
+    {
+      "name": "cwatm_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/gfdl-esm4/future/cwatm_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216413901,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "gfdl-esm4",
+        "climate_scenario": "ssp585"
+      }
+    },
+    {
+      "name": "cwatm_gfdl-esm4_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/gfdl-esm4/historical/cwatm_gfdl-esm4_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "size_bytes": 413884946,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "gfdl-esm4",
+        "climate_scenario": "historical"
+      }
+    },
+    {
+      "name": "cwatm_ipsl-cm6a-lr_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ipsl-cm6a-lr/future/cwatm_ipsl-cm6a-lr_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216953305,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "ipsl-cm6a-lr",
+        "climate_scenario": "ssp126"
+      }
+    },
+    {
+      "name": "cwatm_ipsl-cm6a-lr_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ipsl-cm6a-lr/future/cwatm_ipsl-cm6a-lr_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216882812,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "ipsl-cm6a-lr",
+        "climate_scenario": "ssp370"
+      }
+    },
+    {
+      "name": "cwatm_ipsl-cm6a-lr_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ipsl-cm6a-lr/future/cwatm_ipsl-cm6a-lr_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216835050,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "ipsl-cm6a-lr",
+        "climate_scenario": "ssp585"
+      }
+    },
+    {
+      "name": "cwatm_ipsl-cm6a-lr_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ipsl-cm6a-lr/historical/cwatm_ipsl-cm6a-lr_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "size_bytes": 415453064,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "ipsl-cm6a-lr",
+        "climate_scenario": "historical"
+      }
+    },
+    {
+      "name": "cwatm_mpi-esm1-2-hr_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mpi-esm1-2-hr/future/cwatm_mpi-esm1-2-hr_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 217274725,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "mpi-esm1-2-hr",
+        "climate_scenario": "ssp126"
+      }
+    },
+    {
+      "name": "cwatm_mpi-esm1-2-hr_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mpi-esm1-2-hr/future/cwatm_mpi-esm1-2-hr_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 217118746,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "mpi-esm1-2-hr",
+        "climate_scenario": "ssp370"
+      }
+    },
+    {
+      "name": "cwatm_mpi-esm1-2-hr_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mpi-esm1-2-hr/future/cwatm_mpi-esm1-2-hr_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 217204932,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "mpi-esm1-2-hr",
+        "climate_scenario": "ssp585"
+      }
+    },
+    {
+      "name": "cwatm_mpi-esm1-2-hr_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mpi-esm1-2-hr/historical/cwatm_mpi-esm1-2-hr_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "size_bytes": 416623225,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "mpi-esm1-2-hr",
+        "climate_scenario": "historical"
+      }
+    },
+    {
+      "name": "cwatm_mri-esm2-0_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mri-esm2-0/future/cwatm_mri-esm2-0_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216388852,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "mri-esm2-0",
+        "climate_scenario": "ssp126"
+      }
+    },
+    {
+      "name": "cwatm_mri-esm2-0_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mri-esm2-0/future/cwatm_mri-esm2-0_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216083715,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "mri-esm2-0",
+        "climate_scenario": "ssp370"
+      }
+    },
+    {
+      "name": "cwatm_mri-esm2-0_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mri-esm2-0/future/cwatm_mri-esm2-0_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216121672,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "mri-esm2-0",
+        "climate_scenario": "ssp585"
+      }
+    },
+    {
+      "name": "cwatm_mri-esm2-0_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/mri-esm2-0/historical/cwatm_mri-esm2-0_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "size_bytes": 414871742,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "mri-esm2-0",
+        "climate_scenario": "historical"
+      }
+    },
+    {
+      "name": "cwatm_ukesm1-0-ll_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ukesm1-0-ll/future/cwatm_ukesm1-0-ll_w5e5_ssp126_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216989785,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "ukesm1-0-ll",
+        "climate_scenario": "ssp126"
+      }
+    },
+    {
+      "name": "cwatm_ukesm1-0-ll_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ukesm1-0-ll/future/cwatm_ukesm1-0-ll_w5e5_ssp370_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216846631,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "ukesm1-0-ll",
+        "climate_scenario": "ssp370"
+      }
+    },
+    {
+      "name": "cwatm_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ukesm1-0-ll/future/cwatm_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_default_qg_global_monthly_2015_2100.nc",
+      "size_bytes": 216785816,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "ukesm1-0-ll",
+        "climate_scenario": "ssp585"
+      }
+    },
+    {
+      "name": "cwatm_ukesm1-0-ll_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/water_global/CWatM/ukesm1-0-ll/historical/cwatm_ukesm1-0-ll_w5e5_historical_histsoc_default_qg_global_monthly_1850_2014.nc",
+      "size_bytes": 416317616,
+      "specifiers": {
+        "model": "cwatm",
+        "climate_forcing": "ukesm1-0-ll",
+        "climate_scenario": "historical"
+      }
+    }
+  ],
+  "total_size_gb": 4.96
+}

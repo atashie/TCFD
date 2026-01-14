@@ -1,0 +1,49 @@
+# Data directories (large files, should not be in git)
+data/
+reports/
+
+# NetCDF data files
+*.nc
+*.nc4
+*.zarr/
+
+# Claude Code local settings
+.claude/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+nul
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/

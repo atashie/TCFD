@@ -42,6 +42,7 @@ htmlcov/
 # Test outputs (don't commit test run data)
 test_*/
 outputs/
+reports/
 *.html
 !docs/*.html
 
@@ -50,6 +51,8 @@ outputs/
 *.nc4
 *.zarr/
 data/
+raw/
+processed/
 
 # Logs
 *.log

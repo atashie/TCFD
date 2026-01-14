@@ -1,0 +1,42 @@
+#######################
+# set your wd
+#ncOutputPath = 'C:/ClimateData/Flood/FloodExtent/future/'
+ncOutputPath = 'C:/ClimateData/Temperature/Heatwave/Future/'
+fileList = "filelist_leh_annual_future.txt"
+setwd(ncOutputPath)
+#######################
+
+library(curl)
+
+# Read the file containing URLs
+urls <- readLines(fileList)
+
+# Create directory if it doesn't exist
+if (!dir.exists("./rawNcs")) {
+  dir.create("./rawNcs")
+}
+
+# Set a longer timeout for large files
+options(timeout = 600)
+
+# Download files with progress tracking
+n=0
+for (myUrl in urls) {
+  filename <- basename(myUrl)
+  dest_path <- file.path("./rawNcs", filename)
+  
+  if (file.exists(dest_path)) {
+    cat(sprintf("File %s already exists, skipping...\n", filename))
+    next
+  }
+  
+  cat(sprintf("Downloading %s...\n", filename))
+  tryCatch({
+    curl_download(myUrl, dest_path, quiet = FALSE)
+    cat(sprintf("Successfully downloaded %s\n", filename))
+  }, error = function(e) {
+    cat(sprintf("Error downloading %s: %s\n", filename, e$message))
+  })
+  n=n+1
+  print(paste0("Finished processing ", n, " of ", length(urls)))
+}

@@ -976,6 +976,129 @@ def catalog(
 
 
 @app.command()
+def cleanup(
+    raw_dir: Path = typer.Argument(..., help="Directory containing raw NetCDF files to delete"),
+    processed_dir: Optional[Path] = typer.Option(
+        None, "--processed", "-p", help="Processed directory to verify exists (auto-detected if not specified)"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Skip confirmation prompt"
+    ),
+):
+    """Delete raw data files after confirming processed data is valid.
+
+    This command should be run AFTER you have:
+    1. Processed the raw data (isimip-pipeline process)
+    2. Generated and reviewed the QA report (isimip-pipeline report)
+    3. Confirmed the processed data looks correct
+
+    The command will:
+    - Verify the processed directory exists and contains data
+    - Show summary of files to be deleted
+    - Ask for confirmation (unless --force is used)
+    - Delete the raw files
+
+    Examples:
+        isimip-pipeline cleanup ./outputs/drought_led-monthly/raw
+        isimip-pipeline cleanup ./data/raw -p ./data/processed
+        isimip-pipeline cleanup ./outputs/drought_led-monthly/raw --force
+    """
+    import shutil
+    from rich.prompt import Prompt
+
+    # Validate raw directory exists
+    if not raw_dir.exists():
+        console.print(f"[red]Raw directory not found:[/red] {raw_dir}")
+        raise typer.Exit(1)
+
+    # Find NetCDF files in raw directory
+    nc_files = list(raw_dir.glob("*.nc")) + list(raw_dir.glob("*.nc4"))
+    if not nc_files:
+        console.print(f"[yellow]No NetCDF files found in:[/yellow] {raw_dir}")
+        console.print("[dim]Nothing to clean up.[/dim]")
+        return
+
+    # Auto-detect processed directory if not specified
+    if processed_dir is None:
+        # Try sibling "processed" folder
+        parent = raw_dir.parent
+        processed_dir = parent / "processed"
+
+    # Verify processed data exists
+    if not processed_dir.exists():
+        console.print(f"[red]Processed directory not found:[/red] {processed_dir}")
+        console.print("[yellow]Please process the data first before cleaning up raw files.[/yellow]")
+        console.print(f"[dim]Run: isimip-pipeline process {raw_dir}[/dim]")
+        raise typer.Exit(1)
+
+    processed_files = list(processed_dir.glob("*_processed.nc"))
+    if not processed_files:
+        console.print(f"[red]No processed files found in:[/red] {processed_dir}")
+        console.print("[yellow]Please process the data first before cleaning up raw files.[/yellow]")
+        raise typer.Exit(1)
+
+    # Calculate sizes
+    raw_size_bytes = sum(f.stat().st_size for f in nc_files)
+    raw_size_mb = raw_size_bytes / (1024 * 1024)
+    processed_size_bytes = sum(f.stat().st_size for f in processed_files)
+    processed_size_mb = processed_size_bytes / (1024 * 1024)
+
+    # Show summary
+    console.print(Panel(
+        f"[bold]Raw Data Cleanup[/bold]",
+        title="ISIMIP Cleanup"
+    ))
+
+    console.print(f"\n[bold]Raw data to delete:[/bold]")
+    console.print(f"  Directory: [cyan]{raw_dir}[/cyan]")
+    console.print(f"  Files: {len(nc_files)} NetCDF files")
+    console.print(f"  Size: {raw_size_mb:.1f} MB")
+
+    console.print(f"\n[bold]Processed data (will be kept):[/bold]")
+    console.print(f"  Directory: [cyan]{processed_dir}[/cyan]")
+    console.print(f"  Files: {len(processed_files)} processed files")
+    console.print(f"  Size: {processed_size_mb:.1f} MB")
+
+    # Confirm deletion
+    if not force:
+        console.print(f"\n[yellow]Warning: This will permanently delete {len(nc_files)} raw files ({raw_size_mb:.1f} MB).[/yellow]")
+        confirm = Prompt.ask(
+            "[bold]Have you verified the processed data is correct? Delete raw files?[/bold]",
+            choices=["y", "n"],
+            default="n",
+        )
+
+        if confirm.lower() != "y":
+            console.print("[dim]Cleanup cancelled.[/dim]")
+            return
+
+    # Delete raw files
+    console.print(f"\n[dim]Deleting raw files...[/dim]")
+    try:
+        # Delete all files in raw directory
+        for f in nc_files:
+            f.unlink()
+            console.print(f"  [dim]Deleted: {f.name}[/dim]")
+
+        # Try to remove empty directory
+        try:
+            raw_dir.rmdir()
+            console.print(f"  [dim]Removed empty directory: {raw_dir.name}[/dim]")
+        except OSError:
+            # Directory not empty (may have other files)
+            remaining = list(raw_dir.iterdir())
+            if remaining:
+                console.print(f"  [dim]Directory kept (contains {len(remaining)} other files)[/dim]")
+
+        console.print(f"\n[green]Cleanup complete![/green]")
+        console.print(f"[dim]Freed {raw_size_mb:.1f} MB of disk space.[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Error during cleanup: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def run(
     query: str = typer.Argument(..., help="Natural language search query"),
     name: Optional[str] = typer.Option(
