@@ -24,13 +24,71 @@ DECADES = {
     "current": 2020,
     "future": 2090
 }
-SCENARIOS = ["ssp126", "ssp370", "ssp585"]
-SCENARIO_LABELS = {
+
+# SSP scenarios (ISIMIP3b)
+SSP_SCENARIO_LABELS = {
     "ssp126": "SSP1-2.6 (Low Emissions)",
     "ssp370": "SSP3-7.0 (Intermediate)",
     "ssp585": "SSP5-8.5 (High Emissions)"
 }
+SSP_SCENARIO_COLORS = {
+    "ssp126": "#27ae60",
+    "ssp370": "#f39c12",
+    "ssp585": "#e74c3c",
+}
+
+# RCP scenarios (ISIMIP2b)
+RCP_SCENARIO_LABELS = {
+    "rcp26": "RCP2.6 (Low Emissions)",
+    "rcp60": "RCP6.0 (Intermediate)",
+    "rcp85": "RCP8.5 (High Emissions)",
+    "picontrol": "Pre-Industrial Control",
+    "historical": "Historical",
+}
+RCP_SCENARIO_COLORS = {
+    "rcp26": "#27ae60",
+    "rcp60": "#f39c12",
+    "rcp85": "#e74c3c",
+    "picontrol": "#3498db",
+    "historical": "#95a5a6",
+}
+
+# Legacy globals (for backward compatibility, overridden by auto-detection)
+SCENARIOS = ["ssp126", "ssp370", "ssp585"]
+SCENARIO_LABELS = SSP_SCENARIO_LABELS
+
 ANOMALY_SIGMA = 6  # Flag values > 6σ from 2020s mean
+
+# Value class mapping for pipeline output format (from isimip-pipeline/processing/output.py)
+# Maps value_class indices to generate_maps.py variable names
+VALUE_CLASS_MAP = {
+    0: "median",        # smoothed_median in pipeline
+    1: "percentile",    # percentile rank
+    2: "trend",         # Theil-Sen slope
+    3: "significance",  # Spearman p-value (not used by generate_maps.py)
+    4: "lower_ci",      # lower_bound (Q25)
+    5: "upper_ci",      # upper_bound (Q75)
+}
+
+# Non-projection scenarios to exclude from report generation
+# These are used to enhance baseline robustness but not shown as separate projections
+EXCLUDED_SCENARIOS = {"picontrol", "historical"}
+
+
+def detect_scenario_type(scenarios: List[str]) -> Tuple[Dict[str, str], Dict[str, str], str]:
+    """Detect whether scenarios are SSP or RCP and return appropriate config."""
+    if any(s.startswith('ssp') for s in scenarios):
+        labels = {s: SSP_SCENARIO_LABELS.get(s, s) for s in scenarios}
+        colors = {s: SSP_SCENARIO_COLORS.get(s, "#3498db") for s in scenarios}
+        return labels, colors, "ISIMIP3b"
+    elif any(s.startswith('rcp') or s in ['picontrol', 'historical'] for s in scenarios):
+        labels = {s: RCP_SCENARIO_LABELS.get(s, s) for s in scenarios}
+        colors = {s: RCP_SCENARIO_COLORS.get(s, "#3498db") for s in scenarios}
+        return labels, colors, "ISIMIP2b"
+    else:
+        labels = {s: s for s in scenarios}
+        colors = {s: "#3498db" for s in scenarios}
+        return labels, colors, "ISIMIP"
 
 # Color scales by metric type
 COLORSCALES = {
@@ -188,19 +246,27 @@ def create_map_figure(
     return fig
 
 
-def generate_html_header(variable: str, metric: str, scenario: str) -> str:
+def generate_html_header(
+    variable: str,
+    metric: str,
+    scenario: str,
+    scenarios: List[str],
+    scenario_labels: Dict[str, str]
+) -> str:
     """Generate HTML header with navigation for per-scenario files.
 
     Args:
         variable: Variable code (e.g., 'qg')
         metric: Metric type (e.g., 'median', 'percentile', 'trend')
-        scenario: Scenario code (e.g., 'ssp126', 'ssp370', 'ssp585')
+        scenario: Scenario code (e.g., 'ssp126', 'rcp26')
+        scenarios: List of all scenarios to include in navigation
+        scenario_labels: Dict mapping scenario codes to display labels
     """
     # Build metric navigation (same metric, all scenarios)
     metric_nav = []
-    for scen in SCENARIOS:
+    for scen in scenarios:
         active = "active" if scen == scenario else ""
-        label = SCENARIO_LABELS.get(scen, scen).split()[0]  # e.g., "SSP1-2.6"
+        label = scenario_labels.get(scen, scen).split()[0]  # e.g., "SSP1-2.6" or "RCP2.6"
         metric_nav.append(f'<a href="{variable}_{metric}_{scen}.html" class="{active}">{label}</a>')
 
     # Build cross-metric navigation (same scenario, other metrics)
@@ -209,7 +275,7 @@ def generate_html_header(variable: str, metric: str, scenario: str) -> str:
         active = "active" if m == metric else ""
         cross_nav.append(f'<a href="{variable}_{m}_{scenario}.html" class="{active}">{m.title()}</a>')
 
-    scenario_label = SCENARIO_LABELS.get(scenario, scenario)
+    scenario_label = scenario_labels.get(scenario, scenario)
 
     return f"""<!DOCTYPE html>
 <html>
@@ -258,12 +324,12 @@ def generate_html_header(variable: str, metric: str, scenario: str) -> str:
 """
 
 
-def generate_html_footer(timestamp: str) -> str:
+def generate_html_footer(timestamp: str, data_source: str = "ISIMIP3b") -> str:
     """Generate HTML footer."""
     return f"""
     <div class="footer">
         Generated: {timestamp}<br>
-        Data source: ISIMIP3b | Processing: process-metrics skill
+        Data source: {data_source} | Processing: process-metrics skill
     </div>
 </body>
 </html>
@@ -281,28 +347,116 @@ class MapCollectionGenerator:
         self.baseline_stats: Dict[str, Tuple[float, float]] = {}  # (mean, std) per scenario
         self.variable_units: str = ""
         self.variable_long_name: str = ""
+        # Instance variables for scenario configuration (auto-detected from data)
+        self.scenarios: List[str] = []
+        self.scenario_labels: Dict[str, str] = {}
+        self.scenario_colors: Dict[str, str] = {}
+        self.data_source: str = "ISIMIP"
 
     def load_data(self, variable: str):
-        """Load all scenario data for a variable."""
+        """Load all scenario data for a variable.
+
+        Supports two formats:
+        1. Single-file format: {variable}_processed.nc with 'scenario' dimension
+        2. Per-scenario files: {variable}_{scenario}_processed.nc
+        """
         log(f"Loading data for {variable}...")
         self.data = {}
 
-        for scenario in SCENARIOS:
-            fpath = self.processed_dir / f"{variable}_{scenario}_processed.nc"
-            if fpath.exists():
-                self.data[scenario] = xr.open_dataset(fpath)
-                log(f"  Loaded {scenario}: {fpath.name}")
+        # Try single-file format first
+        single_file = self.processed_dir / f"{variable}_processed.nc"
+        if single_file.exists():
+            log(f"  Found single-file format: {single_file.name}")
+            ds = xr.open_dataset(single_file)
+
+            # Check if scenario dimension exists
+            if "scenario" in ds.dims:
+                scenarios = [str(s) for s in ds.scenario.values]
+                log(f"  Scenarios in file: {scenarios}")
+
+                # Split into per-scenario datasets for compatibility
+                for scenario in scenarios:
+                    self.data[scenario] = ds.sel(scenario=scenario)
+
+                # Auto-detect scenario type
+                self.scenario_labels, self.scenario_colors, self.data_source = detect_scenario_type(scenarios)
+                self.scenarios = scenarios
+                log(f"  Detected data source: {self.data_source}")
             else:
-                log(f"  WARNING: {fpath.name} not found")
+                # Single file without scenario dimension - treat as single scenario
+                scenario = ds.attrs.get("scenario", "unknown")
+                self.data[scenario] = ds
+                self.scenarios = [scenario]
+                self.scenario_labels = {scenario: scenario}
+                self.scenario_colors = {scenario: "#3498db"}
+                self.data_source = "ISIMIP"
+        else:
+            # Fall back to per-scenario file format
+            log(f"  Single-file not found, trying per-scenario files...")
+
+            # Try SSP scenarios first
+            for scenario in list(SSP_SCENARIO_LABELS.keys()):
+                fpath = self.processed_dir / f"{variable}_{scenario}_processed.nc"
+                if fpath.exists():
+                    self.data[scenario] = xr.open_dataset(fpath)
+                    log(f"  Loaded {scenario}: {fpath.name}")
+
+            # If no SSP files found, try RCP scenarios
+            if not self.data:
+                for scenario in list(RCP_SCENARIO_LABELS.keys()):
+                    fpath = self.processed_dir / f"{variable}_{scenario}_processed.nc"
+                    if fpath.exists():
+                        self.data[scenario] = xr.open_dataset(fpath)
+                        log(f"  Loaded {scenario}: {fpath.name}")
+
+            if self.data:
+                scenarios = list(self.data.keys())
+                self.scenario_labels, self.scenario_colors, self.data_source = detect_scenario_type(scenarios)
+                self.scenarios = scenarios
+                log(f"  Detected data source: {self.data_source}")
 
         if not self.data:
             raise ValueError(f"No data files found for {variable}")
 
-        # Extract metadata from first loaded dataset
+        # Extract metadata from first loaded dataset BEFORE format conversion
         first_ds = list(self.data.values())[0]
-        self.variable_units = first_ds.attrs.get("units", "")
-        self.variable_long_name = first_ds.attrs.get("long_name", variable)
+
+        # Check if this is pipeline format (has value_class dimension)
+        if "value_class" in first_ds.dims:
+            log("  Detected pipeline format (value_class dimension)")
+            # Extract metadata from the original variable before conversion
+            if variable in first_ds.data_vars:
+                var_attrs = first_ds[variable].attrs
+                self.variable_units = var_attrs.get("units", first_ds.attrs.get("units", ""))
+                self.variable_long_name = var_attrs.get("long_name", first_ds.attrs.get("long_name", variable))
+            else:
+                self.variable_units = first_ds.attrs.get("units", "")
+                self.variable_long_name = first_ds.attrs.get("long_name", variable)
+            # Convert pipeline format to QG-style format with separate variables
+            self._convert_pipeline_format(variable)
+        else:
+            # QG format: metadata from dataset attributes
+            self.variable_units = first_ds.attrs.get("units", "")
+            self.variable_long_name = first_ds.attrs.get("long_name", variable)
+
         log(f"  Metadata: {self.variable_long_name} [{self.variable_units}]")
+
+        # Filter out non-projection scenarios (picontrol, historical)
+        # These are used to enhance baseline robustness but not shown as separate projections
+        excluded = [s for s in self.scenarios if s in EXCLUDED_SCENARIOS]
+        if excluded:
+            log(f"  Excluding non-projection scenarios: {excluded}")
+            for scenario in excluded:
+                if scenario in self.data:
+                    del self.data[scenario]
+            self.scenarios = [s for s in self.scenarios if s not in EXCLUDED_SCENARIOS]
+            # Update labels and colors to only include remaining scenarios
+            self.scenario_labels = {s: self.scenario_labels[s] for s in self.scenarios}
+            self.scenario_colors = {s: self.scenario_colors[s] for s in self.scenarios}
+            log(f"  Remaining projection scenarios: {self.scenarios}")
+
+        if not self.scenarios:
+            raise ValueError("No projection scenarios found after filtering")
 
         # Calculate baseline statistics for anomaly detection
         self._calculate_baseline_stats(variable)
@@ -320,6 +474,73 @@ class MapCollectionGenerator:
                     std_val = float(np.std(valid_data))
                     self.baseline_stats[scenario] = (mean_val, std_val)
                     log(f"  {scenario}: mean={mean_val:.3e}, std={std_val:.3e}")
+
+    def _convert_pipeline_format(self, variable: str):
+        """Convert pipeline format (value_class dimension) to QG format (separate variables).
+
+        The pipeline stores metrics in a single variable with a value_class dimension:
+          data[variable][lon, lat, decade, scenario, value_class]
+
+        This method converts each scenario's data to have separate variables:
+          data[scenario]['median'][decade, lat, lon]
+          data[scenario]['percentile'][decade, lat, lon]
+          etc.
+        """
+        log("  Converting pipeline format to separate-variable format...")
+
+        for scenario in self.scenarios:
+            if scenario not in self.data:
+                continue
+
+            scenario_ds = self.data[scenario]
+
+            # Check if the variable exists with value_class dimension
+            if variable not in scenario_ds.data_vars:
+                log(f"    WARNING: Variable '{variable}' not found in {scenario} dataset")
+                continue
+
+            var_data = scenario_ds[variable]
+
+            # Create new dataset with separate variables for each metric
+            new_ds = xr.Dataset()
+
+            # Extract each metric from value_class dimension
+            for vc_idx, var_name in VALUE_CLASS_MAP.items():
+                if vc_idx >= len(scenario_ds.value_class):
+                    continue
+
+                # Extract the metric data
+                metric_data = var_data.isel(value_class=vc_idx)
+
+                # Handle dimension order: pipeline outputs (lon, lat, decade)
+                # but generate_maps.py expects (decade, lat, lon)
+                if "lon" in metric_data.dims and "lat" in metric_data.dims and "decade" in metric_data.dims:
+                    # Transpose to (decade, lat, lon) order
+                    metric_data = metric_data.transpose("decade", "lat", "lon")
+
+                new_ds[var_name] = metric_data
+
+            # Copy coordinate attributes
+            # Convert decade indices (10, 20, ..., 90) to years (2010, 2020, ..., 2090) if needed
+            decade_values = scenario_ds.decade.values
+            if max(decade_values) < 100:  # Decade indices, not years
+                decade_values = decade_values + 2000  # Convert to actual years
+                log(f"    Converted decade indices to years: {list(decade_values)}")
+
+            new_ds = new_ds.assign_coords({
+                "decade": decade_values,
+                "lat": scenario_ds.lat,
+                "lon": scenario_ds.lon,
+            })
+
+            # Copy global attributes
+            new_ds.attrs = scenario_ds.attrs.copy()
+
+            # Replace the scenario data with converted format
+            self.data[scenario] = new_ds
+            log(f"    {scenario}: converted {len(VALUE_CLASS_MAP)} metrics")
+
+        log("  Format conversion complete")
 
     def generate_all_collections(self, variable: str):
         """Generate all map collections for a variable."""
@@ -368,7 +589,7 @@ class MapCollectionGenerator:
             cmin, cmax = 0, 1
 
         # Generate separate file for each scenario
-        for scenario in SCENARIOS:
+        for scenario in self.scenarios:
             if scenario not in self.data:
                 continue
 
@@ -377,7 +598,7 @@ class MapCollectionGenerator:
                 continue
 
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            html = generate_html_header(variable, metric, scenario)
+            html = generate_html_header(variable, metric, scenario, self.scenarios, self.scenario_labels)
 
             html += '<div class="comparison-grid">\n'
 
@@ -409,7 +630,7 @@ class MapCollectionGenerator:
                 html += '</div>\n'
 
             html += '</div>\n'
-            html += generate_html_footer(timestamp)
+            html += generate_html_footer(timestamp, self.data_source)
 
             # Write file per scenario
             output_path = output_dir / f"{variable}_{metric}_{scenario}.html"
@@ -426,13 +647,13 @@ class MapCollectionGenerator:
         lats = first_ds.lat.values
 
         # Generate separate file for each scenario
-        for scenario in SCENARIOS:
+        for scenario in self.scenarios:
             if scenario not in self.data:
                 continue
 
             ds = self.data[scenario]
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            html = generate_html_header(variable, "confidence", scenario)
+            html = generate_html_header(variable, "confidence", scenario, self.scenarios, self.scenario_labels)
 
             for ci_metric, ci_label in [("lower_ci", "Lower CI (25th percentile)"),
                                         ("upper_ci", "Upper CI (75th percentile)")]:
@@ -466,7 +687,7 @@ class MapCollectionGenerator:
 
                 html += '</div>\n'
 
-            html += generate_html_footer(timestamp)
+            html += generate_html_footer(timestamp, self.data_source)
 
             output_path = output_dir / f"{variable}_confidence_{scenario}.html"
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -498,7 +719,7 @@ class MapCollectionGenerator:
             cmin, cmax = -1, 1
 
         # Generate separate file for each scenario
-        for scenario in SCENARIOS:
+        for scenario in self.scenarios:
             if scenario not in self.data:
                 continue
 
@@ -507,7 +728,7 @@ class MapCollectionGenerator:
                 continue
 
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            html = generate_html_header(variable, "change", scenario)
+            html = generate_html_header(variable, "change", scenario, self.scenarios, self.scenario_labels)
 
             html += '<div class="stats-box"><h3>Absolute Change: 2090s minus 2020s</h3>'
             html += '<p>Positive values (red) indicate increase, negative values (blue) indicate decrease.</p></div>\n'
@@ -538,7 +759,7 @@ class MapCollectionGenerator:
             html += '</div>\n'
             html += '</div>\n'
 
-            html += generate_html_footer(timestamp)
+            html += generate_html_footer(timestamp, self.data_source)
 
             output_path = output_dir / f"{variable}_change_{scenario}.html"
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -556,7 +777,7 @@ class MapCollectionGenerator:
         anomaly_summary = {}
 
         # Generate separate file for each scenario
-        for scenario in SCENARIOS:
+        for scenario in self.scenarios:
             if scenario not in self.data or scenario not in self.baseline_stats:
                 continue
 
@@ -564,7 +785,7 @@ class MapCollectionGenerator:
             mean_2020s, std_2020s = self.baseline_stats[scenario]
 
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            html = generate_html_header(variable, "anomaly", scenario)
+            html = generate_html_header(variable, "anomaly", scenario, self.scenarios, self.scenario_labels)
 
             html += f'<div class="stats-box"><h3>Anomaly Detection: >{ANOMALY_SIGMA}σ from 2020s Mean</h3>'
             html += '<p>Red X markers indicate grid cells where the value deviates more than '
@@ -619,7 +840,7 @@ class MapCollectionGenerator:
                 html += f'<strong>{decade_key}:</strong> {count} cells flagged<br>\n'
             html += '</div>\n'
 
-            html += generate_html_footer(timestamp)
+            html += generate_html_footer(timestamp, self.data_source)
 
             output_path = output_dir / f"{variable}_anomaly_{scenario}.html"
             with open(output_path, 'w', encoding='utf-8') as f:
@@ -650,6 +871,33 @@ class MapCollectionGenerator:
             ("anomaly", "Anomaly Detection", f"Values >{ANOMALY_SIGMA}σ from 2020s mean"),
         ]
 
+        # Build dynamic CSS for scenario button colors
+        btn_css = ""
+        for scenario in self.scenarios:
+            color = self.scenario_colors.get(scenario, "#3498db")
+            # Darken color for hover
+            btn_css += f"""        a.btn.{scenario} {{ background: {color}; }}
+        a.btn.{scenario}:hover {{ filter: brightness(0.85); }}
+"""
+
+        # Build legend items dynamically
+        legend_items = ""
+        for scenario in self.scenarios:
+            color = self.scenario_colors.get(scenario, "#3498db")
+            label = self.scenario_labels.get(scenario, scenario)
+            legend_items += f"""        <div class="legend-item">
+            <span class="legend-color" style="background: {color};"></span>
+            <strong>{label.split()[0]}</strong> - {' '.join(label.split()[1:]) if len(label.split()) > 1 else ''}
+        </div>
+"""
+
+        # Build table header with scenario columns
+        scenario_headers = ""
+        for scenario in self.scenarios:
+            label = self.scenario_labels.get(scenario, scenario)
+            short_label = label.split()[0]  # e.g., "SSP1-2.6" or "RCP2.6"
+            scenario_headers += f'            <th>{short_label}</th>\n'
+
         html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -666,17 +914,10 @@ class MapCollectionGenerator:
         th.metric {{ background: #2c3e50; text-align: left; width: 200px; }}
         td {{ padding: 12px; text-align: center; border-bottom: 1px solid #ecf0f1; }}
         td.metric-name {{ text-align: left; background: #f8f9fa; font-weight: bold; color: #2c3e50; }}
-        td.metric-desc {{ text-align: left; background: #f8f9fa; color: #666; font-size: 12px; }}
         a.btn {{ display: inline-block; background: #3498db; color: white; padding: 8px 16px;
                  border-radius: 4px; text-decoration: none; font-size: 13px; }}
         a.btn:hover {{ background: #2980b9; }}
-        a.btn.ssp126 {{ background: #27ae60; }}
-        a.btn.ssp126:hover {{ background: #219a52; }}
-        a.btn.ssp370 {{ background: #f39c12; }}
-        a.btn.ssp370:hover {{ background: #d68910; }}
-        a.btn.ssp585 {{ background: #e74c3c; }}
-        a.btn.ssp585:hover {{ background: #c0392b; }}
-        .footer {{ text-align: center; color: #666; padding: 20px; font-size: 12px; }}
+{btn_css}        .footer {{ text-align: center; color: #666; padding: 20px; font-size: 12px; }}
         .legend {{ margin: 20px 0; padding: 15px; background: white; border-radius: 8px;
                    box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
         .legend h3 {{ margin-top: 0; color: #2c3e50; }}
@@ -692,44 +933,31 @@ class MapCollectionGenerator:
     </div>
 
     <div class="legend">
-        <h3>Scenario Legend</h3>
-        <div class="legend-item">
-            <span class="legend-color" style="background: #27ae60;"></span>
-            <strong>SSP1-2.6</strong> - Low emissions (sustainable development)
-        </div>
-        <div class="legend-item">
-            <span class="legend-color" style="background: #f39c12;"></span>
-            <strong>SSP3-7.0</strong> - Intermediate emissions (regional rivalry)
-        </div>
-        <div class="legend-item">
-            <span class="legend-color" style="background: #e74c3c;"></span>
-            <strong>SSP5-8.5</strong> - High emissions (fossil-fueled development)
-        </div>
-    </div>
+        <h3>Scenario Legend ({self.data_source})</h3>
+{legend_items}    </div>
 
     <table>
         <tr>
             <th class="metric">Metric</th>
-            <th>SSP1-2.6<br><small>(Low)</small></th>
-            <th>SSP3-7.0<br><small>(Intermediate)</small></th>
-            <th>SSP5-8.5<br><small>(High)</small></th>
-        </tr>
+{scenario_headers}        </tr>
 """
 
         for metric_key, metric_name, metric_desc in metrics:
+            # Build scenario cells dynamically
+            scenario_cells = ""
+            for scenario in self.scenarios:
+                scenario_cells += f'            <td><a href="{variable}_{metric_key}_{scenario}.html" class="btn {scenario}">View</a></td>\n'
+
             html += f"""        <tr>
             <td class="metric-name">{metric_name}<br><span style="font-weight:normal;font-size:11px;color:#888;">{metric_desc}</span></td>
-            <td><a href="{variable}_{metric_key}_ssp126.html" class="btn ssp126">View</a></td>
-            <td><a href="{variable}_{metric_key}_ssp370.html" class="btn ssp370">View</a></td>
-            <td><a href="{variable}_{metric_key}_ssp585.html" class="btn ssp585">View</a></td>
-        </tr>
+{scenario_cells}        </tr>
 """
 
         html += f"""    </table>
 
     <div class="footer">
         Generated: {timestamp}<br>
-        Data source: ISIMIP3b | Units: {self.variable_units}
+        Data source: {self.data_source} | Units: {self.variable_units}
     </div>
 </body>
 </html>
@@ -742,24 +970,43 @@ class MapCollectionGenerator:
 
 
 def main():
-    """Main entry point."""
+    """Main entry point.
+
+    Usage:
+        python generate_maps.py [variable] [processed_dir] [output_dir]
+
+    Examples:
+        python generate_maps.py                          # Default: qg from data/processed
+        python generate_maps.py leh                      # Generate maps for leh variable
+        python generate_maps.py leh ./outputs/processed  # Custom processed directory
+        python generate_maps.py leh ./outputs/processed ./reports/maps  # Full custom paths
+    """
+    import sys
+
     # Get project root (parent of scripts directory)
     project_root = Path(__file__).parent.parent
-    processed_dir = project_root / "data" / "processed"
-    output_dir = project_root / "reports" / "maps"
+
+    # Parse command-line arguments
+    variable = sys.argv[1] if len(sys.argv) > 1 else "qg"
+    processed_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else project_root / "data" / "processed"
+    output_dir = Path(sys.argv[3]) if len(sys.argv) > 3 else project_root / "reports" / "maps"
 
     log("=" * 60)
     log("Generating Synoptic and Diagnostic Maps")
     log("=" * 60)
+    log(f"Variable: {variable}")
+    log(f"Processed data: {processed_dir}")
+    log(f"Output directory: {output_dir}")
+    log("=" * 60)
 
     generator = MapCollectionGenerator(processed_dir, output_dir)
 
-    # Generate maps for qg variable
-    generator.generate_all_collections("qg")
+    # Generate maps for specified variable
+    generator.generate_all_collections(variable)
 
     log("\n" + "=" * 60)
     log("Map generation complete!")
-    log(f"Output directory: {output_dir / 'qg'}")
+    log(f"Output directory: {output_dir / variable}")
     log("=" * 60)
 
 

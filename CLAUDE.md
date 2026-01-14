@@ -83,6 +83,60 @@ When processing ISIMIP data, use these parameters:
 - **Adaptive windowing**: Minimum 100 data points per decade-bin
 - **Percentile baseline**: Always use 2020s as reference distribution
 
+### Shared 2020s Baseline
+
+All climate projections share **identical 2020s baseline values**, computed as:
+- Average of ALL scenarios (projection + historical/picontrol) that have overlapping data for the 2020s period
+- For 2030s-2090s decades, values are computed per-scenario as before
+
+This ensures consistent baseline comparisons across scenarios while allowing divergent projections for future decades. The `baseline_source` attribute in processed NetCDF files indicates whether shared baseline was used.
+
+**Verification**: Run `python scripts/test_shared_baseline.py` after processing to verify:
+1. 2020s values are identical across all scenarios
+2. 2030s+ values differ across scenarios (as expected)
+3. Files have `baseline_source: shared_across_all_scenarios` attribute
+
+### Output Organization
+
+**Folder naming**: `{descriptive-name}_{variable}_{timestep}/`
+- Example: `wildfire-burntarea_burntarea_monthly/`
+- Example: `drought-severity_led_annual/`
+
+**Multi-scenario rule**: All climate scenarios belong in ONE folder and ONE processed file.
+- Processed NetCDF dimensions: `(lon, lat, decade, scenario, value_class)`
+- Never create separate folders per scenario (e.g., avoid `burntarea-rcp26/`, `burntarea-rcp60/`)
+
+**CLI workflow**: Always use `isimip-pipeline run` for downloading data.
+- The `run` command automatically handles multi-scenario downloads into a single output directory
+- Avoid manual `search` + `download` workflows that may fragment scenarios into separate folders
+
+### QA Report Generation
+
+**Always use `scripts/generate_maps.py`** for generating visualization reports.
+
+Never write ad-hoc inline scripts for report generation. The established script provides:
+- Per-scenario HTML files (one file per metric × scenario combination)
+- 2020s vs 2090s comparison structure in each file
+- Cross-navigation between metrics and scenarios
+- Master index page with grid layout
+- Browser-safe file sizes (~4MB each)
+- Anomaly detection and JSON summaries
+- Auto-detection of SSP vs RCP scenarios
+
+**Report workflow**:
+```bash
+# After processing data, generate maps
+python scripts/generate_maps.py {variable} {processed_dir} {output_dir}
+
+# Example for heatwave data:
+python scripts/generate_maps.py leh ./outputs/heatwave-exposure_leh-annual/processed ./reports/maps
+```
+
+**Do NOT**:
+- Write custom inline Python to generate HTML visualizations
+- Create per-decade files instead of per-scenario files
+- Generate monolithic single-file reports (>10MB)
+
 ## ISIMIP Data Context
 
 **Simulation Rounds:**
@@ -90,6 +144,18 @@ When processing ISIMIP data, use these parameters:
 - ISIMIP2a/2b: RCP scenarios (rcp26, rcp60, rcp85)
 
 **Key Variables:** `led` (drought), `leh` (heatwave), `lew` (wildfire), `qg` (groundwater runoff), `burntarea`, `potevap`
+
+### Scenario Handling
+
+**Projection scenarios** (included in reports):
+- SSP: ssp126, ssp370, ssp585
+- RCP: rcp26, rcp60, rcp85
+
+**Non-projection scenarios** (excluded from reports):
+- `picontrol` (Pre-Industrial Control)
+- `historical`
+
+Non-projection scenarios may be downloaded and processed alongside projection data to enhance baseline robustness (e.g., improving 2020s reference distributions), but they are **automatically excluded** from `generate_maps.py` report generation. Only actual climate projections appear in the final visualization reports.
 
 ## Search Workflow Guidelines
 
