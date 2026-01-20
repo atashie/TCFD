@@ -2,6 +2,8 @@
 
 Rules in this file represent mistakes that were made and must never be repeated. These are non-negotiable requirements that override convenience or efficiency considerations.
 
+See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation.
+
 ## 1. Temporal Resolution Must Be User-Selected
 
 **Rule**: When ISIMIP data is available at multiple temporal resolutions (daily, monthly, annual), **ALWAYS ask the user which resolution they want before downloading**.
@@ -75,62 +77,3 @@ Rules in this file represent mistakes that were made and must never be repeated.
 - Load ALL matching files, not just predefined scenarios
 - Use fallback labels/colors for unknown scenarios (e.g., "ssp245" → "SSP2-4.5")
 
----
-
-## Incident Log
-
-### 2026-01-16: Fish TCB Downloaded Without Resolution Choice
-
-**What happened**: When searching for fish catch abundance data, I found both monthly (~135-158 MB/file) and annual (~8-12 MB/file) data available. I proceeded to download 28 monthly files (3.62 GB total) without asking the user which resolution they preferred.
-
-**Impact**: Downloaded 12x more data than potentially needed if annual resolution was sufficient.
-
-**Available options that should have been presented**:
-| Resolution | Files | Size per file | Total |
-|------------|-------|---------------|-------|
-| Monthly | 24 files | 135-158 MB | ~3.5 GB |
-| Annual | 4 files (ZooMSS only) | 8-12 MB | ~40 MB |
-
-**Correct action**: Should have used `AskUserQuestion` to present both options and let user decide based on their analysis needs.
-
----
-
-### 2026-01-20: Fish b30cm Processed Without Aggregation Choice
-
-**What happened**: When processing b30cm (large fish biomass) monthly data, I automatically aggregated monthly values to annual using `groupby("time.year").mean()` without asking the user which aggregation method they preferred.
-
-**Impact**: Processing proceeded with a reasonable method (mean for density data), but user was not consulted. In other cases (e.g., count data, extremes), this could have produced wrong results.
-
-**What I did**:
-- Monthly data → Annual: arithmetic mean of 12 months
-- Annual → Decade: median across years in adaptive window
-- Models → Ensemble: median across model outputs
-
-**Correct action**: Should have:
-1. Noted the units (g C m⁻²) are a density metric
-2. Presented aggregation options: mean, median, sum, min, max
-3. Used `AskUserQuestion` to get explicit user choice
-4. In this case, user confirmed mean was correct for density units
-
-**Outcome**: User approved mean aggregation post-hoc, but workflow was incorrect.
-
----
-
-### 2026-01-20: Scenario rcp45 Excluded from Visualization
-
-**What happened**: After processing b30cm data with all 4 RCP scenarios (rcp26, rcp45, rcp60, rcp85), the visualization script `generate_maps.py` only generated maps for 3 scenarios (rcp26, rcp60, rcp85), silently excluding rcp45.
-
-**Root cause**: The script had hardcoded scenario lists:
-```python
-RCP_SCENARIO_LABELS = {
-    "rcp26": "RCP2.6 (Low Emissions)",
-    "rcp60": "RCP6.0 (Intermediate)",
-    "rcp85": "RCP8.5 (High Emissions)",
-    ...
-}
-```
-The per-scenario file loading loop only tried scenarios in this dictionary, so rcp45 files were never discovered.
-
-**Impact**: 25% of processed data was invisible in visualizations.
-
-**Fix applied**: Changed `generate_maps.py` to dynamically discover scenarios from filesystem using glob pattern `{variable}_*_processed.nc` instead of iterating hardcoded lists.
