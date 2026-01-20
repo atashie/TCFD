@@ -1,0 +1,365 @@
+# ISIMIP Search Results Catalog
+# ==============================
+# This file tracks empirical search results from ISIMIP repository queries.
+# Update this file as new searches are conducted to build institutional knowledge
+# and avoid redundant API queries.
+#
+# Last updated: 2026-01-20
+
+# -----------------------------------------------------------------------------
+# VARIABLE DEFINITIONS
+# -----------------------------------------------------------------------------
+variable_definitions:
+  cwood:
+    long_name: "Carbon Mass in Wood"
+    units: "kg m-2"
+    description: "Includes sapwood and hardwood carbon content. Stock variable (not flux)."
+    use_case: "Proxy for timber volume/biomass. Convert to dry biomass via ~0.5 kg C per kg dry biomass."
+
+  npp:
+    long_name: "Net Primary Productivity"
+    units: "kg m-2 s-1"
+    description: "Carbon flux from atmosphere to vegetation minus plant respiration."
+    use_case: "Proxy for vegetation growth rate."
+
+  gpp:
+    long_name: "Gross Primary Productivity"
+    units: "kg m-2 s-1"
+    description: "Total carbon uptake by photosynthesis."
+    use_case: "Total photosynthetic capacity indicator."
+
+  cveg:
+    long_name: "Carbon Mass in Vegetation"
+    units: "kg m-2"
+    description: "Total vegetation carbon pool (above + below ground)."
+    use_case: "Total biomass proxy."
+
+  cleaf:
+    long_name: "Carbon Mass in Leaves"
+    units: "kg m-2"
+    description: "Leaf carbon pool."
+    use_case: "Canopy biomass indicator."
+
+  burntarea:
+    long_name: "Burnt Area Fraction"
+    units: "fraction"
+    description: "Fraction of grid cell affected by fire."
+    use_case: "Fire disturbance metric."
+
+  b30cm:
+    long_name: "Biomass Density of Consumers >30cm"
+    units: "g C m-2"
+    description: "Biomass density of marine consumers with asymptotic length (L∞) greater than 30cm. Size-class threshold for 'large fish'."
+    use_case: "Large fish abundance proxy (tuna, salmon, etc.)."
+    notes: "Monthly data requires aggregation - use mean for density metrics."
+
+  tcb:
+    long_name: "Total Consumer Biomass"
+    units: "g C m-2"
+    description: "Total biomass of all marine consumers regardless of size."
+    use_case: "Overall fishery productivity indicator."
+
+  b10cm:
+    long_name: "Biomass Density of Consumers >10cm"
+    units: "g C m-2"
+    description: "Biomass density of marine consumers with L∞ > 10cm."
+    use_case: "Medium-to-large fish abundance."
+
+# -----------------------------------------------------------------------------
+# PFT (PLANT FUNCTIONAL TYPE) CODES
+# -----------------------------------------------------------------------------
+pft_codes:
+  # ISIMIP3b CLASSIC model codes
+  isimip3b_classic:
+    dcdcldbdltr: "Deciduous cold-climate broadleaf trees (best oak proxy)"
+    dcddrybdltr: "Deciduous dry-climate broadleaf trees"
+    dcdndltr: "Deciduous needleleaf trees"
+    evgbdltr: "Evergreen broadleaf trees"
+    evgndltr: "Evergreen needleleaf trees"
+    c3grass: "C3 grasses"
+    c4grass: "C4 grasses"
+    c3crop: "C3 crops"
+    c4crop: "C4 crops"
+    total: "All PFTs combined"
+
+  # ISIMIP2b species codes (regional forestry)
+  isimip2b_forestry:
+    fasy: "Fagus sylvatica (European beech)"
+    piab: "Picea abies (Norway spruce)"
+    pipi: "Pinus pinaster (Maritime pine)"
+    pisy: "Pinus sylvestris (Scots pine)"
+    # NOTE: No Quercus (oak) species available
+
+# -----------------------------------------------------------------------------
+# SEARCH RESULTS BY VARIABLE
+# -----------------------------------------------------------------------------
+search_results:
+
+  # -------------------------
+  # cwood searches
+  # -------------------------
+  cwood:
+    last_searched: "2026-01-15"
+
+    isimip3b:
+      total_datasets: 1001
+      sectors: ["biomes"]
+      impact_models: ["CLASSIC"]
+      climate_forcings: ["GFDL-ESM4"]
+      bias_adjustment: ["w5e5"]
+      scenarios:
+        climate: ["picontrol", "ssp126", "ssp370", "ssp585"]
+        soc: ["2015soc", "2015soc-from-histsoc"]
+      temporal:
+        resolution: "annual"
+        period: "2015-2100"
+      spatial:
+        resolution: "0.5 degree"
+        coverage: "global"
+      pfts_available:
+        - dcdcldbdltr
+        - dcddrybdltr
+        - dcdndltr
+        - evgbdltr
+        - evgndltr
+        - c3grass
+        - c4grass
+        - c3crop
+        - c4crop
+        - total
+      notes: "Best source for global wood carbon. Use dcdcldbdltr for oak proxy."
+
+    isimip2b:
+      total_datasets: 1001
+      sectors: ["forestry"]
+      impact_models: ["3D-CMCC-CNR-BGC"]
+      climate_forcings: ["GFDL-ESM2M"]
+      bias_adjustment: ["EWEMBI"]
+      scenarios:
+        climate: ["picontrol", "rcp26", "rcp60", "rcp85"]
+        soc: ["2005soc", "nosoc"]
+      temporal:
+        resolution: "annual"
+        period: "2006-2099"
+      spatial:
+        resolution: "stand-level"
+        coverage: "regional (European sites)"
+      species_available:
+        - fasy  # beech
+        - piab  # Norway spruce
+        - pipi  # Maritime pine
+        - pisy  # Scots pine
+      notes: "Species-specific but NO oak (Quercus). Regional European coverage only."
+
+  # -------------------------
+  # npp searches
+  # -------------------------
+  npp:
+    last_searched: "2026-01-15"
+
+    isimip3b:
+      total_datasets: ~70  # for ssp370 alone
+      sectors: ["biomes", "fire"]
+      impact_models: ["CLASSIC"]
+      climate_forcings: ["GFDL-ESM4"]
+      bias_adjustment: ["w5e5"]
+      scenarios:
+        climate: ["picontrol", "ssp126", "ssp370", "ssp585"]
+        soc: ["2015soc", "2015soc-from-histsoc"]
+      temporal:
+        resolution: "monthly"
+        period: "2015-2100"
+      spatial:
+        resolution: "0.5 degree"
+        coverage: "global"
+      pfts_available:
+        - dcdcldbdltr
+        - dcddrybdltr
+        - dcdndltr
+        - evgbdltr
+        - evgndltr
+        - c3grass
+        - c4grass
+        - c3crop
+        - c4crop
+        - total
+      notes: "Monthly resolution allows seasonal analysis. Good growth rate proxy."
+
+    isimip2b:
+      total_datasets: 1001
+      sectors: ["biomes"]
+      impact_models: ["CARAIB"]
+      climate_forcings: ["GFDL-ESM2M"]
+      bias_adjustment: ["EWEMBI"]
+      scenarios:
+        climate: ["picontrol", "rcp26", "rcp60", "rcp85"]
+        soc: ["1860soc"]
+        sensitivity: ["co2"]
+      temporal:
+        resolution: "annual"
+        period: "2006-2099"
+      spatial:
+        resolution: "0.5 degree"
+        coverage: "global"
+      pfts_available:
+        - brevdtt
+        - brevtrt
+        - c3dh
+        - c3hh
+        - c4h
+        # ... many more broadleaf codes
+      notes: "CARAIB uses different PFT naming scheme than CLASSIC."
+
+    isimip2a:
+      total_datasets: 1001
+      sectors: ["biomes"]
+      impact_models: ["CARAIB"]
+      climate_forcings: ["GSWP3"]
+      bias_adjustment: ["nobc"]
+      scenarios:
+        climate: ["hist"]
+        soc: ["pressoc"]
+        sensitivity: ["co2"]
+      temporal:
+        resolution: "annual"
+        period: "1971-2010"
+      spatial:
+        resolution: "0.5 degree"
+        coverage: "global"
+      notes: "Historical baseline data only."
+
+  # -------------------------
+  # b30cm searches (marine fishery - large fish)
+  # -------------------------
+  b30cm:
+    last_searched: "2026-01-20"
+
+    isimip2b:
+      total_datasets: 33
+      sectors: ["marine-fishery_global"]
+      impact_models:
+        - APECOSM
+        - EcoOcean
+        - Macroecological
+        - ZOOMSS
+      climate_forcings:
+        - GFDL-ESM2M
+        - IPSL-CM5A-LR
+      bias_adjustment: ["none"]
+      scenarios:
+        climate: ["rcp26", "rcp45", "rcp60", "rcp85"]
+        fishing: ["no-fishing"]  # Also available: "fishing"
+      temporal:
+        resolution: "monthly"
+        period: "1950-2100"
+      spatial:
+        resolution: "1 degree"
+        coverage: "global ocean"
+      notes: |
+        Size-class variable for large fish (L∞ > 30cm).
+        Monthly data - aggregate to annual using mean (density metric).
+        Use "no-fishing" scenario to isolate climate signal.
+        Macroecological model uses non-standard 360-day calendar.
+        8 model-GCM combinations available for ensemble analysis.
+
+    isimip3b:
+      total_datasets: 0
+      notes: "ISIMIP3b uses tcb (total consumer biomass) without size-class breakdown. Use ISIMIP2b for size-class specific analysis."
+
+  # -------------------------
+  # cveg searches
+  # -------------------------
+  cveg:
+    last_searched: "2026-01-15"
+
+    isimip2a:
+      total_datasets: 1001
+      sectors: ["biomes"]
+      impact_models: ["CARAIB"]
+      climate_forcings: ["GSWP3"]
+      bias_adjustment: ["nobc"]
+      scenarios:
+        climate: ["hist"]
+        soc: ["pressoc"]
+      temporal:
+        resolution: "annual"
+        period: "1971-2010"
+      spatial:
+        resolution: "0.5 degree"
+        coverage: "global"
+      notes: "Historical vegetation carbon. Check ISIMIP3b for future projections."
+
+# -----------------------------------------------------------------------------
+# SEARCHES WITH NO/LIMITED RESULTS
+# -----------------------------------------------------------------------------
+negative_results:
+
+  timber_yield:
+    searched: "2026-01-15"
+    result: "No direct timber yield variable in ISIMIP"
+    recommendation: "Use cwood or npp as proxy"
+
+  oak_species:
+    searched: "2026-01-15"
+    result: "No Quercus species in ISIMIP2b forestry sector"
+    available_species: ["fasy", "piab", "pipi", "pisy"]
+    recommendation: "Use PFT dcdcldbdltr (deciduous broadleaf) as oak proxy in global models"
+
+  stem_volume:
+    searched: "2026-01-15"
+    result: "No stem volume variable in ISIMIP"
+    recommendation: "Derive from cwood using carbon-to-volume conversions"
+
+# -----------------------------------------------------------------------------
+# GLOBAL MODELS (BIOMES SECTOR) - PREFERRED FOR CONSISTENCY
+# -----------------------------------------------------------------------------
+global_models:
+  isimip3b:
+    - name: "CLASSIC"
+      description: "Canadian Land Surface Scheme Including Biogeochemical Cycles"
+      sectors: ["biomes", "fire"]
+      variables: ["npp", "gpp", "cwood", "cleaf", "cveg", "burntarea", "ch4"]
+
+  isimip2b:
+    - name: "CARAIB"
+      description: "CARbon Assimilation In the Biosphere"
+      sectors: ["biomes"]
+      variables: ["npp", "cveg", "gpp"]
+
+    - name: "LPJmL"
+      description: "Lund-Potsdam-Jena managed Land"
+      sectors: ["agriculture"]  # mainly agriculture in ISIMIP3b
+      variables: ["yield"]
+      notes: "Agriculture sector only in ISIMIP3b, not biomes"
+
+# -----------------------------------------------------------------------------
+# CLIMATE FORCINGS (GCMs)
+# -----------------------------------------------------------------------------
+climate_forcings:
+  isimip3b:
+    - GFDL-ESM4
+    - IPSL-CM6A-LR
+    - MRI-ESM2-0
+    - UKESM1-0-LL
+    - MPI-ESM1-2-HR
+
+  isimip2b:
+    - GFDL-ESM2M
+    - HadGEM2-ES
+    - IPSL-CM5A-LR
+    - MIROC5
+
+  isimip2a:
+    - GSWP3
+    - WATCH
+    - PGMFD
+    - WFDEI
+
+# -----------------------------------------------------------------------------
+# USAGE NOTES
+# -----------------------------------------------------------------------------
+usage_notes:
+  - "Prefer ISIMIP3b over ISIMIP2b for new analyses (newer scenarios, updated models)"
+  - "ISIMIP2b forestry sector has species-level data but only for beech and conifers"
+  - "Global biomes models preferred over regional forestry for cross-geography consistency"
+  - "Dataset counts of 1001 indicate pagination limit; actual counts may differ"

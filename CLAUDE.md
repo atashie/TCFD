@@ -24,7 +24,8 @@ TCFD/
 │   ├── process_qg.py         # QG data processing
 │   └── generate_qa_report.py # QA reports
 │
-├── config/                   # Example configuration files
+├── config/                   # Configuration files
+│   └── isimip_search_catalog.yaml  # ISIMIP search results cache
 ├── data/                     # Data (gitignored)
 │   ├── raw/                  # Downloaded NetCDF
 │   └── processed/            # Processed outputs
@@ -82,6 +83,7 @@ When processing ISIMIP data, use these parameters:
 - **Temporal binning**: 2010s-2090s (no data before 2010 or after 2099)
 - **Adaptive windowing**: Minimum 100 data points per decade-bin
 - **Percentile baseline**: Always use 2020s as reference distribution
+- **Sub-annual data**: Always ask user for aggregation method. See GUARDRAILS.md §2.
 
 ### Shared 2020s Baseline
 
@@ -95,6 +97,23 @@ This ensures consistent baseline comparisons across scenarios while allowing div
 1. 2020s values are identical across all scenarios
 2. 2030s+ values differ across scenarios (as expected)
 3. Files have `baseline_source: shared_across_all_scenarios` attribute
+
+### Shared Baseline Implementation
+
+Processing scripts must implement shared 2020s baseline following this pattern:
+
+1. Collect 2020s data from ALL available scenarios (projection + historical/picontrol)
+2. Average across scenarios per GCM to create shared baseline
+3. Use shared baseline for ALL scenarios' 2020s decade
+4. Use scenario-specific data for 2030s-2090s
+5. Set `baseline_source: "shared_across_all_scenarios"` attribute
+6. Output separate files per scenario
+
+**Reference implementations**:
+- `scripts/process_qg.py` - groundwater runoff processing
+- `scripts/process_timber.py` - timber/wood carbon processing
+
+**Verification**: Run `python scripts/test_shared_baseline.py {output_dir}` after processing.
 
 ### Output Organization
 
@@ -143,13 +162,17 @@ python scripts/generate_maps.py leh ./outputs/heatwave-exposure_leh-annual/proce
 - ISIMIP3a/3b: SSP scenarios (ssp126, ssp370, ssp585)
 - ISIMIP2a/2b: RCP scenarios (rcp26, rcp60, rcp85)
 
-**Key Variables:** `led` (drought), `leh` (heatwave), `lew` (wildfire), `qg` (groundwater runoff), `burntarea`, `potevap`
+**Key Variables:** `led` (drought), `leh` (heatwave), `lew` (wildfire), `qg` (groundwater runoff), `burntarea`, `potevap`, `npp`, `gpp`, `cveg`, `b30cm` (large fish biomass)
+
+**Documentation Updates:** When new simulation rounds, variables, or data sources are discovered in ISIMIP, work with the user to update this documentation. The ISIMIP repository evolves; keep this guide current.
 
 ### Scenario Handling
 
 **Projection scenarios** (included in reports):
-- SSP: ssp126, ssp370, ssp585
-- RCP: rcp26, rcp60, rcp85
+- SSP: ssp126, ssp245, ssp370, ssp585
+- RCP: rcp26, rcp45, rcp60, rcp85
+
+**Scenario discovery**: Scripts must discover scenarios dynamically from filesystem, not hardcoded lists. See GUARDRAILS.md §3.
 
 **Non-projection scenarios** (excluded from reports):
 - `picontrol` (Pre-Industrial Control)
@@ -157,7 +180,21 @@ python scripts/generate_maps.py leh ./outputs/heatwave-exposure_leh-annual/proce
 
 Non-projection scenarios may be downloaded and processed alongside projection data to enhance baseline robustness (e.g., improving 2020s reference distributions), but they are **automatically excluded** from `generate_maps.py` report generation. Only actual climate projections appear in the final visualization reports.
 
+**New Scenarios:** If you encounter scenarios not listed above (e.g., ssp245, rcp45), discuss with the user whether to add them to this documentation and update the processing/reporting code accordingly.
+
+### Experiment & SOC Preferences
+
+**Sensitivity experiments:** Prefer `default` (transient CO2). Ask user if `2015co2` or others should be included.
+
+**SOC scenarios:** Prefer `2015soc` (isolates climate signal). Ask user if `histsoc` or `2015soc-from-histsoc` should be included.
+
+**General principle:** Favor data abundance over restrictiveness—when in doubt, include more datasets.
+
 ## Search Workflow Guidelines
+
+### Search Catalog Reference
+
+**Before starting any ISIMIP search**, consult `config/isimip_search_catalog.yaml` to check if the variable, model, or scenario has already been investigated. This catalog contains empirical results from previous searches including: variable definitions and units, available PFT (Plant Functional Type) codes, which impact models and climate forcings have data, temporal and spatial coverage, and scenario availability. Using this catalog avoids redundant API queries and helps contextualize new search results against known data availability. When conducting new searches that yield useful information not already in the catalog, update the file with the new findings including the search date, dataset counts, and any relevant notes about data quality or limitations.
 
 Summary tables should include:
 - Variable code and description
@@ -171,6 +208,21 @@ Summary tables should include:
 1. Show all data sources (include all simulation rounds)
 2. Prefer newer data (ISIMIP3b over ISIMIP2a)
 3. Emphasize multi-model ensemble availability
+4. **Maximize dataset count:** Always prioritize including the maximum number of datasets/models/GCMs available. More data points improve statistical robustness and uncertainty quantification. Never settle for single-model analysis when multi-model ensembles are available.
+
+### Search Principles
+
+**ISIMIP First:** Always search the ISIMIP repository before considering external data sources. Push back if the user requests non-ISIMIP data unless there's a compelling reason (e.g., ISIMIP has no relevant data after thorough search).
+
+**Global Over Regional:** Prefer global-coverage datasets over regional/local data when available:
+- Global biome models (LPJmL, ORCHIDEE, VISIT, CLM) over site-specific models
+- This ensures consistent methodology across geographies
+
+**No Direct Match Strategy:** When exact data isn't available in ISIMIP:
+1. List close-enough proxy variables (e.g., NPP/GPP as proxy for growth, vegetation carbon for biomass)
+2. Identify relevant plant functional types (e.g., "temperate broadleaf deciduous" for oak)
+3. Suggest which ISIMIP sectors/models might contain usable approximations
+4. Only after exhausting ISIMIP options, discuss external alternatives with user approval
 
 ## Archived Code
 
@@ -180,3 +232,5 @@ Legacy R code and deprecated files are in `_deprecated/`. This directory is trac
 - Historical download lists
 
 Do not modify files in `_deprecated/` unless specifically restoring functionality.
+
+See [GUARDRAILS.md](GUARDRAILS.md) for critical rules that must never be violated.

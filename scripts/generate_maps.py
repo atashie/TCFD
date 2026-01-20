@@ -40,6 +40,7 @@ SSP_SCENARIO_COLORS = {
 # RCP scenarios (ISIMIP2b)
 RCP_SCENARIO_LABELS = {
     "rcp26": "RCP2.6 (Low Emissions)",
+    "rcp45": "RCP4.5 (Intermediate-Low)",
     "rcp60": "RCP6.0 (Intermediate)",
     "rcp85": "RCP8.5 (High Emissions)",
     "picontrol": "Pre-Industrial Control",
@@ -47,6 +48,7 @@ RCP_SCENARIO_LABELS = {
 }
 RCP_SCENARIO_COLORS = {
     "rcp26": "#27ae60",
+    "rcp45": "#2ecc71",  # Light green - between rcp26 and rcp60
     "rcp60": "#f39c12",
     "rcp85": "#e74c3c",
     "picontrol": "#3498db",
@@ -394,20 +396,19 @@ class MapCollectionGenerator:
             # Fall back to per-scenario file format
             log(f"  Single-file not found, trying per-scenario files...")
 
-            # Try SSP scenarios first
-            for scenario in list(SSP_SCENARIO_LABELS.keys()):
-                fpath = self.processed_dir / f"{variable}_{scenario}_processed.nc"
-                if fpath.exists():
+            # Dynamically discover ALL scenario files from filesystem
+            # Pattern: {variable}_{scenario}_processed.nc
+            pattern = f"{variable}_*_processed.nc"
+            scenario_files = sorted(self.processed_dir.glob(pattern))
+
+            for fpath in scenario_files:
+                # Extract scenario name from filename
+                # e.g., "b30cm_rcp45_processed.nc" -> "rcp45"
+                parts = fpath.stem.replace("_processed", "").split("_")
+                if len(parts) >= 2:
+                    scenario = parts[-1]  # Last part before "_processed"
                     self.data[scenario] = xr.open_dataset(fpath)
                     log(f"  Loaded {scenario}: {fpath.name}")
-
-            # If no SSP files found, try RCP scenarios
-            if not self.data:
-                for scenario in list(RCP_SCENARIO_LABELS.keys()):
-                    fpath = self.processed_dir / f"{variable}_{scenario}_processed.nc"
-                    if fpath.exists():
-                        self.data[scenario] = xr.open_dataset(fpath)
-                        log(f"  Loaded {scenario}: {fpath.name}")
 
             if self.data:
                 scenarios = list(self.data.keys())
