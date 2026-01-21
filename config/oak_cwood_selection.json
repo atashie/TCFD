@@ -1,0 +1,56 @@
+{
+  "query": "cwood dcdcldbdltr for oak timber proxy",
+  "variable": "cwood",
+  "pft": "dcdcldbdltr",
+  "scenarios": [
+    "ssp126",
+    "ssp370",
+    "ssp585"
+  ],
+  "soc_scenario": "2015soc",
+  "sens_scenario": "default",
+  "files": [
+    {
+      "path": "ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp126_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "name": "classic_gfdl-esm4_w5e5_ssp126_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "size": 8001664,
+      "checksum": "ed3178bfec65a79dd869b391e3ec2f83f208f6d790893a36c6da08febe6b6e5c453cc944f29cc3f84c534f621a8fc21a8677ba6417c7949388feba3e832060d8",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp126_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc"
+    },
+    {
+      "path": "ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp126_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "name": "classic_ukesm1-0-ll_w5e5_ssp126_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "size": 4859936,
+      "checksum": "d9911d4669e63f8f24da4c0bf9aeb016297003e87336d88056bcb24fd1245d8adc3c5c69f4fd486bdf1d1c6d1ca797466e343933333ede60574dadae9ea2e0e7",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp126_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc"
+    },
+    {
+      "path": "ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp370_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "name": "classic_gfdl-esm4_w5e5_ssp370_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "size": 8003505,
+      "checksum": "a59b880469277460677752d756716d73473eb6e9a07c5fa13c4ce2632f955531066e2427bde4f1b70aca35209be822357cb69f6fd38e7ba4bdcb534f4cf94c7e",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp370_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc"
+    },
+    {
+      "path": "ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp370_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "name": "classic_ukesm1-0-ll_w5e5_ssp370_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "size": 4862944,
+      "checksum": "a4b94aa5897a0a39e5f55963436c1213fb0884c79d8f5aa07f71aceadc08e4700e6962c0b6dca2dea208dced428cc493b7bb9e5a97c3f82e2d859e7f80a63f6c",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp370_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc"
+    },
+    {
+      "path": "ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp585_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "name": "classic_gfdl-esm4_w5e5_ssp585_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "size": 8007054,
+      "checksum": "c1481bc2b4bb29d2b39bb52beec1d9bc82192ed084542a1dac7abaa1ef8ae3e2596b5eb5592b754b24872a136a11f08f7573431965f16ba21c07c0bd9bf48bde",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp585_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc"
+    },
+    {
+      "path": "ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp585_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "name": "classic_ukesm1-0-ll_w5e5_ssp585_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc",
+      "size": 4862775,
+      "checksum": "cab6e075819cd079c30d58a08a246043009d03fb3546406fc6d897a0b70a8949b7982debd926823c15a022b23c707d72ffd47469db3fe4fc76ea0233ce251169",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp585_2015soc_default_cwood-dcdcldbdltr_global_annual_2015_2100.nc"
+    }
+  ]
+}

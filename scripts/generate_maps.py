@@ -565,7 +565,10 @@ class MapCollectionGenerator:
             ds.close()
 
     def generate_metric_comparison(self, variable: str, metric: str, output_dir: Path):
-        """Generate 2020s vs 2090s comparison for a single metric (per-scenario files)."""
+        """Generate 2020s vs 2090s comparison for a single metric (per-scenario files).
+
+        For metrics without a decade dimension (like trend), generates a single map.
+        """
         log(f"Generating {metric} comparison maps...")
 
         # Get coordinate arrays from first dataset
@@ -573,15 +576,28 @@ class MapCollectionGenerator:
         lons = first_ds.lon.values
         lats = first_ds.lat.values
 
+        # Check if metric has decade dimension
+        has_decade_dim = False
+        for scenario, ds in self.data.items():
+            if metric in ds.data_vars:
+                has_decade_dim = 'decade' in ds[metric].dims
+                break
+
         # Calculate consistent color range across all scenarios
         all_values = []
         for scenario, ds in self.data.items():
             if metric in ds.data_vars:
-                for decade in [DECADES["current"], DECADES["future"]]:
-                    if decade in ds.decade.values:
-                        vals = ds[metric].sel(decade=decade).values
-                        valid = vals[~np.isnan(vals)]
-                        all_values.extend(valid.tolist())
+                if has_decade_dim:
+                    for decade in [DECADES["current"], DECADES["future"]]:
+                        if decade in ds.decade.values:
+                            vals = ds[metric].sel(decade=decade).values
+                            valid = vals[~np.isnan(vals)]
+                            all_values.extend(valid.tolist())
+                else:
+                    # Metric without decade dimension (e.g., trend)
+                    vals = ds[metric].values
+                    valid = vals[~np.isnan(vals)]
+                    all_values.extend(valid.tolist())
 
         if all_values:
             cmin = np.percentile(all_values, 2)
@@ -603,16 +619,41 @@ class MapCollectionGenerator:
 
             html += '<div class="comparison-grid">\n'
 
-            for decade_label, decade in [("2020s (Current)", DECADES["current"]),
-                                          ("2090s (Future)", DECADES["future"])]:
-                if decade not in ds.decade.values:
-                    html += f'<div class="map-container"><p>No data for {decade_label}</p></div>\n'
-                    continue
+            # Check if metric has decade dimension
+            metric_has_decade = 'decade' in ds[metric].dims
 
-                values = ds[metric].sel(decade=decade).values
-                title = decade_label
+            if metric_has_decade:
+                # Standard case: show 2020s vs 2090s comparison
+                for decade_label, decade in [("2020s (Current)", DECADES["current"]),
+                                              ("2090s (Future)", DECADES["future"])]:
+                    if decade not in ds.decade.values:
+                        html += f'<div class="map-container"><p>No data for {decade_label}</p></div>\n'
+                        continue
 
-                # Format colorbar label with variable metadata
+                    values = ds[metric].sel(decade=decade).values
+                    title = decade_label
+
+                    colorbar_label = COLORBAR_LABELS.get(metric, "Value").format(
+                        long_name=self.variable_long_name,
+                        units=self.variable_units
+                    )
+
+                    fig = create_map_figure(
+                        lons, lats, values, title,
+                        colorscale=COLORSCALES.get(metric, "Viridis"),
+                        cmin=cmin, cmax=cmax,
+                        colorbar_title=colorbar_label
+                    )
+
+                    html += '<div class="map-container">\n'
+                    html += f'<div class="map-label">{decade_label}</div>\n'
+                    html += fig.to_html(full_html=False, include_plotlyjs=False)
+                    html += '</div>\n'
+            else:
+                # No decade dimension (e.g., trend): show single map
+                values = ds[metric].values
+                title = METRIC_DESCRIPTIONS.get(metric, metric.title())
+
                 colorbar_label = COLORBAR_LABELS.get(metric, "Value").format(
                     long_name=self.variable_long_name,
                     units=self.variable_units
@@ -625,8 +666,8 @@ class MapCollectionGenerator:
                     colorbar_title=colorbar_label
                 )
 
-                html += '<div class="map-container">\n'
-                html += f'<div class="map-label">{decade_label}</div>\n'
+                html += '<div class="map-container" style="grid-column: span 2;">\n'
+                html += f'<div class="map-label">{title} (2020s-2090s)</div>\n'
                 html += fig.to_html(full_html=False, include_plotlyjs=False)
                 html += '</div>\n'
 
