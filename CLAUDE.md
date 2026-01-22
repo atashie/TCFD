@@ -20,6 +20,8 @@ TCFD/
 │   └── docs/                 # Documentation + dev history
 │
 ├── scripts/                  # Standalone utility scripts
+│   ├── utils/                # Shared utility modules
+│   │   └── land_mask.py      # ISIMIP land/ocean masking
 │   ├── generate_maps.py      # Interactive Plotly maps
 │   ├── process_*.py          # Data processing scripts
 │   └── test_shared_baseline.py # Baseline verification
@@ -67,6 +69,7 @@ Always invoke relevant skills before starting work:
 | [GUARDRAILS.md](GUARDRAILS.md) | Critical rules that must never be violated |
 | [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) | Incident log and resolutions |
 | [config/isimip_search_catalog.yaml](config/isimip_search_catalog.yaml) | ISIMIP search results cache |
+| [scripts/utils/land_mask.py](scripts/utils/land_mask.py) | ISIMIP land/ocean masking utility |
 
 ## Archived Code
 
