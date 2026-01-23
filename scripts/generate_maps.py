@@ -95,8 +95,8 @@ def detect_scenario_type(scenarios: List[str]) -> Tuple[Dict[str, str], Dict[str
 # Color scales by metric type
 COLORSCALES = {
     "median": "Viridis",
-    "percentile": "RdYlBu",
-    "trend": "RdBu_r",
+    "percentile": "RdYlBu_r",  # Reversed: low=blue (good), high=red (bad)
+    "trend": "RdBu",  # Blue=positive (good for "more is better" variables)
     "lower_ci": "Viridis",
     "upper_ci": "Viridis",
     "change": "RdBu",
@@ -600,10 +600,15 @@ class MapCollectionGenerator:
                     all_values.extend(valid.tolist())
 
         if all_values:
-            cmin = np.percentile(all_values, 2)
-            cmax = np.percentile(all_values, 98)
+            if metric == "trend":
+                # Trend maps use symmetric scaling centered on zero (white=no change)
+                max_abs = np.percentile(np.abs(all_values), 98)
+                cmin, cmax = -max_abs, max_abs
+            else:
+                cmin = np.percentile(all_values, 2)
+                cmax = np.percentile(all_values, 98)
         else:
-            cmin, cmax = 0, 1
+            cmin, cmax = (-1, 1) if metric == "trend" else (0, 1)
 
         # Generate separate file for each scenario
         for scenario in self.scenarios:
