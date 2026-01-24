@@ -160,7 +160,7 @@ def load_extraction_data(csv_path: Path) -> Tuple[List[Dict], Dict]:
 
     metadata = {
         'locations': sorted(list(locations)),
-        'scenarios': sorted(list(scenarios)),
+        'scenarios': [s for s in ['Low Emissions', 'Middle of the Road', 'High Emissions'] if s in scenarios],
         'decades': sorted(list(decades)),
         'hazards': sorted(list(hazards)),
         'hazard': rows[0]['Hazard'] if rows else 'Timber',
@@ -324,7 +324,19 @@ def generate_html(
             align-items: center;
         }}
 
-        .view-toggle {{
+        .filter-group {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+
+        .filter-group label {{
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            white-space: nowrap;
+        }}
+
+        .filter-selector {{
             display: flex;
             gap: 0;
             border-radius: 6px;
@@ -332,21 +344,21 @@ def generate_html(
             border: 1px solid var(--border);
         }}
 
-        .view-toggle button {{
-            padding: 8px 16px;
+        .filter-selector button {{
+            padding: 6px 12px;
             border: none;
             background: var(--bg-card);
             color: var(--text-secondary);
             cursor: pointer;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             transition: all 0.2s;
         }}
 
-        .view-toggle button:hover {{
+        .filter-selector button:hover {{
             background: var(--bg-hover);
         }}
 
-        .view-toggle button.active {{
+        .filter-selector button.active {{
             background: var(--accent);
             color: white;
         }}
@@ -736,9 +748,13 @@ def generate_html(
         </header>
 
         <nav class="controls">
-            <div class="view-toggle">
-                <button data-view="decade" class="active">View by Decade</button>
-                <button data-view="scenario">View by Scenario</button>
+            <div class="filter-group">
+                <label>Decade:</label>
+                <div class="filter-selector" id="decade-selector"></div>
+            </div>
+            <div class="filter-group">
+                <label>Scenario:</label>
+                <div class="filter-selector" id="scenario-selector"></div>
             </div>
             <div class="metric-selector">
                 <label>Color by:</label>
@@ -751,8 +767,6 @@ def generate_html(
                 </select>
             </div>
         </nav>
-
-        <nav class="tab-bar" id="tab-container"></nav>
 
         <main class="content">
             <section class="section">
@@ -806,7 +820,6 @@ def generate_html(
                 <div class="card">
                     <div class="table-controls">
                         <input type="text" id="location-filter" placeholder="Filter by location...">
-                        <div class="scenario-toggle" id="scenario-toggle"></div>
                     </div>
                     <div class="table-wrapper" style="max-height: 400px; overflow-y: auto;">
                         <table id="data-table">
@@ -845,16 +858,16 @@ def generate_html(
 
     // Application state
     const AppState = {{
-        viewMode: 'decade',
-        selectedTab: null,
+        selectedDecade: null,      // Set in initApp() after DATA loads
+        selectedScenario: null,    // Set in initApp() after DATA loads
         selectedMetric: 'Raw_Hazard_Value',
         selectedLocations: [],
-        tableScenario: 'Low Emissions',
+        tableScenario: null,       // Set in initApp() after DATA loads
         sortColumn: null,
         sortDirection: 'asc',
         filterText: '',
         showUncertainty: false,
-        enabledScenarios: new Set(['Middle of the Road']),
+        enabledScenarios: null,    // Set in initApp() after DATA loads
 
         subscribers: [],
 
@@ -890,20 +903,16 @@ def generate_html(
 
     // Helper functions
     function filterData() {{
-        let filtered = DATA.rows;
-
-        if (AppState.viewMode === 'decade') {{
-            filtered = filtered.filter(r => r.Decade == AppState.selectedTab);
-        }} else {{
-            filtered = filtered.filter(r => r.Scenario === AppState.selectedTab);
-        }}
-
-        if (AppState.filterText) {{
-            const search = AppState.filterText.toLowerCase();
-            filtered = filtered.filter(r => r.Location.toLowerCase().includes(search));
-        }}
-
-        return filtered;
+        // Always filter by BOTH decade AND scenario
+        return DATA.rows.filter(r => {{
+            if (r.Decade != AppState.selectedDecade) return false;
+            if (r.Scenario !== AppState.selectedScenario) return false;
+            if (AppState.filterText) {{
+                const search = AppState.filterText.toLowerCase();
+                if (!r.Location.toLowerCase().includes(search)) return false;
+            }}
+            return true;
+        }});
     }}
 
     function getLocationData(compositeKey) {{
@@ -955,6 +964,39 @@ def generate_html(
             .replace('Temperate Broadleaf Summer Deciduous ', 'Temperate Broadleaf ');
     }}
 
+    function getTrendColorscale() {{
+        const higherIsBetter = deriveHigherIsBetter();
+        // For higher-is-better: green=positive (good), red=negative (bad)
+        // For higher-is-worse: red=positive (bad), green=negative (good)
+        if (higherIsBetter) {{
+            // Red-White-Green: negative=red (bad), positive=green (good)
+            return [[0, '#e74c3c'], [0.5, '#ffffff'], [1, '#27ae60']];
+        }} else {{
+            // Green-White-Red: negative=green (good), positive=red (bad)
+            return [[0, '#27ae60'], [0.5, '#ffffff'], [1, '#e74c3c']];
+        }}
+    }}
+
+    function getColorscaleForMetric(metric) {{
+        if (metric.includes('Trend_Strength')) {{
+            return getTrendColorscale();
+        }}
+        return COLOR_SCALES[metric] || 'Viridis';
+    }}
+
+    function getMetricTitle(metric) {{
+        if (metric === 'Decadal_Trend_Strength') {{
+            const higherIsBetter = deriveHigherIsBetter();
+            const direction = higherIsBetter ? '(+good)' : '(+bad)';
+            return `Trend (kg/m²/decade) ${{direction}}`;
+        }}
+        if (metric === 'Decadal_Trend_Significance') return 'Trend Significance (p-value)';
+        if (metric === 'Raw_Hazard_Value') return 'Raw Value (kg/m²)';
+        if (metric === 'Percentile_Score') return 'Percentile (0-100)';
+        if (metric === 'Relative_Hazard_Score_Number') return 'Relative Hazard (1-5)';
+        return metric.replace(/_/g, ' ');
+    }}
+
     function toggleLocationSelection(locationName) {{
         const idx = AppState.selectedLocations.indexOf(locationName);
         if (idx >= 0) {{
@@ -966,41 +1008,31 @@ def generate_html(
     }}
 
     // Render functions
-    function renderScenarioToggle() {{
-        const container = document.getElementById('scenario-toggle');
+    function renderScenarioSelector() {{
+        const container = document.getElementById('scenario-selector');
         container.innerHTML = DATA.metadata.scenarios.map(s => {{
             const shortName = s === 'Middle of the Road' ? 'Mid' : (s === 'Low Emissions' ? 'Low' : 'High');
-            const active = s === AppState.tableScenario ? 'active' : '';
+            const active = s === AppState.selectedScenario ? 'active' : '';
             return `<button data-scenario="${{s}}" class="${{active}}">${{shortName}}</button>`;
         }}).join('');
 
         container.querySelectorAll('button').forEach(btn => {{
             btn.addEventListener('click', () => {{
-                container.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                AppState.tableScenario = btn.dataset.scenario;
-                AppState.notify();
+                // Update both for map and table
+                AppState.update({{ selectedScenario: btn.dataset.scenario, tableScenario: btn.dataset.scenario }});
             }});
         }});
     }}
 
-    function renderTabs() {{
-        const container = document.getElementById('tab-container');
-        let tabs;
-
-        if (AppState.viewMode === 'decade') {{
-            tabs = DATA.metadata.decades.map(d => ({{ id: String(d), label: d + 's' }}));
-        }} else {{
-            tabs = DATA.metadata.scenarios.map(s => ({{ id: s, label: s }}));
-        }}
-
-        container.innerHTML = tabs.map(t =>
-            `<button data-tab="${{t.id}}" class="${{t.id === AppState.selectedTab ? 'active' : ''}}">${{t.label}}</button>`
+    function renderDecadeSelector() {{
+        const container = document.getElementById('decade-selector');
+        container.innerHTML = DATA.metadata.decades.map(d =>
+            `<button data-decade="${{d}}" class="${{d === AppState.selectedDecade ? 'active' : ''}}">${{d}}s</button>`
         ).join('');
 
         container.querySelectorAll('button').forEach(btn => {{
             btn.addEventListener('click', () => {{
-                AppState.update({{ selectedTab: btn.dataset.tab }});
+                AppState.update({{ selectedDecade: parseInt(btn.dataset.decade) }});
             }});
         }});
     }}
@@ -1018,23 +1050,36 @@ def generate_html(
             locationGroups[row.Location].push(row);
         }});
 
-        // Determine color range
-        const values = filteredData.map(r => r[AppState.selectedMetric]).filter(v => v !== null);
-        let cmin = Math.min(...values);
-        let cmax = Math.max(...values);
+        // Determine color range from ALL data (not filtered) for consistent colorbar
+        const allValues = DATA.rows.map(r => r[AppState.selectedMetric]).filter(v => v !== null && v !== undefined);
+        // Early return if no valid values for selected metric
+        if (allValues.length === 0) {{
+            console.warn('No valid values for metric:', AppState.selectedMetric);
+            Plotly.purge('map-container');
+            document.getElementById('map-container').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;">No data available for selected metric</div>';
+            return;
+        }}
 
-        // Fixed ranges for specific metrics
+        // Calculate cmin/cmax based on metric type
+        let cmin, cmax;
         if (AppState.selectedMetric === 'Percentile_Score') {{
             cmin = 0;
             cmax = 100;
         }} else if (AppState.selectedMetric === 'Relative_Hazard_Score_Number') {{
             cmin = 1;
             cmax = 5;
+        }} else if (AppState.selectedMetric === 'Decadal_Trend_Significance') {{
+            cmin = 0;
+            cmax = 1;
         }} else if (AppState.selectedMetric.includes('Trend_Strength')) {{
-            // Symmetric range for trend
-            const absMax = Math.max(Math.abs(cmin), Math.abs(cmax));
+            // Symmetric range based on max absolute value across ALL data
+            const absMax = Math.max(...allValues.map(v => Math.abs(v)));
             cmin = -absMax;
             cmax = absMax;
+        }} else {{
+            // Raw Hazard Value - use full data range
+            cmin = Math.min(...allValues);
+            cmax = Math.max(...allValues);
         }}
 
         // Render each location
@@ -1043,6 +1088,9 @@ def generate_html(
             if (!locData || locData.length === 0) return;
 
             const value = locData[0][AppState.selectedMetric];
+            // Skip locations with null values for the selected metric
+            if (value === null || value === undefined) return;
+
             // Check if any composite key with this location is selected
             const isSelected = AppState.selectedLocations.some(key => key.startsWith(loc.name + '|'));
             const selIdx = AppState.selectedLocations.findIndex(key => key.startsWith(loc.name + '|'));
@@ -1057,16 +1105,15 @@ def generate_html(
 
                 const normalizedValue = (value - cmin) / (cmax - cmin || 1);
 
+                // Polygon outline only (no fill to avoid globe highlighting issues)
                 traces.push({{
                     type: 'scattergeo',
                     lon: lons,
                     lat: lats,
                     mode: 'lines',
-                    fill: 'toself',
-                    fillcolor: getColorFromScale(normalizedValue, AppState.selectedMetric, 0.4),
                     line: {{
-                        color: isSelected ? SELECTION_COLORS[selIdx] : getColorFromScale(normalizedValue, AppState.selectedMetric, 0.9),
-                        width: isSelected ? 4 : 2
+                        color: isSelected ? SELECTION_COLORS[selIdx] : getColorFromScale(normalizedValue, AppState.selectedMetric, 1.0),
+                        width: isSelected ? 4 : 3
                     }},
                     text: loc.name,
                     customdata: Array(lons.length).fill(loc.name),
@@ -1082,7 +1129,7 @@ def generate_html(
                     mode: 'markers',
                     marker: {{
                         color: [value],
-                        colorscale: COLOR_SCALES[AppState.selectedMetric],
+                        colorscale: getColorscaleForMetric(AppState.selectedMetric),
                         cmin: cmin,
                         cmax: cmax,
                         size: isSelected ? 18 : 12,
@@ -1100,31 +1147,45 @@ def generate_html(
             }}
         }});
 
-        // Add colorbar trace
-        traces.push({{
-            type: 'scattergeo',
-            lon: [null],
-            lat: [null],
-            mode: 'markers',
-            marker: {{
-                color: [cmin, cmax],
-                colorscale: COLOR_SCALES[AppState.selectedMetric],
-                cmin: cmin,
-                cmax: cmax,
-                size: 0,
-                showscale: true,
-                colorbar: {{
-                    title: {{
-                        text: AppState.selectedMetric.replace(/_/g, ' '),
-                        font: {{ color: '#eaeaea' }}
-                    }},
-                    tickfont: {{ color: '#94a3b8' }},
-                    bgcolor: 'rgba(0,0,0,0)'
-                }}
-            }},
-            showlegend: false,
-            hoverinfo: 'skip'
-        }});
+        // Add colorbar - find first point trace or create dedicated marker
+        const pointTraceIndex = traces.findIndex(t => t.mode === 'markers');
+        if (pointTraceIndex >= 0) {{
+            traces[pointTraceIndex].marker.showscale = true;
+            traces[pointTraceIndex].marker.colorbar = {{
+                title: {{
+                    text: getMetricTitle(AppState.selectedMetric),
+                    font: {{ color: '#eaeaea' }}
+                }},
+                tickfont: {{ color: '#94a3b8' }},
+                bgcolor: 'rgba(0,0,0,0)'
+            }};
+        }} else {{
+            // No point traces, add invisible marker for colorbar only
+            traces.push({{
+                type: 'scattergeo',
+                lon: [-180],
+                lat: [-90],
+                mode: 'markers',
+                marker: {{
+                    color: [cmin],
+                    colorscale: getColorscaleForMetric(AppState.selectedMetric),
+                    cmin: cmin,
+                    cmax: cmax,
+                    size: 0.1,
+                    showscale: true,
+                    colorbar: {{
+                        title: {{
+                            text: getMetricTitle(AppState.selectedMetric),
+                            font: {{ color: '#eaeaea' }}
+                        }},
+                        tickfont: {{ color: '#94a3b8' }},
+                        bgcolor: 'rgba(0,0,0,0)'
+                    }}
+                }},
+                showlegend: false,
+                hoverinfo: 'skip'
+            }});
+        }}
 
         const layout = {{
             geo: {{
@@ -1203,28 +1264,59 @@ def generate_html(
             g = Math.round(174 - (174 - 76) * v);
             b = Math.round(96 - (96 - 60) * v);
         }} else if (metric.includes('Trend_Strength')) {{
+            const higherIsBetter = deriveHigherIsBetter();
             if (v < 0.5) {{
                 const t = v * 2;
-                r = Math.round(33 + (255 - 33) * t);
-                g = Math.round(102 + (255 - 102) * t);
-                b = Math.round(172 + (255 - 172) * t);
+                if (higherIsBetter) {{
+                    // Red (negative=bad) to white
+                    r = Math.round(231 + (255 - 231) * t);
+                    g = Math.round(76 + (255 - 76) * t);
+                    b = Math.round(60 + (255 - 60) * t);
+                }} else {{
+                    // Green (negative=good) to white
+                    r = Math.round(39 + (255 - 39) * t);
+                    g = Math.round(174 + (255 - 174) * t);
+                    b = Math.round(96 + (255 - 96) * t);
+                }}
             }} else {{
                 const t = (v - 0.5) * 2;
-                r = Math.round(255 - (255 - 178) * t);
-                g = Math.round(255 - (255 - 24) * t);
-                b = Math.round(255 - (255 - 43) * t);
+                if (higherIsBetter) {{
+                    // White to green (positive=good)
+                    r = Math.round(255 - (255 - 39) * t);
+                    g = Math.round(255 - (255 - 174) * t);
+                    b = Math.round(255 - (255 - 96) * t);
+                }} else {{
+                    // White to red (positive=bad)
+                    r = Math.round(255 - (255 - 231) * t);
+                    g = Math.round(255 - (255 - 76) * t);
+                    b = Math.round(255 - (255 - 60) * t);
+                }}
             }}
         }} else if (metric === 'Percentile_Score') {{
+            // RdYlBu: Red (0) -> Yellow (0.5) -> Blue (1)
             if (v < 0.5) {{
                 const t = v * 2;
-                r = Math.round(49 + (255 - 49) * t);
-                g = Math.round(130 + (255 - 130) * t);
-                b = Math.round(189 - (189 - 0) * t);
+                r = Math.round(215 + (255 - 215) * t);  // 215 -> 255
+                g = Math.round(48 + (255 - 48) * t);    // 48 -> 255
+                b = Math.round(39 + (191 - 39) * t);    // 39 -> 191
             }} else {{
                 const t = (v - 0.5) * 2;
-                r = 255;
-                g = Math.round(255 - (255 - 0) * t);
-                b = Math.round(0 + (65 - 0) * t);
+                r = Math.round(255 - (255 - 49) * t);   // 255 -> 49
+                g = Math.round(255 - (255 - 54) * t);   // 255 -> 54
+                b = Math.round(191 + (149 - 191) * t);  // 191 -> 149
+            }}
+        }} else if (metric === 'Decadal_Trend_Significance') {{
+            // YlOrRd_r: Red (0) -> Orange (0.5) -> Yellow (1)
+            if (v < 0.5) {{
+                const t = v * 2;
+                r = Math.round(189 + (254 - 189) * t);  // 189 -> 254
+                g = Math.round(0 + (128 - 0) * t);      // 0 -> 128
+                b = Math.round(38 + (0 - 38) * t);      // 38 -> 0
+            }} else {{
+                const t = (v - 0.5) * 2;
+                r = Math.round(254 + (255 - 254) * t);  // 254 -> 255
+                g = Math.round(128 + (255 - 128) * t);  // 128 -> 255
+                b = Math.round(0 + (178 - 0) * t);      // 0 -> 178
             }}
         }} else {{
             r = Math.round(68 + (253 - 68) * v);
@@ -1517,9 +1609,11 @@ def generate_html(
             // Use embedded data (works with file:// URLs)
             DATA = EMBEDDED_DATA;
 
-            // Initialize state
-            AppState.selectedTab = String(DATA.metadata.decades[0]);
-            AppState.tableScenario = DATA.metadata.scenarios[0] || 'Low Emissions';
+            // Initialize state after DATA is loaded
+            AppState.selectedDecade = DATA.metadata.decades[0];
+            AppState.selectedScenario = DATA.metadata.scenarios[0];
+            AppState.tableScenario = DATA.metadata.scenarios[0];
+            AppState.enabledScenarios = new Set(DATA.metadata.scenarios);
 
             // Update header
             document.getElementById('header-subtitle').textContent =
@@ -1530,20 +1624,6 @@ def generate_html(
             document.getElementById('app').style.display = 'block';
 
             // Setup event handlers
-            document.querySelectorAll('.view-toggle button').forEach(btn => {{
-                btn.addEventListener('click', () => {{
-                    const newMode = btn.dataset.view;
-                    const newTab = newMode === 'decade'
-                        ? String(DATA.metadata.decades[0])
-                        : DATA.metadata.scenarios[0];
-
-                    document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-
-                    AppState.update({{ viewMode: newMode, selectedTab: newTab }});
-                }});
-            }});
-
             document.getElementById('metric-dropdown').addEventListener('change', (e) => {{
                 AppState.update({{ selectedMetric: e.target.value }});
             }});
@@ -1597,7 +1677,8 @@ def generate_html(
 
             // Subscribe to state changes
             AppState.subscribe(() => {{
-                renderTabs();
+                renderDecadeSelector();
+                renderScenarioSelector();
                 renderMap();
                 renderLocationList();
                 renderTimeSeries();
@@ -1605,8 +1686,8 @@ def generate_html(
             }});
 
             // Initial render
-            renderScenarioToggle();
-            renderTabs();
+            renderDecadeSelector();
+            renderScenarioSelector();
             renderMap();
             renderLocationList();
             renderTimeSeries();
