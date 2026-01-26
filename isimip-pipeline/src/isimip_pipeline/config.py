@@ -19,8 +19,6 @@ class PathsConfig:
 class ApiConfig:
     """API configuration settings."""
 
-    you_api_key: Optional[str] = None
-    you_agent_id: Optional[str] = None
     isimip_timeout: int = 30
 
 
@@ -105,10 +103,6 @@ def load_config(config_path: Path) -> Config:
     # Load API config
     if "api" in data:
         api_data = data["api"]
-        if "you_api_key" in api_data:
-            config.api.you_api_key = api_data["you_api_key"]
-        if "you_agent_id" in api_data:
-            config.api.you_agent_id = api_data["you_agent_id"]
         if "isimip_timeout" in api_data:
             config.api.isimip_timeout = api_data["isimip_timeout"]
 

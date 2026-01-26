@@ -116,19 +116,6 @@ def config_invalid_error(path: Path, detail: str) -> ErrorInfo:
     )
 
 
-def api_key_missing_error() -> ErrorInfo:
-    """Create error info for missing API key."""
-    return ErrorInfo(
-        message="API key not configured",
-        category=ErrorCategory.CONFIGURATION,
-        suggestions=[
-            "Add 'you_api_key' to ~/.isimip-pipeline/config.yaml",
-            "Use --no-llm flag to skip LLM query parsing",
-            "Pipeline will use keyword fallback for query parsing",
-        ],
-    )
-
-
 def directory_not_found_error(path: Path, purpose: str) -> ErrorInfo:
     """Create error info for missing directory."""
     return ErrorInfo(

@@ -73,12 +73,11 @@ class TestConfigFromFile:
         config = load_config(Path("/nonexistent/config.yaml"))
         assert config.paths.download_dir == Path("./data/raw")
 
-    def test_load_config_with_api_keys(self):
-        """Config should load API credentials."""
+    def test_load_config_with_api_settings(self):
+        """Config should load API settings."""
         config_data = {
             "api": {
-                "you_api_key": "test-key-123",
-                "you_agent_id": "agent-456",
+                "isimip_timeout": 60,
             }
         }
 
@@ -90,8 +89,7 @@ class TestConfigFromFile:
 
         try:
             config = load_config(config_path)
-            assert config.api.you_api_key == "test-key-123"
-            assert config.api.you_agent_id == "agent-456"
+            assert config.api.isimip_timeout == 60
         finally:
             config_path.unlink()
 

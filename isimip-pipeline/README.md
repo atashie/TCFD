@@ -44,8 +44,7 @@ paths:
   reports_dir: "./reports"
 
 api:
-  you_api_key: "your-key-here"  # Optional: for LLM query parsing
-  you_agent_id: "agent-id"       # Optional: you.com agent ID
+  isimip_timeout: 30             # API timeout in seconds
 
 processing:
   smoothing_bandwidth: 15        # Kernel smoothing bandwidth (years)

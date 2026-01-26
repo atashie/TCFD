@@ -182,12 +182,8 @@ python -c "import xarray as xr; print(xr.open_dataset('<file.nc>'))"
 # Test ISIMIP API connection
 curl "https://data.isimip.org/api/v1/datasets/?simulation_round=ISIMIP3b&limit=1"
 
-# Check you.com API
-curl --request POST \
-  --url https://api.you.com/v1/agents/runs \
-  --header 'Authorization: Bearer <api-key>' \
-  --header 'Content-Type: application/json' \
-  --data '{"agent": "<agent-id>", "stream": false}'
+# Test query parsing
+isimip-pipeline search "drought exposure ssp585" --verbose
 ```
 
 ---

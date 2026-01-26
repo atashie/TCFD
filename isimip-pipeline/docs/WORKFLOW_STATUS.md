@@ -122,13 +122,12 @@ datasets:
 - [x] Skip existing files
 - [x] Configurable concurrency limit (10 tests)
 
-### Phase 7: LLM Integration - COMPLETE
+### Phase 7: Query Parsing - COMPLETE
 - [x] Implement `search/llm_parser.py`
-- [x] Integrate you.com Agent API
-- [x] Design agent instructions/prompt
-- [x] Parse LLM response to ISIMIP query parameters
-- [x] Keyword fallback for when API unavailable (12 tests)
-- [ ] Fallback to direct keyword search if LLM fails
+- [x] Keyword-based natural language query parsing
+- [x] Variable mapping for exposure, agriculture, marine, vegetation
+- [x] Scenario and simulation round extraction
+- [x] Auto-detection of ISIMIP2a-only crops (barley, cotton, etc.)
 
 ### Phase 8: Data Alignment - COMPLETE
 - [x] Implement `processing/alignment.py` (350+ lines)
@@ -209,8 +208,6 @@ paths:
   reports_dir: "./reports"
 
 api:
-  you_api_key: "your-key-here"
-  you_agent_id: "52a88ef1-ff18-4485-bba8-cb5977baf136"
   isimip_timeout: 30  # seconds
 
 processing:
@@ -262,30 +259,6 @@ Variables:
     units: "statistic_type"
     values: [1, 2, 3, 4, 5, 6]
     meanings: ["median", "percentile", "trend", "significance", "lower_ci", "upper_ci"]
-```
-
-### you.com Agent Instructions (Draft)
-
-```
-You are an ISIMIP dataset search assistant. Convert natural language queries into structured ISIMIP API parameters.
-
-Available parameters:
-- simulation_round: ISIMIP2a, ISIMIP2b, ISIMIP3a, ISIMIP3b
-- climate_scenario: historical, picontrol, rcp26, rcp60, rcp85, ssp126, ssp370, ssp585
-- variable: See glossary (led=drought, leh=heatwave, lew=wildfire, burntarea, potevap, etc.)
-- climate_forcing: gfdl-esm2m, hadgem2-es, ipsl-cm5a-lr, miroc5, gfdl-esm4, ukesm1-0-ll, etc.
-- timestep: daily, monthly, annual
-- product: InputData, OutputData, DerivedOutputData
-
-Respond with JSON:
-{
-  "filters": {
-    "simulation_round": "...",
-    "variable": "...",
-    ...
-  },
-  "explanation": "Brief description of what these datasets contain"
-}
 ```
 
 ---

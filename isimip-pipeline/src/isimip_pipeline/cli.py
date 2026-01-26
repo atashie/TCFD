@@ -146,28 +146,12 @@ def search(
         search_query = f"search for: {query}"
         console.print("[dim]Refresh mode: forcing web search for definitions...[/dim]")
 
-    # Parse query
-    if use_llm and cfg.api.you_api_key:
-        console.print("[dim]Parsing query with LLM...[/dim]")
-        parsed = parse_natural_query(
-            search_query,
-            api_key=cfg.api.you_api_key,
-            agent_id=cfg.api.you_agent_id or "",
-        )
-        filters = parsed.filters
-        if parsed.explanation:
-            console.print(f"[dim]Interpretation: {parsed.explanation}[/dim]")
-        # Show if web search was used
-        if parsed.raw_response and parsed.raw_response.get("web_search_used"):
-            reason = parsed.raw_response.get("web_search_reason", "")
-            console.print(f"[dim]Web search used: {reason}[/dim]")
-    else:
-        # Use keyword fallback
-        from isimip_pipeline.search.llm_parser import LLMParser
-        parser = LLMParser(api_key="", agent_id="")
-        parsed = parser.keyword_fallback(query)
-        filters = parsed.filters
-        console.print(f"[dim]Extracted filters: {parsed.explanation}[/dim]")
+    # Parse query using keyword matching
+    console.print("[dim]Parsing query with LLM...[/dim]")
+    parsed = parse_natural_query(search_query)
+    filters = parsed.filters
+    if parsed.explanation:
+        console.print(f"[dim]Interpretation: {parsed.explanation}[/dim]")
 
     # Search ISIMIP
     console.print("[dim]Querying ISIMIP repository...[/dim]")
@@ -333,16 +317,8 @@ def interactive(
 
         try:
             # Parse query
-            if cfg.api.you_api_key:
-                parsed = parse_natural_query(
-                    query,
-                    api_key=cfg.api.you_api_key,
-                    agent_id=cfg.api.you_agent_id or "",
-                )
-            else:
-                parser = LLMParser(api_key="", agent_id="")
-                parsed = parser.keyword_fallback(query)
-
+            # Parse query using keyword matching
+            parsed = parse_natural_query(query)
             filters = parsed.filters
             if parsed.explanation:
                 console.print(f"[dim]Interpretation: {parsed.explanation}[/dim]")
@@ -1181,17 +1157,8 @@ def run(
     # =========================================================================
     console.print("\n[bold cyan]Step 1/4: Searching ISIMIP repository...[/bold cyan]")
 
-    # Parse query
-    if cfg.api.you_api_key:
-        parsed = parse_natural_query(
-            query,
-            api_key=cfg.api.you_api_key,
-            agent_id=cfg.api.you_agent_id or "",
-        )
-    else:
-        parser = LLMParser(api_key="", agent_id="")
-        parsed = parser.keyword_fallback(query)
-
+    # Parse query using keyword matching
+    parsed = parse_natural_query(query)
     filters = parsed.filters
     if parsed.explanation:
         console.print(f"[dim]Interpretation: {parsed.explanation}[/dim]")

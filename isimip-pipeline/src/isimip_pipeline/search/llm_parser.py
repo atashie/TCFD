@@ -1,17 +1,13 @@
-"""LLM-based natural language query parsing for ISIMIP searches."""
+"""Keyword-based natural language query parsing for ISIMIP searches."""
 
-import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
-
-import httpx
 
 from isimip_pipeline.search.isimip_query import SearchFilters
 
 
-# Known ISIMIP variable mappings for keyword fallback
-# These are checked before calling the LLM API
+# Known ISIMIP variable mappings for keyword matching
 VARIABLE_KEYWORDS = {
     # Exposure metrics (ISIMIP3b SecondaryOutputData)
     "drought": "led",
@@ -53,15 +49,32 @@ VARIABLE_KEYWORDS = {
     "precipitation": "pr",
     "rainfall": "pr",
     "snowfall": "prsn",
-    # Agriculture
-    "maize": "yield-mai-noirr",
-    "maize yield": "yield-mai-noirr",
-    "wheat": "yield-whe-noirr",
-    "wheat yield": "yield-whe-noirr",
-    "rice": "yield-ric-noirr",
-    "rice yield": "yield-ric-noirr",
-    "soybean": "yield-soy-noirr",
-    "crop yield": "yield-mai-noirr",
+    # Agriculture - common crops
+    "maize": "yield-mai",
+    "maize yield": "yield-mai",
+    "corn": "yield-mai",
+    "wheat": "yield-swh",
+    "wheat yield": "yield-swh",
+    "spring wheat": "yield-swh",
+    "winter wheat": "yield-wwh",
+    "rice": "yield-ric",
+    "rice yield": "yield-ric",
+    "soybean": "yield-soy",
+    "soy": "yield-soy",
+    "barley": "yield-bar",
+    "barley yield": "yield-bar",
+    "sorghum": "yield-sor",
+    "millet": "yield-mil",
+    "potato": "yield-pot",
+    "cotton": "yield-cot",
+    "crop yield": "yield",
+    # Marine fishery
+    "fish": "tcb",
+    "fishery": "tcb",
+    "fish biomass": "tcb",
+    "large fish": "b30cm",
+    "large fish biomass": "b30cm",
+    "total consumer biomass": "tcb",
     # Vegetation/Carbon
     "gpp": "gpp",
     "gross primary": "gpp",
@@ -69,18 +82,36 @@ VARIABLE_KEYWORDS = {
     "net primary": "npp",
     "carbon": "cveg",
     "vegetation carbon": "cveg",
+    "wood carbon": "cwood",
     "soil carbon": "csoil",
 }
 
 # Known scenario patterns
 SCENARIO_PATTERNS = {
-    r"ssp\d{3}": lambda m: m.group(0),  # ssp126, ssp370, ssp585
-    r"rcp\d{2}": lambda m: m.group(0),  # rcp26, rcp60, rcp85
-    r"historical": lambda m: "historical",
+    r"ssp\s*5[\-\.]?8\.?5": "ssp585",
+    r"ssp\s*3[\-\.]?7\.?0": "ssp370",
+    r"ssp\s*2[\-\.]?4\.?5": "ssp245",
+    r"ssp\s*1[\-\.]?2\.?6": "ssp126",
+    r"ssp585": "ssp585",
+    r"ssp370": "ssp370",
+    r"ssp245": "ssp245",
+    r"ssp126": "ssp126",
+    r"rcp\s*8\.?5": "rcp85",
+    r"rcp\s*6\.?0": "rcp60",
+    r"rcp\s*4\.?5": "rcp45",
+    r"rcp\s*2\.?6": "rcp26",
+    r"rcp85": "rcp85",
+    r"rcp60": "rcp60",
+    r"rcp45": "rcp45",
+    r"rcp26": "rcp26",
+    r"historical": "historical",
 }
 
 # Known simulation rounds
 SIMULATION_ROUNDS = ["ISIMIP2a", "ISIMIP2b", "ISIMIP3a", "ISIMIP3b"]
+
+# Crops only available in specific rounds
+ISIMIP2A_ONLY_CROPS = {"bar", "rye", "pot", "cas", "cot", "ben"}
 
 
 @dataclass
@@ -90,7 +121,7 @@ class ParsedQuery:
     Attributes:
         filters: SearchFilters extracted from the query.
         explanation: Human-readable explanation of what was found.
-        raw_response: Raw response from LLM (if used).
+        raw_response: Raw response data (for compatibility).
     """
 
     filters: SearchFilters
@@ -98,243 +129,102 @@ class ParsedQuery:
     raw_response: Optional[Dict[str, Any]] = None
 
 
-class LLMParser:
-    """Parses natural language queries using LLM API.
+def parse_query(query: str) -> ParsedQuery:
+    """Parse natural language query using keyword matching.
 
-    Uses you.com Agent API to convert natural language queries
-    into structured ISIMIP search filters.
+    Args:
+        query: Natural language query.
+
+    Returns:
+        ParsedQuery with extracted filters.
     """
+    query_lower = query.lower()
 
-    API_URL = "https://api.you.com/v1/agents/runs"
+    # Extract variable
+    variable = None
+    matched_keyword = None
+    # Sort by length (descending) to match longer phrases first
+    for keyword in sorted(VARIABLE_KEYWORDS.keys(), key=len, reverse=True):
+        if keyword in query_lower:
+            variable = VARIABLE_KEYWORDS[keyword]
+            matched_keyword = keyword
+            break
 
-    SYSTEM_PROMPT = """You are an ISIMIP dataset search assistant. Convert natural language queries into structured ISIMIP API parameters.
+    # Extract scenario
+    climate_scenario = None
+    for pattern, scenario in SCENARIO_PATTERNS.items():
+        if re.search(pattern, query_lower):
+            climate_scenario = scenario
+            break
 
-Available parameters:
-- simulation_round: ISIMIP2a, ISIMIP2b, ISIMIP3a, ISIMIP3b
-- climate_scenario: historical, picontrol, rcp26, rcp60, rcp85, ssp126, ssp370, ssp585
-- variable: Common codes include:
-  - led: Land area fraction exposed to drought
-  - leh: Land area fraction exposed to heatwave
-  - lew: Land area fraction exposed to wildfire
-  - ler: Land area fraction exposed to river flood
-  - lec: Land area fraction exposed to crop failure
-  - burntarea: Fire burnt area fraction
-  - potevap: Potential evapotranspiration
-- climate_forcing: gfdl-esm2m, hadgem2-es, ipsl-cm5a-lr, miroc5, gfdl-esm4, ukesm1-0-ll
-- timestep: daily, monthly, annual
-- product: InputData, OutputData, DerivedOutputData
+    # Extract simulation round
+    simulation_round = None
+    for round_name in SIMULATION_ROUNDS:
+        if round_name.lower() in query_lower:
+            simulation_round = round_name
+            break
 
-Respond with ONLY valid JSON in this format:
-{
-  "filters": {
-    "variable": "...",
-    "simulation_round": "...",
-    "climate_scenario": "..."
-  },
-  "explanation": "Brief description of what these datasets contain"
-}
+    # Auto-detect round for ISIMIP2a-only crops
+    if variable and simulation_round is None:
+        crop_code = variable.split("-")[1] if "-" in variable else None
+        if crop_code in ISIMIP2A_ONLY_CROPS:
+            simulation_round = "ISIMIP2a"
 
-Only include filters that are clearly specified or implied in the query."""
+    filters = SearchFilters(
+        variable=variable,
+        climate_scenario=climate_scenario,
+        simulation_round=simulation_round,
+    )
 
-    def __init__(self, api_key: str, agent_id: str):
-        """Initialize the parser.
+    # Build explanation
+    explanation = "Extracted from keywords: "
+    parts = []
+    if variable:
+        parts.append(f"variable={variable}")
+    if climate_scenario:
+        parts.append(f"scenario={climate_scenario}")
+    if simulation_round:
+        parts.append(f"round={simulation_round}")
 
-        Args:
-            api_key: you.com API key.
-            agent_id: you.com Agent ID.
-        """
-        self.api_key = api_key
-        self.agent_id = agent_id
+    explanation += ", ".join(parts) if parts else "no specific filters found"
 
-    def build_prompt(self, query: str) -> str:
-        """Build the prompt for the LLM.
-
-        Args:
-            query: Natural language query.
-
-        Returns:
-            Full prompt including system instructions.
-        """
-        return f"{self.SYSTEM_PROMPT}\n\nUser query: {query}\n\nRespond with JSON:"
-
-    async def parse_async(self, query: str) -> ParsedQuery:
-        """Parse query using LLM API asynchronously.
-
-        Args:
-            query: Natural language query.
-
-        Returns:
-            ParsedQuery with extracted filters.
-        """
-        if not self.api_key or not self.agent_id:
-            return self.keyword_fallback(query)
-
-        prompt = self.build_prompt(query)
-
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    self.API_URL,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "agent": self.agent_id,
-                        "input": prompt,
-                        "stream": False,
-                    },
-                    timeout=120.0,
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    response_text = data.get("output", "{}")
-                    return self.parse_response(response_text)
-
-            except (httpx.RequestError, json.JSONDecodeError):
-                pass
-
-        return self.keyword_fallback(query)
-
-    def parse_sync(self, query: str) -> ParsedQuery:
-        """Parse query using LLM API synchronously.
-
-        Args:
-            query: Natural language query.
-
-        Returns:
-            ParsedQuery with extracted filters.
-        """
-        import asyncio
-        return asyncio.run(self.parse_async(query))
-
-    def parse_with_fallback(self, query: str) -> ParsedQuery:
-        """Parse query with keyword fallback on failure.
-
-        Args:
-            query: Natural language query.
-
-        Returns:
-            ParsedQuery with extracted filters.
-        """
-        try:
-            return self.parse_sync(query)
-        except Exception:
-            return self.keyword_fallback(query)
-
-    def parse_response(self, response_text: str) -> ParsedQuery:
-        """Parse LLM response text into ParsedQuery.
-
-        Args:
-            response_text: JSON response from LLM.
-
-        Returns:
-            ParsedQuery with extracted filters.
-        """
-        try:
-            # Try to extract JSON from response
-            data = json.loads(response_text)
-        except json.JSONDecodeError:
-            # Try to find JSON in the response
-            json_match = re.search(r'\{[^{}]*\}', response_text)
-            if json_match:
-                try:
-                    data = json.loads(json_match.group(0))
-                except json.JSONDecodeError:
-                    data = {}
-            else:
-                data = {}
-
-        filters_data = data.get("filters", {})
-        explanation = data.get("explanation", "")
-
-        filters = SearchFilters(
-            simulation_round=filters_data.get("simulation_round"),
-            climate_scenario=filters_data.get("climate_scenario"),
-            variable=filters_data.get("variable"),
-            climate_forcing=filters_data.get("climate_forcing"),
-            model=filters_data.get("model"),
-            timestep=filters_data.get("timestep"),
-            product=filters_data.get("product"),
-        )
-
-        return ParsedQuery(
-            filters=filters,
-            explanation=explanation,
-            raw_response=data,
-        )
-
-    def keyword_fallback(self, query: str) -> ParsedQuery:
-        """Extract filters using keyword matching.
-
-        Args:
-            query: Natural language query.
-
-        Returns:
-            ParsedQuery with extracted filters.
-        """
-        query_lower = query.lower()
-
-        # Extract variable
-        variable = None
-        for keyword, var_code in VARIABLE_KEYWORDS.items():
-            if keyword in query_lower:
-                variable = var_code
-                break
-
-        # Extract scenario
-        climate_scenario = None
-        for pattern, extractor in SCENARIO_PATTERNS.items():
-            match = re.search(pattern, query_lower)
-            if match:
-                climate_scenario = extractor(match)
-                break
-
-        # Extract simulation round
-        simulation_round = None
-        for round_name in SIMULATION_ROUNDS:
-            if round_name.lower() in query_lower:
-                simulation_round = round_name
-                break
-
-        filters = SearchFilters(
-            variable=variable,
-            climate_scenario=climate_scenario,
-            simulation_round=simulation_round,
-        )
-
-        explanation = f"Extracted from keywords: "
-        parts = []
-        if variable:
-            parts.append(f"variable={variable}")
-        if climate_scenario:
-            parts.append(f"scenario={climate_scenario}")
-        if simulation_round:
-            parts.append(f"round={simulation_round}")
-
-        explanation += ", ".join(parts) if parts else "no specific filters found"
-
-        return ParsedQuery(
-            filters=filters,
-            explanation=explanation,
-        )
+    return ParsedQuery(
+        filters=filters,
+        explanation=explanation,
+    )
 
 
+# Backwards compatibility alias
 def parse_natural_query(
     query: str,
     api_key: str = "",
     agent_id: str = "",
 ) -> ParsedQuery:
-    """Convenience function to parse natural language query.
+    """Parse natural language query (compatibility wrapper).
 
     Args:
         query: Natural language query.
-        api_key: you.com API key.
-        agent_id: you.com Agent ID.
+        api_key: Ignored (kept for backwards compatibility).
+        agent_id: Ignored (kept for backwards compatibility).
 
     Returns:
         ParsedQuery with extracted filters.
     """
-    parser = LLMParser(api_key=api_key, agent_id=agent_id)
-    return parser.parse_with_fallback(query)
+    return parse_query(query)
+
+
+# For backwards compatibility with existing imports
+class LLMParser:
+    """Keyword-based query parser (legacy compatibility class)."""
+
+    def __init__(self, api_key: str = "", agent_id: str = ""):
+        """Initialize parser (api_key and agent_id ignored)."""
+        pass
+
+    def parse_with_fallback(self, query: str) -> ParsedQuery:
+        """Parse query using keyword matching."""
+        return parse_query(query)
+
+    def keyword_fallback(self, query: str) -> ParsedQuery:
+        """Parse query using keyword matching."""
+        return parse_query(query)

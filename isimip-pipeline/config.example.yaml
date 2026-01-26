@@ -7,8 +7,6 @@ paths:
   reports_dir: "./reports"
 
 api:
-  you_api_key: "your-you-com-api-key-here"
-  you_agent_id: "52a88ef1-ff18-4485-bba8-cb5977baf136"
   isimip_timeout: 30  # seconds
 
 processing:
