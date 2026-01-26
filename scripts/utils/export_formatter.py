@@ -119,8 +119,15 @@ class ExtractionResult:
 def get_relative_hazard_score(percentile: float) -> tuple:
     """Convert percentile to relative hazard score.
 
+    Thresholds (continuous, no gaps):
+      0-20  -> Very Low (1)
+      20-40 -> Low (2)
+      40-60 -> Medium (3)
+      60-80 -> High (4)
+      80-100 -> Very High (5)
+
     Args:
-        percentile: Percentile score (1-100)
+        percentile: Percentile score (0-100)
 
     Returns:
         Tuple of (label, number) e.g., ("Medium", 3)
@@ -130,14 +137,16 @@ def get_relative_hazard_score(percentile: float) -> tuple:
 
     percentile = float(percentile)
 
-    for low, high, label, number in RELATIVE_HAZARD_THRESHOLDS:
-        if low <= percentile <= high:
-            return (label, number)
-
-    # Edge cases
-    if percentile < 1:
+    if percentile <= 20:
         return ("Very Low", 1)
-    return ("Very High", 5)
+    elif percentile <= 40:
+        return ("Low", 2)
+    elif percentile <= 60:
+        return ("Medium", 3)
+    elif percentile <= 80:
+        return ("High", 4)
+    else:
+        return ("Very High", 5)
 
 
 def calculate_trend_aggregated(

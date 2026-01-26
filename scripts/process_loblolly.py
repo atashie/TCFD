@@ -101,7 +101,10 @@ def collect_2020s_baseline(gcm_data: Dict) -> Tuple[Dict[str, np.ndarray], np.nd
 
 
 def calculate_percentile(value: np.ndarray, reference: np.ndarray) -> np.ndarray:
-    """Calculate percentile rank of values against reference distribution."""
+    """Calculate percentile rank of values against reference distribution.
+
+    For "higher_is_better" variables (cwood): inverts so high value → low percentile (safe).
+    """
     if len(reference) == 0:
         return np.full_like(value, np.nan)
 
@@ -110,7 +113,9 @@ def calculate_percentile(value: np.ndarray, reference: np.ndarray) -> np.ndarray
     valid = ~np.isnan(value)
     if np.any(valid):
         # For each valid value, count how many reference values are below it
-        result[valid] = np.searchsorted(np.sort(reference), value[valid]) / len(reference) * 100
+        pct = np.searchsorted(np.sort(reference), value[valid]) / len(reference) * 100
+        # Invert: high value → low percentile (safe) for "higher_is_better"
+        result[valid] = 100 - pct
     return result
 
 
@@ -276,6 +281,7 @@ def process_evgndltr_files(input_dir: Path, output_dir: Path):
                     'baseline_decade': '2020s',
                     'window_size': f'{WINDOW_SIZE} years (adaptive)',
                     'processing_note': 'Loblolly pine timber proxy using evergreen needleleaf PFT',
+                    'percentile_direction': 'higher_is_better',  # High wood carbon = low risk
                 }
             )
 

@@ -27,6 +27,8 @@ from scipy import stats
 def calculate_trend(data: np.ndarray, decades: list) -> Tuple[np.ndarray, np.ndarray]:
     """Calculate linear trend across decades using Theil-Sen estimator.
 
+    DEPRECATED: Use calculate_cumulative_trends for per-decade trends.
+
     Args:
         data: Array of shape (n_decades, lat, lon)
         decades: List of decade start years
@@ -55,6 +57,76 @@ def calculate_trend(data: np.ndarray, decades: list) -> Tuple[np.ndarray, np.nda
                     pass
 
     return slope, p_value
+
+
+def calculate_cumulative_trends(
+    annual_data: np.ndarray,
+    years: np.ndarray,
+    decades: list,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Calculate cumulative trend from earliest year to end of each decade.
+
+    For each decade, calculates the Theil-Sen slope from the earliest available
+    year to the end of that decade. This gives cumulative trends where:
+    - 2020s trend = slope from 2010 to 2029
+    - 2030s trend = slope from 2010 to 2039
+    - etc.
+
+    Args:
+        annual_data: Array of shape (n_years, lat, lon) with annual values
+        years: Array of years corresponding to annual_data
+        decades: List of decade start years [2020, 2030, ...] (NOT 2010s)
+
+    Returns:
+        Tuple of (trend, trend_pvalue) arrays of shape (n_decades, lat, lon)
+    """
+    n_decades = len(decades)
+    n_lat, n_lon = annual_data.shape[1], annual_data.shape[2]
+
+    trend = np.full((n_decades, n_lat, n_lon), np.nan)
+    trend_pvalue = np.full((n_decades, n_lat, n_lon), np.nan)
+
+    earliest_year = int(years.min())
+
+    # Pre-identify valid cells (have at least some non-NaN values)
+    # to avoid processing ocean/masked cells
+    valid_cell_mask = np.any(~np.isnan(annual_data), axis=0)
+    valid_cells = np.argwhere(valid_cell_mask)
+    n_valid = len(valid_cells)
+    print(f"    Processing {n_valid:,} valid grid cells...")
+
+    for d_idx, decade_start in enumerate(decades):
+        decade_end = decade_start + 9  # e.g., 2020 -> 2029
+
+        # Get all data from earliest year to end of this decade
+        mask = (years >= earliest_year) & (years <= decade_end)
+        subset_years = years[mask]
+        subset_data = annual_data[mask]
+
+        n_years_subset = len(subset_years)
+        if n_years_subset < 3:
+            continue
+
+        print(f"      Decade {decade_start}s: {earliest_year}-{decade_end} ({n_years_subset} years)...", end=" ", flush=True)
+        cells_processed = 0
+
+        # Only process valid cells
+        for idx, (i, j) in enumerate(valid_cells):
+            y = subset_data[:, i, j]
+            valid = ~np.isnan(y)
+            if np.sum(valid) >= 3:
+                try:
+                    result = stats.theilslopes(y[valid], subset_years[valid])
+                    trend[d_idx, i, j] = result.slope
+                    _, p = stats.kendalltau(subset_years[valid], y[valid])
+                    trend_pvalue[d_idx, i, j] = p
+                    cells_processed += 1
+                except Exception:
+                    pass
+
+        print(f"done ({cells_processed:,} cells with trends)")
+
+    return trend, trend_pvalue
 
 
 def aggregate_monthly_to_annual(ds: xr.Dataset, var_name: str) -> xr.DataArray:
@@ -252,6 +324,7 @@ def process_variable(
         # Initialize arrays for ensemble statistics
         n_decades = len(decades)
         all_gcm_medians = []
+        all_gcm_annual = []  # For cumulative trend calculation
 
         # Process each GCM
         for fname, fdata in scenario_files.items():
@@ -262,6 +335,9 @@ def process_variable(
             # Apply spatial mask if provided
             if spatial_mask is not None:
                 data[:, ~spatial_mask] = np.nan
+
+            # Store annual data for trend calculation
+            all_gcm_annual.append({'data': data, 'years': years})
 
             # Initialize output for this GCM
             gcm_output = np.full((n_decades, len(lat), len(lon)), np.nan)
@@ -287,8 +363,17 @@ def process_variable(
         ensemble_lower = np.nanmin(stacked, axis=0)    # GCM spread lower
         ensemble_upper = np.nanmax(stacked, axis=0)    # GCM spread upper
 
-        # Calculate trend
-        trend_slope, trend_pvalue = calculate_trend(ensemble_median, decades)
+        # Calculate cumulative per-decade trends from annual data
+        # First, create ensemble mean of annual data
+        first_gcm = all_gcm_annual[0]
+        ensemble_years = first_gcm['years']
+        ensemble_annual = np.stack([g['data'] for g in all_gcm_annual], axis=0)
+        ensemble_annual = np.nanmean(ensemble_annual, axis=0)  # (n_years, lat, lon)
+
+        print(f"  Calculating cumulative trends from {int(ensemble_years.min())}-{int(ensemble_years.max())}...")
+        trend_slope, trend_pvalue = calculate_cumulative_trends(
+            ensemble_annual, ensemble_years, decades
+        )
 
         # Calculate percentile rank against 2020s global distribution
         baseline_2020s = ensemble_median[0]  # decade index 0 = 2020s
@@ -304,14 +389,16 @@ def process_variable(
                         val = decade_values[i, j]
                         if not np.isnan(val):
                             # Rank this cell's value against 2020s global distribution
-                            percentile[d_idx, i, j] = stats.percentileofscore(baseline_valid, val)
+                            pct = stats.percentileofscore(baseline_valid, val)
+                            # Invert: high value → low percentile (safe) for "higher_is_better"
+                            percentile[d_idx, i, j] = 100 - pct
 
         ensemble_ds = xr.Dataset(
             data_vars={
                 'median': (['decade', 'lat', 'lon'], ensemble_median),
                 'percentile': (['decade', 'lat', 'lon'], percentile),
-                'trend': (['lat', 'lon'], trend_slope),
-                'trend_pvalue': (['lat', 'lon'], trend_pvalue),
+                'trend': (['decade', 'lat', 'lon'], trend_slope),
+                'trend_pvalue': (['decade', 'lat', 'lon'], trend_pvalue),
                 'lower_ci': (['decade', 'lat', 'lon'], ensemble_lower),
                 'upper_ci': (['decade', 'lat', 'lon'], ensemble_upper),
             },
@@ -331,7 +418,8 @@ def process_variable(
                 'gcms': ', '.join(sorted([f['gcm'] for f in scenario_files.values()])),
                 'baseline_source': 'shared_across_all_scenarios',
                 'baseline_decade': '2020s',
-                'trend_method': f'Theil-Sen estimator ({units} per decade)',
+                'trend_method': f'Cumulative Theil-Sen slope from earliest year to end of each decade ({units}/year)',
+                'trend_note': 'Per-decade cumulative trends: 2020s=2010-2029, 2030s=2010-2039, etc.',
                 'percentile_direction': 'higher_is_better',  # More productivity/carbon is good
                 'percentile_note': 'Normalized to 2020s baseline (50 = same as 2020s)',
                 'aggregation_method': 'mean' if is_monthly else 'none (already annual)',
