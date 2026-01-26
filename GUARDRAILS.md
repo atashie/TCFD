@@ -77,3 +77,58 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 - Load ALL matching files, not just predefined scenarios
 - Use fallback labels/colors for unknown scenarios (e.g., "ssp245" → "SSP2-4.5")
 
+---
+
+## 4. Multi-Model Search for Vegetation Variables
+
+**Rule**: When searching for vegetation variables (cwood, npp, gpp, cveg, cleaf, lai, burntarea), **ALWAYS enumerate all available biomes models across simulation rounds** before presenting options to the user.
+
+**Why this matters**:
+- Different models use different PFT (Plant Functional Type) classification schemes
+- Generic PFT schemes (e.g., CLASSIC's `evgndltr`) combine all needleleaf into one category
+- Climate-zone specific PFTs (e.g., CLM45's `needleleaf-evergreen-tree-temperate`) exist in older rounds
+- Best climate-specific data may be in ISIMIP2b or ISIMIP3a, not ISIMIP3b
+- Users need to make informed trade-offs between data recency and climate specificity
+
+**Required workflow**:
+1. Identify target vegetation type and climate zone (temperate, boreal, tropical, etc.)
+2. Check `config/isimip_search_catalog.yaml` biomes_models section for all available models
+3. List models from ALL relevant simulation rounds (3b, 3a, 2b)
+4. Check each model's PFT scheme against user needs
+5. Present options with explicit trade-off summary:
+   - Newer scenarios (ISIMIP3b SSP) vs climate specificity (ISIMIP2b/3a)
+   - Generic PFTs (larger ensemble) vs climate-zone PFTs (better proxy)
+   - Global coverage vs regional detail
+
+**Do NOT**:
+- Assume the first model found is representative of all available data
+- Skip older simulation rounds without explaining trade-offs to user
+- Present generic PFT (e.g., `evgndltr`) when climate-specific variants exist
+- Default to ISIMIP3b without checking if ISIMIP2b/3a has better PFT coverage
+
+**Example failure**: Searching for "loblolly pine timber proxy" and returning only CLASSIC `evgndltr`, which combines temperate AND boreal conifers into one PFT, when CLM45 has `needleleaf-evergreen-tree-temperate` (temperate-specific) and MC2-USFS has `mesictemperateneedleleafforest` (biome-specific).
+
+**Reference**: See `/isimip-search-download` skill Step 0 (Model Enumeration) and catalog `pft_equivalences` table.
+
+---
+
+## 5. Diverging Colorscales Must Center on Zero
+
+**Rule**: When visualizing trend or change data, diverging colorscales (RdBu, RdYlBu, etc.) **MUST use symmetric scaling centered on zero** so that white/neutral represents no change.
+
+**Why this matters**:
+- Diverging colorscales communicate directionality: one color = positive, other color = negative
+- If zero is not at the midpoint (white), the visual interpretation is misleading
+- A trend of +0.1 might appear red (bad) if the scale runs from -0.05 to +0.5 with white at +0.225
+
+**Required behavior**:
+- For trend and change maps: `max_abs = np.percentile(np.abs(all_values), 98); cmin, cmax = -max_abs, max_abs`
+- Do NOT use percentile-based scaling like `cmin = np.percentile(all_values, 2), cmax = np.percentile(all_values, 98)`
+- Convention for vegetation/productivity variables ("higher is better"):
+  - Positive values (increase) = blue = good
+  - Zero = white = no change
+  - Negative values (decrease) = red = bad
+  - Use `RdBu` colorscale (red-white-blue)
+
+**Implementation**: `scripts/generate_maps.py` uses symmetric scaling for both trend maps (lines 602-610) and change maps (lines 761-765).
+

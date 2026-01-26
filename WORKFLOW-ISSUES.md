@@ -73,6 +73,91 @@ The per-scenario file loading loop only tried scenarios in this dictionary, so r
 
 ---
 
+### 2026-01-21: Loblolly Pine Search Missed Climate-Specific PFT Datasets
+
+**What happened**: When searching for loblolly pine (southern temperate conifer) timber data, I only found CLASSIC model's generic `evgndltr` PFT from ISIMIP3b. This PFT combines ALL evergreen needleleaf trees (temperate AND boreal) into one category, making it a poor proxy for a temperate-specific species.
+
+**What was missed**:
+- **MC2-USFS** (ISIMIP3a): `mesictemperateneedleleafforest`, `subtropicalevergreenneedleleafforest` - 47 detailed biome-specific PFTs
+- **CLM45** (ISIMIP2b): `needleleaf-evergreen-tree-temperate` - climate-zone specific with RCP scenarios
+- **LPJmL** (ISIMIP2b): `temperate-needleleaved-evergreen-tree` - climate-zone specific
+
+**Impact**: Analysis using generic `evgndltr` included boreal conifer data (e.g., black spruce at 60N) mixed with target temperate species data. Climate projections for loblolly pine (southeastern US, 30-35N) were potentially confounded by boreal zone dynamics where climate change impacts differ substantially.
+
+**Root causes**:
+1. **Single-model tunnel vision**: Started with ISIMIP3b CLASSIC, assumed its PFT scheme was representative
+2. **Incomplete catalog**: Only documented CLASSIC and CARAIB PFT schemes, missing CLM45, LPJmL, MC2-USFS
+3. **API unreliability unrecognized**: ISIMIP API path-based searches returned unrelated flood data; didn't pivot to file server exploration
+4. **No model documentation lookup**: Didn't check impactmodels.org pages for each model's PFT definitions
+5. **Simulation round blindness**: Best climate-specific data was in ISIMIP2b and ISIMIP3a, not ISIMIP3b
+6. **PFT not treated as searchable dimension**: Workflow asked for variable but not PFT subcategory
+
+**Correct action**: Should have:
+1. Enumerated ALL biomes sector models across simulation rounds (3b, 3a, 2b)
+2. Checked each model's PFT documentation via impactmodels pages
+3. Used file server (`files.isimip.org`) when API returned unreliable results
+4. Presented user with climate-specificity options and explicit trade-offs
+5. Asked user to select PFT subcategory before downloading
+
+**Fix applied**:
+- Added `biomes_models` registry to `config/isimip_search_catalog.yaml` documenting all models and their PFT schemes
+- Added `pft_equivalences` table mapping equivalent PFT concepts across models
+- Added Step 0 (Model Enumeration) to `/isimip-search-download` skill
+- Added Step 2.5 (Subcategory Selection) to skill workflow
+- Added API Fallback Strategy section for file server exploration
+- Created GUARDRAILS.md Section 4 for multi-model vegetation searches
+
+**Rule created**: GUARDRAILS.md Section 4 - Multi-Model Search for Vegetation Variables
+
+---
+
+### 2026-01-22: QA Report Map Alignment and Colorscale Issues
+
+**What happened**: During tebrsu (temperate broadleaf summergreen) data visualization, two issues were identified:
+
+1. **Geospatial alignment**: Map outputs don't perfectly align with basemap coastlines
+2. **Trend colorscale not centered on zero**: Diverging colorscale doesn't have white=0
+
+**Impact**: Visual interpretation issues. Trend maps may show positive trends as partially red (or negative as blue) due to asymmetric color scaling.
+
+**Root causes**:
+
+**Alignment issue**:
+- ISIMIP data uses 0.5° × 0.5° grid with cell-center registration (coordinates at pixel centers, not edges)
+- Visualization uses point markers (`go.Scattergeo` with marker size=2) at cell centers, not filled grid cells
+- At 0.5° resolution (~55 km/cell), coastal cells straddle land/water but plot at single center point
+- Basemap coastlines are vector data at much finer resolution than the raster grid
+
+**Colorscale issue**:
+- Trend maps use percentile-based scaling (`cmin = np.percentile(all_values, 2)`, `cmax = np.percentile(all_values, 98)`)
+- This does NOT center on zero; if trends are mostly positive (e.g., 0.1 to 0.5), white falls at ~0.3 instead of 0
+- Change maps correctly use symmetric scaling: `max_abs = np.percentile(np.abs(all_changes), 98); cmin, cmax = -max_abs, max_abs`
+
+**Location**: `scripts/generate_maps.py`
+- Lines 602-606: Trend colorscale (NOT symmetric)
+- Lines 757-761: Change colorscale (correctly symmetric)
+
+**Correct action for future**:
+
+*Alignment*:
+| Approach | Tradeoff |
+|----------|----------|
+| Use `go.Densitymapbox` with larger radius | Better gap filling, slower rendering |
+| Increase marker size to ~4-5 | Fills gaps, may look blocky |
+| Use `go.Heatmap` with image trace | True raster display, loses interactivity |
+| Overlay as GeoTIFF on Leaflet | Pixel-perfect, requires different stack |
+
+*Colorscale*:
+- Trend maps should use symmetric scaling around 0: `max_abs = np.percentile(np.abs(all_values), 98); cmin, cmax = -max_abs, max_abs`
+- Convention: RdBu with 0=white, positive (good)=blue, negative (bad)=red
+- For "lower is better" variables, may need to invert or use RdBu_r
+
+**Status**:
+- Colorscale issue: **FIXED** (2026-01-22) - Added conditional symmetric scaling for trend metric in `generate_maps.py` lines 602-610
+- Alignment issue: Documented for future improvement (low priority, reports are usable)
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:
