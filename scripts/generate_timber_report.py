@@ -363,6 +363,28 @@ def generate_html(
             color: white;
         }}
 
+        .hazard-toggles {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }}
+
+        .hazard-toggles label {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            white-space: nowrap;
+        }}
+
+        .hazard-toggles input[type="checkbox"] {{
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }}
+
         .metric-selector {{
             display: flex;
             align-items: center;
@@ -756,6 +778,10 @@ def generate_html(
                 <label>Scenario:</label>
                 <div class="filter-selector" id="scenario-selector"></div>
             </div>
+            <div class="filter-group">
+                <label>Hazards:</label>
+                <div class="hazard-toggles" id="hazard-toggles"></div>
+            </div>
             <div class="metric-selector">
                 <label>Color by:</label>
                 <select id="metric-dropdown">
@@ -798,7 +824,7 @@ def generate_html(
                         </label>
                         <span class="scenario-toggles">
                             <label>
-                                <input type="checkbox" data-ts-scenario="Low Emissions">
+                                <input type="checkbox" data-ts-scenario="Low Emissions" checked>
                                 Low
                             </label>
                             <label>
@@ -806,7 +832,7 @@ def generate_html(
                                 Mid
                             </label>
                             <label>
-                                <input type="checkbox" data-ts-scenario="High Emissions">
+                                <input type="checkbox" data-ts-scenario="High Emissions" checked>
                                 High
                             </label>
                         </span>
@@ -868,6 +894,7 @@ def generate_html(
         filterText: '',
         showUncertainty: false,
         enabledScenarios: null,    // Set in initApp() after DATA loads
+        enabledHazards: new Set(), // Set in initApp() after DATA loads
 
         subscribers: [],
 
@@ -888,10 +915,19 @@ def generate_html(
     // Color scales
     const COLOR_SCALES = {{
         Raw_Hazard_Value: 'Viridis',
-        Percentile_Score: 'RdYlBu',
+        Percentile_Score: 'RdYlBu_r',  // Reversed: Blue(low risk) -> Red(high risk)
         Relative_Hazard_Score_Number: [[0, '#27ae60'], [0.25, '#2ecc71'], [0.5, '#f39c12'], [0.75, '#e67e22'], [1, '#e74c3c']],
         Decadal_Trend_Strength: 'RdBu',
         Decadal_Trend_Significance: 'YlOrRd_r'
+    }};
+
+    // Exact Plotly colorscale definitions for proper interpolation
+    const COLORSCALE_ARRAYS = {{
+        Viridis: [[0,'#440154'],[0.25,'#3b528b'],[0.5,'#21918c'],[0.75,'#5ec962'],[1,'#fde725']],
+        RdYlBu: [[0,'#a50026'],[0.1,'#d73027'],[0.2,'#f46d43'],[0.3,'#fdae61'],[0.4,'#fee090'],[0.5,'#ffffbf'],[0.6,'#e0f3f8'],[0.7,'#abd9e9'],[0.8,'#74add1'],[0.9,'#4575b4'],[1,'#313695']],
+        YlOrRd_r: [[0,'#800026'],[0.125,'#bd0026'],[0.25,'#e31a1c'],[0.375,'#fc4e2a'],[0.5,'#fd8d3c'],[0.625,'#feb24c'],[0.75,'#fed976'],[0.875,'#ffeda0'],[1,'#ffffcc']],
+        RdBu: [[0,'#67001f'],[0.1,'#b2182b'],[0.2,'#d6604d'],[0.3,'#f4a582'],[0.4,'#fddbc7'],[0.5,'#f7f7f7'],[0.6,'#d1e5f0'],[0.7,'#92c5de'],[0.8,'#4393c3'],[0.9,'#2166ac'],[1,'#053061']],
+        RdYlBu_r: [[0,'#313695'],[0.1,'#4575b4'],[0.2,'#74add1'],[0.3,'#abd9e9'],[0.4,'#e0f3f8'],[0.5,'#ffffbf'],[0.6,'#fee090'],[0.7,'#fdae61'],[0.8,'#f46d43'],[0.9,'#d73027'],[1,'#a50026']]
     }};
 
     const SELECTION_COLORS = ['#3498db', '#e74c3c', '#27ae60', '#9b59b6'];
@@ -903,10 +939,11 @@ def generate_html(
 
     // Helper functions
     function filterData() {{
-        // Always filter by BOTH decade AND scenario
+        // Always filter by decade, scenario, and enabled hazards
         return DATA.rows.filter(r => {{
             if (r.Decade != AppState.selectedDecade) return false;
             if (r.Scenario !== AppState.selectedScenario) return false;
+            if (!AppState.enabledHazards.has(r.Hazard_Measure)) return false;
             if (AppState.filterText) {{
                 const search = AppState.filterText.toLowerCase();
                 if (!r.Location.toLowerCase().includes(search)) return false;
@@ -981,7 +1018,13 @@ def generate_html(
         if (metric.includes('Trend_Strength')) {{
             return getTrendColorscale();
         }}
-        return COLOR_SCALES[metric] || 'Viridis';
+        const scaleName = COLOR_SCALES[metric] || 'Viridis';
+        // Return array from COLORSCALE_ARRAYS if it exists (for custom scales like RdYlBu_r)
+        // Otherwise return as-is (for Plotly built-ins or already-array scales)
+        if (typeof scaleName === 'string' && COLORSCALE_ARRAYS[scaleName]) {{
+            return COLORSCALE_ARRAYS[scaleName];
+        }}
+        return scaleName;
     }}
 
     function getMetricTitle(metric) {{
@@ -1035,6 +1078,19 @@ def generate_html(
                 AppState.update({{ selectedDecade: parseInt(btn.dataset.decade) }});
             }});
         }});
+    }}
+
+    function renderHazardToggles() {{
+        const container = document.getElementById('hazard-toggles');
+        container.innerHTML = DATA.metadata.hazards.map(hazard => `
+            <label>
+                <input type="checkbox"
+                       class="hazard-toggle"
+                       data-hazard="${{hazard}}"
+                       ${{AppState.enabledHazards.has(hazard) ? 'checked' : ''}}>
+                ${{getShortHazardName(hazard)}}
+            </label>
+        `).join('');
     }}
 
     function renderMap() {{
@@ -1255,76 +1311,73 @@ def generate_html(
         }}).join('');
     }}
 
-    function getColorFromScale(normalizedValue, metric, alpha) {{
-        const v = Math.max(0, Math.min(1, normalizedValue));
-        let r, g, b;
+    function hexToRgb(hex) {{
+        const result = /^#?([a-f\\d]{{2}})([a-f\\d]{{2}})([a-f\\d]{{2}})$/i.exec(hex);
+        return result ? {{
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        }} : {{ r: 0, g: 0, b: 0 }};
+    }}
 
-        if (metric === 'Relative_Hazard_Score_Number') {{
-            r = Math.round(39 + (231 - 39) * v);
-            g = Math.round(174 - (174 - 76) * v);
-            b = Math.round(96 - (96 - 60) * v);
-        }} else if (metric.includes('Trend_Strength')) {{
-            const higherIsBetter = deriveHigherIsBetter();
-            if (v < 0.5) {{
-                const t = v * 2;
-                if (higherIsBetter) {{
-                    // Red (negative=bad) to white
-                    r = Math.round(231 + (255 - 231) * t);
-                    g = Math.round(76 + (255 - 76) * t);
-                    b = Math.round(60 + (255 - 60) * t);
-                }} else {{
-                    // Green (negative=good) to white
-                    r = Math.round(39 + (255 - 39) * t);
-                    g = Math.round(174 + (255 - 174) * t);
-                    b = Math.round(96 + (255 - 96) * t);
-                }}
-            }} else {{
-                const t = (v - 0.5) * 2;
-                if (higherIsBetter) {{
-                    // White to green (positive=good)
-                    r = Math.round(255 - (255 - 39) * t);
-                    g = Math.round(255 - (255 - 174) * t);
-                    b = Math.round(255 - (255 - 96) * t);
-                }} else {{
-                    // White to red (positive=bad)
-                    r = Math.round(255 - (255 - 231) * t);
-                    g = Math.round(255 - (255 - 76) * t);
-                    b = Math.round(255 - (255 - 60) * t);
+    function interpolateColorscale(colorscale, normalizedValue) {{
+        const v = Math.max(0, Math.min(1, normalizedValue));
+
+        // Handle array colorscales (custom or from COLORSCALE_ARRAYS)
+        if (Array.isArray(colorscale)) {{
+            // Find the two stops to interpolate between
+            let lower = colorscale[0];
+            let upper = colorscale[colorscale.length - 1];
+
+            for (let i = 0; i < colorscale.length - 1; i++) {{
+                if (v >= colorscale[i][0] && v <= colorscale[i + 1][0]) {{
+                    lower = colorscale[i];
+                    upper = colorscale[i + 1];
+                    break;
                 }}
             }}
-        }} else if (metric === 'Percentile_Score') {{
-            // RdYlBu: Red (0) -> Yellow (0.5) -> Blue (1)
-            if (v < 0.5) {{
-                const t = v * 2;
-                r = Math.round(215 + (255 - 215) * t);  // 215 -> 255
-                g = Math.round(48 + (255 - 48) * t);    // 48 -> 255
-                b = Math.round(39 + (191 - 39) * t);    // 39 -> 191
-            }} else {{
-                const t = (v - 0.5) * 2;
-                r = Math.round(255 - (255 - 49) * t);   // 255 -> 49
-                g = Math.round(255 - (255 - 54) * t);   // 255 -> 54
-                b = Math.round(191 + (149 - 191) * t);  // 191 -> 149
-            }}
-        }} else if (metric === 'Decadal_Trend_Significance') {{
-            // YlOrRd_r: Red (0) -> Orange (0.5) -> Yellow (1)
-            if (v < 0.5) {{
-                const t = v * 2;
-                r = Math.round(189 + (254 - 189) * t);  // 189 -> 254
-                g = Math.round(0 + (128 - 0) * t);      // 0 -> 128
-                b = Math.round(38 + (0 - 38) * t);      // 38 -> 0
-            }} else {{
-                const t = (v - 0.5) * 2;
-                r = Math.round(254 + (255 - 254) * t);  // 254 -> 255
-                g = Math.round(128 + (255 - 128) * t);  // 128 -> 255
-                b = Math.round(0 + (178 - 0) * t);      // 0 -> 178
-            }}
-        }} else {{
-            r = Math.round(68 + (253 - 68) * v);
-            g = Math.round(1 + (231 - 1) * v);
-            b = Math.round(84 + (37 - 84) * v);
+
+            // Interpolate between the two stops
+            const range = upper[0] - lower[0];
+            const t = range > 0 ? (v - lower[0]) / range : 0;
+
+            // Parse hex colors and interpolate
+            const c1 = hexToRgb(lower[1]);
+            const c2 = hexToRgb(upper[1]);
+
+            return {{
+                r: Math.round(c1.r + (c2.r - c1.r) * t),
+                g: Math.round(c1.g + (c2.g - c1.g) * t),
+                b: Math.round(c1.b + (c2.b - c1.b) * t)
+            }};
         }}
 
-        return `rgba(${{r}},${{g}},${{b}},${{alpha}})`;
+        // For named scales, look up in COLORSCALE_ARRAYS
+        if (COLORSCALE_ARRAYS[colorscale]) {{
+            return interpolateColorscale(COLORSCALE_ARRAYS[colorscale], v);
+        }}
+
+        // Fallback to Viridis
+        return interpolateColorscale(COLORSCALE_ARRAYS.Viridis, v);
+    }}
+
+    function getColorFromScale(normalizedValue, metric, alpha) {{
+        let colorscale;
+
+        if (metric === 'Relative_Hazard_Score_Number') {{
+            colorscale = COLOR_SCALES.Relative_Hazard_Score_Number;
+        }} else if (metric.includes('Trend_Strength')) {{
+            colorscale = getTrendColorscale();
+        }} else if (metric === 'Percentile_Score') {{
+            colorscale = 'RdYlBu_r';
+        }} else if (metric === 'Decadal_Trend_Significance') {{
+            colorscale = 'YlOrRd_r';
+        }} else {{
+            colorscale = 'Viridis';
+        }}
+
+        const rgb = interpolateColorscale(colorscale, normalizedValue);
+        return `rgba(${{rgb.r}},${{rgb.g}},${{rgb.b}},${{alpha}})`;
     }}
 
     function renderTimeSeries() {{
@@ -1376,7 +1429,12 @@ def generate_html(
                 if (scenarioData.length === 0) return;
 
                 const style = SCENARIO_STYLES[scenario] || {{ dash: 'solid', width: 2 }};
-                const legendName = locName.split(' (')[0] + (shortHazard ? ` [${{shortHazard}}]` : '') + ' - ' + scenario;
+                // Legend format matches location list: "Name (type) [Hazard]" - no scenario
+                const typeMatch = locName.match(/\\((point|poly|region)\\)$/);
+                const locType = typeMatch ? typeMatch[1] : '';
+                const shortName = locName.split(' (')[0];
+                const legendName = shortName + (locType ? ` (${{locType}})` : '') + (shortHazard ? ` [${{shortHazard}}]` : '');
+                const displayName = legendName;  // For hover template
 
                 traces.push({{
                     type: 'scatter',
@@ -1385,6 +1443,10 @@ def generate_html(
                     mode: 'lines+markers',
                     name: legendName,
                     legendgroup: compositeKey,
+                    hovertemplate: '<b>' + displayName + '</b><br>' +
+                        'Scenario: ' + scenario + '<br>' +
+                        'Decade: %{{x}}s<br>' +
+                        AppState.selectedMetric.replace(/_/g, ' ') + ': %{{y:.4f}}<extra></extra>',
                     line: {{
                         color: color,
                         dash: style.dash,
@@ -1614,6 +1676,7 @@ def generate_html(
             AppState.selectedScenario = DATA.metadata.scenarios[0];
             AppState.tableScenario = DATA.metadata.scenarios[0];
             AppState.enabledScenarios = new Set(DATA.metadata.scenarios);
+            AppState.enabledHazards = new Set(DATA.metadata.hazards);
 
             // Update header
             document.getElementById('header-subtitle').textContent =
@@ -1665,6 +1728,19 @@ def generate_html(
                 }});
             }});
 
+            // Hazard filter toggles
+            document.getElementById('hazard-toggles').addEventListener('change', (e) => {{
+                if (e.target.classList.contains('hazard-toggle')) {{
+                    const hazard = e.target.dataset.hazard;
+                    if (e.target.checked) {{
+                        AppState.enabledHazards.add(hazard);
+                    }} else {{
+                        AppState.enabledHazards.delete(hazard);
+                    }}
+                    AppState.notify();
+                }}
+            }});
+
             // Location list checkbox event delegation (more robust than inline handlers)
             document.getElementById('location-list-table').addEventListener('change', (e) => {{
                 if (e.target.classList.contains('location-checkbox')) {{
@@ -1679,6 +1755,7 @@ def generate_html(
             AppState.subscribe(() => {{
                 renderDecadeSelector();
                 renderScenarioSelector();
+                renderHazardToggles();
                 renderMap();
                 renderLocationList();
                 renderTimeSeries();
@@ -1688,6 +1765,7 @@ def generate_html(
             // Initial render
             renderDecadeSelector();
             renderScenarioSelector();
+            renderHazardToggles();
             renderMap();
             renderLocationList();
             renderTimeSeries();
