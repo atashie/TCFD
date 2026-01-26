@@ -1,0 +1,88 @@
+{
+  "files": [
+    {
+      "name": "classic_gfdl-esm4_w5e5_ssp126_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp126_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "gcm": "gfdl-esm4",
+      "scenario": "ssp126",
+      "variable": "cveg-evgndltr"
+    },
+    {
+      "name": "classic_gfdl-esm4_w5e5_ssp126_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp126_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "gcm": "gfdl-esm4",
+      "scenario": "ssp126",
+      "variable": "npp-evgndltr"
+    },
+    {
+      "name": "classic_gfdl-esm4_w5e5_ssp370_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp370_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "gcm": "gfdl-esm4",
+      "scenario": "ssp370",
+      "variable": "cveg-evgndltr"
+    },
+    {
+      "name": "classic_gfdl-esm4_w5e5_ssp370_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp370_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "gcm": "gfdl-esm4",
+      "scenario": "ssp370",
+      "variable": "npp-evgndltr"
+    },
+    {
+      "name": "classic_gfdl-esm4_w5e5_ssp585_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp585_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "gcm": "gfdl-esm4",
+      "scenario": "ssp585",
+      "variable": "cveg-evgndltr"
+    },
+    {
+      "name": "classic_gfdl-esm4_w5e5_ssp585_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/gfdl-esm4/future/classic_gfdl-esm4_w5e5_ssp585_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "gcm": "gfdl-esm4",
+      "scenario": "ssp585",
+      "variable": "npp-evgndltr"
+    },
+    {
+      "name": "classic_ukesm1-0-ll_w5e5_ssp126_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp126_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "gcm": "ukesm1-0-ll",
+      "scenario": "ssp126",
+      "variable": "cveg-evgndltr"
+    },
+    {
+      "name": "classic_ukesm1-0-ll_w5e5_ssp126_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp126_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "gcm": "ukesm1-0-ll",
+      "scenario": "ssp126",
+      "variable": "npp-evgndltr"
+    },
+    {
+      "name": "classic_ukesm1-0-ll_w5e5_ssp370_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp370_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "gcm": "ukesm1-0-ll",
+      "scenario": "ssp370",
+      "variable": "cveg-evgndltr"
+    },
+    {
+      "name": "classic_ukesm1-0-ll_w5e5_ssp370_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp370_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "gcm": "ukesm1-0-ll",
+      "scenario": "ssp370",
+      "variable": "npp-evgndltr"
+    },
+    {
+      "name": "classic_ukesm1-0-ll_w5e5_ssp585_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp585_2015soc_default_cveg-evgndltr_global_annual_2015_2100.nc",
+      "gcm": "ukesm1-0-ll",
+      "scenario": "ssp585",
+      "variable": "cveg-evgndltr"
+    },
+    {
+      "name": "classic_ukesm1-0-ll_w5e5_ssp585_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "url": "https://files.isimip.org/ISIMIP3b/OutputData/biomes/CLASSIC/ukesm1-0-ll/future/classic_ukesm1-0-ll_w5e5_ssp585_2015soc_default_npp-evgndltr_global_monthly_2015_2100.nc",
+      "gcm": "ukesm1-0-ll",
+      "scenario": "ssp585",
+      "variable": "npp-evgndltr"
+    }
+  ]
+}

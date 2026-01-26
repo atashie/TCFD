@@ -91,6 +91,64 @@ pft_codes:
     # NOTE: No Quercus (oak) species available
 
 # -----------------------------------------------------------------------------
+# CROP CODES (AGRICULTURE SECTOR)
+# -----------------------------------------------------------------------------
+# IMPORTANT: Agriculture variables use compound names: {metric}-{crop}-{irrigation}
+# Examples: yield-bea-firr, anthday-mai-noirr, biom-soy-firr
+#
+# Irrigation suffixes:
+#   firr  = fully irrigated
+#   noirr = rainfed (no irrigation)
+#
+crop_codes:
+  isimip3b:
+    bea: "Dry beans (Phaseolus vulgaris)"
+    mai: "Maize"
+    mil: "Millet"
+    nut: "Groundnut"
+    pea: "Field peas"
+    rap: "Rapeseed"
+    ri1: "Rice (first growing period)"
+    ri2: "Rice (second growing period)"
+    sor: "Sorghum"
+    soy: "Soybean"
+    sgb: "Sugar beet"
+    sgc: "Sugarcane"
+    sun: "Sunflower"
+    swh: "Spring wheat"
+    wwh: "Winter wheat"
+    # NOTE: Code 'bea' for beans in ISIMIP3
+
+  isimip2a:
+    ben: "Dry beans (Phaseolus vulgaris)"
+    cot: "Cotton"
+    mai: "Maize"
+    ric: "Rice"
+    soy: "Soybean"
+    swh: "Spring wheat"
+    wwh: "Winter wheat"
+    # NOTE: Code 'ben' for beans in ISIMIP2a (different from ISIMIP3!)
+    # NOTE: Cotton (cot) only available in CLM-Crop model
+
+  isimip3a:
+    # Crop calendar inputs only (no simulation outputs)
+    cot: "Cotton"
+
+  available_metrics:
+    yield: "Crop yield (dry matter)"
+    biom: "Above-ground biomass"
+    anthday: "Anthesis (flowering) day"
+    matyday: "Maturity day"
+    plantday: "Planting day"
+    plantyear: "Planting year"
+    harvyear: "Harvest year"
+    aet: "Actual evapotranspiration"
+    gsprcp: "Growing season precipitation"
+    gsrsds: "Growing season solar radiation"
+    pirrww: "Irrigation water withdrawal"
+    sumt: "Growing degree days"
+
+# -----------------------------------------------------------------------------
 # SEARCH RESULTS BY VARIABLE
 # -----------------------------------------------------------------------------
 search_results:
@@ -99,13 +157,13 @@ search_results:
   # cwood searches
   # -------------------------
   cwood:
-    last_searched: "2026-01-15"
+    last_searched: "2026-01-20"
 
     isimip3b:
-      total_datasets: 1001
+      total_datasets: 38  # for dcdcldbdltr PFT specifically
       sectors: ["biomes"]
       impact_models: ["CLASSIC"]
-      climate_forcings: ["GFDL-ESM4"]
+      climate_forcings: ["GFDL-ESM4", "UKESM1-0-LL"]  # 2 GCMs available
       bias_adjustment: ["w5e5"]
       scenarios:
         climate: ["picontrol", "ssp126", "ssp370", "ssp585"]
@@ -289,6 +347,122 @@ search_results:
         coverage: "global"
       notes: "Historical vegetation carbon. Check ISIMIP3b for future projections."
 
+  # -------------------------
+  # beans (agriculture sector)
+  # -------------------------
+  beans:
+    last_searched: "2026-01-20"
+    notes: "Crop code differs by simulation round: 'bea' (ISIMIP3) vs 'ben' (ISIMIP2a)"
+
+    isimip3b:
+      total_datasets: ~300
+      sectors: ["agriculture"]
+      impact_models: ["LPJ-GUESS"]
+      climate_forcings: ["GFDL-ESM4"]
+      bias_adjustment: ["w5e5"]
+      scenarios:
+        climate: ["ssp126", "ssp585"]
+        soc: ["2015soc"]
+        sensitivity: ["2015co2", "default"]
+      temporal:
+        resolution: "annual-gs"
+        period: "2015-2100"
+      spatial:
+        resolution: "0.5 degree"
+        coverage: "global"
+      variables_available:
+        - yield-bea-firr
+        - yield-bea-noirr
+        - anthday-bea-firr
+        - anthday-bea-noirr
+        - matyday-bea-firr
+        - matyday-bea-noirr
+        - plantday-bea-firr
+        - plantday-bea-noirr
+        - plantyear-bea-firr
+        - plantyear-bea-noirr
+        - harvyear-bea-firr
+        - harvyear-bea-noirr
+      notes: "Use 'bea' crop code. Variables follow pattern: {metric}-bea-{irrigation}"
+
+    isimip2a:
+      total_datasets: ~90
+      sectors: ["agriculture"]
+      impact_models: ["CGMS-WOFOST", "LPJ-GUESS"]
+      climate_forcings: ["WATCH-WFDEI", "GSWP3", "Princeton"]
+      bias_adjustment: ["nobc"]
+      scenarios:
+        climate: ["hist"]
+        soc: ["co2"]
+      temporal:
+        resolution: "annual"
+        period: "1971-2012"
+      spatial:
+        resolution: "0.5 degree"
+        coverage: "global"
+      variables_available:
+        - yield-ben-firr-default
+        - yield-ben-noirr-default
+        - biom-ben-firr-default
+        - biom-ben-noirr-default
+        - anthday-ben-firr-default
+        - anthday-ben-noirr-default
+      notes: "Use 'ben' crop code (NOT 'bea'). Historical data only - no future projections."
+
+  # -------------------------
+  # cotton searches
+  # -------------------------
+  cotton:
+    last_searched: "2026-01-20"
+    notes: "Crop code 'cot'. Only available in ISIMIP2a (historical). No future projections in ISIMIP3b."
+
+    isimip2a:
+      total_datasets: 63
+      sectors: ["agriculture"]
+      impact_models: ["CLM-Crop"]
+      climate_forcings: ["WATCH-WFDEI"]
+      bias_adjustment: ["nobc"]
+      scenarios:
+        climate: ["hist"]
+        soc: ["co2"]
+      temporal:
+        resolution: "annual"
+        period: "1980-2012"
+      spatial:
+        resolution: "0.5 degree"
+        coverage: "global"
+      variables_available:
+        - yield-cot-firr-{default,fullharm,harmnon}
+        - yield-cot-noirr-{default,fullharm,harmnon}
+        - biom-cot-firr-{default,fullharm,harmnon}
+        - biom-cot-noirr-{default,fullharm,harmnon}
+        - aet-cot-{firr,noirr}-{default,fullharm,harmnon}
+        - gsprcp-cot-{firr,noirr}-{default,fullharm,harmnon}
+        - gsrsds-cot-{firr,noirr}-{default,fullharm,harmnon}
+        - sumt-cot-{firr,noirr}-{default,fullharm,harmnon}
+        - plantday-cot-{firr,noirr}-{default,fullharm,harmnon}
+        - matyday-cot-{firr,noirr}-{default,fullharm,harmnon}
+        - initr-cot-{firr,noirr}-{default,fullharm,harmnon}
+        - leach-cot-{firr,noirr}-{default,fullharm,harmnon}
+        - pirrww-cot-firr-{default,fullharm,harmnon}
+      notes: |
+        Historical data only (1980-2012). No future projections available.
+        CLM-Crop is the ONLY model with cotton in ISIMIP.
+        Harmonization variants: default (recommended), fullharm, harmnon.
+        Irrigation: firr (fully irrigated), noirr (rainfed).
+
+    isimip3a:
+      total_datasets: 2
+      type: "InputData (crop calendars only, not simulation outputs)"
+      files:
+        - ggcmi-crop-calendar-phase3_2015soc_cot_firr.nc
+        - ggcmi-crop-calendar-phase3_2015soc_cot_noirr.nc
+      notes: "Crop calendar inputs for cotton planting/harvest timing. Not yield data."
+
+    isimip3b:
+      total_datasets: 0
+      notes: "Cotton NOT simulated in ISIMIP3b. No future projections available."
+
 # -----------------------------------------------------------------------------
 # SEARCHES WITH NO/LIMITED RESULTS
 # -----------------------------------------------------------------------------
@@ -309,6 +483,12 @@ negative_results:
     searched: "2026-01-15"
     result: "No stem volume variable in ISIMIP"
     recommendation: "Derive from cwood using carbon-to-volume conversions"
+
+  cotton_future:
+    searched: "2026-01-20"
+    result: "No future cotton yield projections in ISIMIP3b"
+    historical_available: "Yes - ISIMIP2a CLM-Crop model (1980-2012), 63 datasets"
+    recommendation: "Use ISIMIP2a historical data for baseline. For future projections, consider proxy crops (sorghum, maize as C4 plants) or external sources (AgMIP, FAO)."
 
 # -----------------------------------------------------------------------------
 # GLOBAL MODELS (BIOMES SECTOR) - PREFERRED FOR CONSISTENCY
@@ -331,6 +511,31 @@ global_models:
       sectors: ["agriculture"]  # mainly agriculture in ISIMIP3b
       variables: ["yield"]
       notes: "Agriculture sector only in ISIMIP3b, not biomes"
+
+  isimip2a:
+    - name: "CLM-Crop"
+      description: "Community Land Model - Crop component"
+      sectors: ["agriculture"]
+      climate_forcings: ["WATCH-WFDEI"]
+      crops_available:
+        - cot  # Cotton (unique to this model in ISIMIP2a)
+        - mai
+        - ric
+        - soy
+        - swh
+        - wwh
+      variables: ["yield", "biom", "aet", "gsprcp", "gsrsds", "sumt", "plantday", "matyday", "initr", "leach", "pirrww"]
+      notes: "Only agriculture model with cotton. Uses harmonization suffixes: default, fullharm, harmnon"
+
+    - name: "CGMS-WOFOST"
+      description: "Crop Growth Monitoring System - World Food Studies"
+      sectors: ["agriculture"]
+      notes: "Does NOT include cotton"
+
+    - name: "LPJ-GUESS"
+      description: "Lund-Potsdam-Jena General Ecosystem Simulator"
+      sectors: ["agriculture"]
+      notes: "Does NOT include cotton"
 
 # -----------------------------------------------------------------------------
 # CLIMATE FORCINGS (GCMs)
@@ -356,6 +561,308 @@ climate_forcings:
     - WFDEI
 
 # -----------------------------------------------------------------------------
+# BIOMES SECTOR - COMPLETE MODEL REGISTRY
+# -----------------------------------------------------------------------------
+# This section documents ALL biomes models across simulation rounds with their
+# PFT (Plant Functional Type) naming schemes. Different models use different
+# PFT classifications - some generic, some climate-zone specific.
+#
+# ALWAYS CHECK MULTIPLE MODELS when searching for vegetation data.
+# Generic PFTs (like CLASSIC's evgndltr) may miss climate-specific data.
+
+biomes_models:
+
+  isimip3b:
+    CLASSIC:
+      full_name: "Canadian Land Surface Scheme Including Biogeochemical Cycles"
+      impactmodels_url: "https://www.isimip.org/impactmodels/details/170/"
+      pft_scheme: "generic"
+      pft_naming: "short-code"
+      climate_specificity: "NONE - all needleleaf combined"
+      pfts:
+        evgndltr: "Evergreen needleleaf trees (ALL conifers - boreal AND temperate)"
+        dcdndltr: "Deciduous needleleaf trees (larch)"
+        evgbdltr: "Evergreen broadleaf trees"
+        dcdcldbdltr: "Deciduous cold-climate broadleaf trees (temperate hardwoods)"
+        dcddrybdltr: "Deciduous dry-climate broadleaf trees"
+        c3grass: "C3 grasses"
+        c4grass: "C4 grasses"
+        c3crop: "C3 crops"
+        c4crop: "C4 crops"
+        total: "All PFTs combined"
+      variables: ["cwood", "cleaf", "cveg", "npp", "gpp", "ra", "rh", "burntarea"]
+      climate_forcings: ["GFDL-ESM4", "UKESM1-0-LL", "MPI-ESM1-2-HR", "IPSL-CM6A-LR", "MRI-ESM2-0"]
+      scenarios: ["ssp126", "ssp370", "ssp585", "picontrol"]
+      period: "2015-2100"
+      notes: |
+        WARNING: No climate-zone distinction in PFTs.
+        'evgndltr' includes BOTH boreal spruce AND temperate pine.
+        For climate-specific analysis, use CLM45 or MC2-USFS from ISIMIP3a/2b.
+
+  isimip3a:
+    MC2-USFS:
+      full_name: "MC2 Dynamic Global Vegetation Model - US Forest Service"
+      impactmodels_url: "https://www.isimip.org/impactmodels/details/282/"
+      pft_scheme: "biome-specific"
+      pft_naming: "concatenated-lowercase"
+      climate_specificity: "DETAILED - 47 biome-specific PFTs"
+      pfts:
+        # Needleleaf forest types (best for conifer analysis)
+        borealneedleleafforest: "Boreal needleleaf forest"
+        subalpineforest: "Subalpine forest"
+        maritimeevergreenneedleleafforest: "Maritime evergreen needleleaf forest"
+        mesictemperateneedleleafforest: "Mesic temperate needleleaf forest (LOBLOLLY PINE PROXY)"
+        moisttemperateneedleleafforest: "Moist temperate needleleaf forest"
+        drytemperateneedleleafforest: "Dry temperate needleleaf forest"
+        subtropicalevergreenneedleleafforest: "Subtropical evergreen needleleaf forest (SE US PROXY)"
+        subtropicalevergreenneedleleafwoodland: "Subtropical evergreen needleleaf woodland"
+        temperateevergreenneedleleafwoodland: "Temperate evergreen needleleaf woodland"
+        xericneedleleafwoodland: "Xeric needleleaf woodland"
+        # Boreal types
+        borealdeciduousforest: "Boreal deciduous forest"
+        borealwoodland: "Boreal woodland"
+        # Temperate broadleaf types
+        temperatedeciduousbroadleafforest: "Temperate deciduous broadleaf forest"
+        temperatedeciduousbroadleafwoodland: "Temperate deciduous broadleaf woodland"
+        coolmixedforest: "Cool mixed forest"
+        temperatewarmmixedforest: "Temperate warm mixed forest"
+        # Subtropical types
+        subtropicaldeciduousbroadleafforest: "Subtropical deciduous broadleaf forest"
+        subtropicalmixedforest: "Subtropical mixed forest"
+        subtropicalevergreenbroadleafwoodland: "Subtropical evergreen broadleaf woodland"
+        # Tropical types
+        tropicalevergreenbroadleafforest: "Tropical evergreen broadleaf forest"
+        # Grasslands and shrubs
+        c3grassland: "C3 grassland"
+        c4grassland: "C4 grassland"
+        c3shrub: "C3 shrub"
+        # Deserts
+        temperatedesert: "Temperate desert"
+        subtropicaldesert: "Subtropical desert"
+      variables: ["cwood", "cveg", "cvegag", "cvegbg", "cleaf", "croot", "csoil", "clitterag", "npp", "nbp", "lai", "burntarea", "ffire"]
+      climate_forcings: ["20crv3", "20crv3-era5", "20crv3-w5e5", "gswp3-w5e5"]
+      scenarios: ["obsclim", "counterclim"]  # Historical only - no future projections
+      period: "1901-2019"
+      notes: |
+        BEST for detailed biome-specific analysis.
+        47 distinct PFTs with climate-zone specificity.
+        Historical only - no SSP/RCP projections available.
+        For loblolly pine: use 'mesictemperateneedleleafforest' or 'subtropicalevergreenneedleleafforest'
+
+    CLM45:
+      full_name: "Community Land Model 4.5"
+      impactmodels_url: "https://www.isimip.org/impactmodels/details/198/"
+      pft_scheme: "climate-zone"
+      pft_naming: "hyphenated-descriptive"
+      climate_specificity: "GOOD - temperate vs boreal distinction"
+      pfts:
+        needleleaf-evergreen-tree-temperate: "Temperate needleleaf evergreen tree (LOBLOLLY PINE PROXY)"
+        needleleaf-evergreen-tree-boreal: "Boreal needleleaf evergreen tree"
+        needleleaf-deciduous-tree-boreal: "Boreal needleleaf deciduous tree (larch)"
+        broadleaf-evergreen-tree-tropical: "Tropical broadleaf evergreen tree"
+        broadleaf-evergreen-tree-temperate: "Temperate broadleaf evergreen tree"
+        broadleaf-deciduous-tree-tropical: "Tropical broadleaf deciduous tree"
+        broadleaf-deciduous-tree-temperate: "Temperate broadleaf deciduous tree"
+        broadleaf-deciduous-tree-boreal: "Boreal broadleaf deciduous tree"
+        broadleaf-evergreen-shrub-temperate: "Temperate broadleaf evergreen shrub"
+        broadleaf-deciduous-shrub-temperate: "Temperate broadleaf deciduous shrub"
+        broadleaf-deciduous-shrub-boreal: "Boreal broadleaf deciduous shrub"
+        c3-arctic-grass: "C3 arctic grass"
+        c3-non-arctic-grass: "C3 non-arctic grass"
+        c4-grass: "C4 grass"
+      variables: ["cveg", "gpp", "npp", "lai", "trans"]
+      climate_forcings: ["20crv3-era5", "20crv3-w5e5"]
+      scenarios: ["obsclim", "counterclim"]  # Historical only in ISIMIP3a
+      period: "1901-2019"
+      notes: |
+        Good climate-zone specificity with temperate vs boreal PFTs.
+        ISIMIP3a has historical data only.
+        See ISIMIP2b CLM45 for future projections (RCP scenarios).
+
+    VISIT:
+      full_name: "Vegetation Integrative SImulator for Trace gases"
+      impactmodels_url: "https://www.isimip.org/impactmodels/details/129/"
+      pft_scheme: "aggregated"
+      pft_naming: "none - aggregated output"
+      climate_specificity: "NONE - outputs not PFT-specific"
+      variables: ["npp", "gpp", "cveg", "csoil", "lai", "burntarea", "evap", "rh"]
+      notes: "Output variables are aggregated across all vegetation types, not PFT-specific."
+
+  isimip2b:
+    CLM45:
+      full_name: "Community Land Model 4.5"
+      impactmodels_url: "https://www.isimip.org/impactmodels/details/27/"
+      pft_scheme: "climate-zone"
+      pft_naming: "hyphenated-descriptive"
+      climate_specificity: "GOOD - temperate vs boreal distinction"
+      pfts:
+        needleleaf-evergreen-tree-temperate: "Temperate needleleaf evergreen tree"
+        needleleaf-evergreen-tree-boreal: "Boreal needleleaf evergreen tree"
+        needleleaf-deciduous-tree-boreal: "Boreal needleleaf deciduous tree"
+        broadleaf-evergreen-tree-tropical: "Tropical broadleaf evergreen tree"
+        broadleaf-evergreen-tree-temperate: "Temperate broadleaf evergreen tree"
+        broadleaf-deciduous-tree-tropical: "Tropical broadleaf deciduous tree"
+        broadleaf-deciduous-tree-temperate: "Temperate broadleaf deciduous tree"
+        broadleaf-deciduous-tree-boreal: "Boreal broadleaf deciduous tree"
+      variables: ["cveg", "gpp", "npp", "lai", "trans", "burntarea"]
+      climate_forcings: ["GFDL-ESM2M", "HadGEM2-ES", "IPSL-CM5A-LR", "MIROC5"]
+      scenarios: ["rcp26", "rcp60", "rcp85", "picontrol", "historical"]
+      period: "2006-2099 (future), 1661-1860 (picontrol)"
+      notes: |
+        BEST for future projections with climate-zone specificity.
+        Has RCP scenarios (2006-2099) with 4 GCMs.
+        For loblolly pine: use 'needleleaf-evergreen-tree-temperate'
+
+    LPJmL:
+      full_name: "Lund-Potsdam-Jena managed Land"
+      impactmodels_url: "https://www.isimip.org/impactmodels/details/81/"
+      pft_scheme: "climate-zone"
+      pft_naming: "hyphenated-descriptive"
+      climate_specificity: "GOOD - temperate vs boreal distinction"
+      pfts:
+        tropical-broadleaved-evergreen-tree: "Tropical broadleaved evergreen tree"
+        tropical-broadleaved-raingreen-tree: "Tropical broadleaved raingreen tree"
+        temperate-needleleaved-evergreen-tree: "Temperate needleleaved evergreen tree"
+        boreal-needleleaved-evergreen-tree: "Boreal needleleaved evergreen tree"
+        temperate-broadleaved-evergreen-tree: "Temperate broadleaved evergreen tree"
+        temperate-broadleaved-summergreen-tree: "Temperate broadleaved summergreen tree"
+        boreal-broadleaved-summergreen-tree: "Boreal broadleaved summergreen tree"
+        boreal-needleleaved-summergreen-tree: "Boreal needleleaved summergreen tree (larch)"
+      variables: ["pft"]  # Fractional cover output
+      climate_forcings: ["GFDL-ESM2M", "HadGEM2-ES", "IPSL-CM5A-LR", "MIROC5"]
+      scenarios: ["rcp26", "rcp60", "rcp85"]
+      period: "2006-2299"
+      sector: "permafrost"  # PFT data in permafrost sector, not biomes
+      notes: |
+        PFT fractional cover data available in permafrost sector.
+        Extended period to 2299 for some scenarios.
+        For loblolly pine: use 'temperate-needleleaved-evergreen-tree'
+
+    CARAIB:
+      full_name: "CARbon Assimilation In the Biosphere"
+      impactmodels_url: "https://www.isimip.org/impactmodels/details/11/"
+      pft_scheme: "functional-detailed"
+      pft_naming: "abbreviation"
+      climate_specificity: "PARTIAL - functional types, not climate zones"
+      pfts:
+        # Broadleaf types (brev = broadleaf evergreen, brsu = broadleaf summergreen)
+        brevdtt: "Broadleaved evergreen drought-tolerant tropical"
+        brevtrt: "Broadleaved evergreen tropical rainforest"
+        brevstdit: "Broadleaved evergreen subtropical drought-intolerant"
+        brevtecds: "Broadleaved evergreen temperate cool dry summer"
+        brevtewms: "Broadleaved evergreen temperate warm moist summer"
+        brsutecds: "Broadleaved summergreen temperate cool dry summer"
+        brsutecdt: "Broadleaved summergreen temperate cool dry temperate"
+        # Needleleaf types (NOT in published output - broadleaf focus)
+        # Grass types
+        c3dh: "C3 herbs dry"
+        c3hh: "C3 herbs humid"
+        c4h: "C4 herbs"
+        c3p: "C3 pasture"
+        c4p: "C4 pasture"
+      variables: ["npp", "cveg", "gpp", "burntarea", "clitter", "csoil"]
+      climate_forcings: ["GFDL-ESM2M", "HadGEM2-ES", "IPSL-CM5A-LR", "MIROC5"]
+      scenarios: ["rcp26", "rcp60", "rcp85", "picontrol"]
+      notes: |
+        Different PFT naming scheme than CLM45/LPJmL.
+        Published output focuses on broadleaf types - needleleaf PFTs defined but not in output.
+        Use for broadleaf analysis, not conifers.
+
+# -----------------------------------------------------------------------------
+# CROSS-MODEL PFT EQUIVALENCE TABLE
+# -----------------------------------------------------------------------------
+# Maps equivalent PFT concepts across different model naming schemes.
+# Use for multi-model ensemble analysis or when comparing model outputs.
+#
+# Equivalence is APPROXIMATE - models have different biophysical parameters.
+# Always note the source model when reporting results.
+
+pft_equivalences:
+
+  temperate_needleleaf_evergreen:
+    description: "Temperate zone evergreen conifers (pines, firs, Douglas fir)"
+    example_species: ["loblolly pine", "Douglas fir", "ponderosa pine", "longleaf pine"]
+    climate_zone: "Humid subtropical to warm temperate (25-45N latitude)"
+    model_codes:
+      CLASSIC: "evgndltr"  # WARNING: includes ALL needleleaf, not just temperate
+      CLM45: "needleleaf-evergreen-tree-temperate"
+      LPJmL: "temperate-needleleaved-evergreen-tree"
+      MC2-USFS:
+        - "mesictemperateneedleleafforest"      # Humid temperate - BEST for loblolly
+        - "subtropicalevergreenneedleleafforest" # SE US coastal - also good for loblolly
+        - "drytemperateneedleleafforest"        # Dry temperate
+        - "maritimeevergreenneedleleafforest"   # Coastal
+    best_for_loblolly_pine:
+      first_choice: "MC2-USFS subtropicalevergreenneedleleafforest or mesictemperateneedleleafforest"
+      with_future_scenarios: "CLM45 ISIMIP2b needleleaf-evergreen-tree-temperate"
+      generic_fallback: "CLASSIC evgndltr (but includes boreal data)"
+    notes: |
+      CLASSIC combines ALL needleleaf into single 'evgndltr' category.
+      For temperate-specific analysis, prefer CLM45, LPJmL, or MC2-USFS.
+      MC2-USFS provides most detailed subdivision (mesic/dry/maritime/subtropical).
+
+  boreal_needleleaf_evergreen:
+    description: "Boreal zone evergreen conifers (spruce, fir)"
+    example_species: ["black spruce", "white spruce", "Norway spruce", "balsam fir"]
+    climate_zone: "Boreal/taiga (50-70N latitude)"
+    model_codes:
+      CLASSIC: "evgndltr"  # WARNING: same code as temperate - no distinction!
+      CLM45: "needleleaf-evergreen-tree-boreal"
+      LPJmL: "boreal-needleleaved-evergreen-tree"
+      MC2-USFS: "borealneedleleafforest"
+    notes: |
+      CLASSIC does NOT distinguish boreal from temperate needleleaf.
+      For boreal-specific analysis, use CLM45, LPJmL, or MC2-USFS.
+
+  temperate_deciduous_broadleaf:
+    description: "Temperate zone deciduous hardwoods"
+    example_species: ["white oak", "red oak", "beech", "maple", "hickory"]
+    climate_zone: "Temperate (35-50N latitude)"
+    model_codes:
+      CLASSIC: "dcdcldbdltr"  # "cold-climate" = temperate
+      CLM45: "broadleaf-deciduous-tree-temperate"
+      LPJmL: "temperate-broadleaved-summergreen-tree"
+      MC2-USFS: "temperatedeciduousbroadleafforest"
+      CARAIB: "brsutecdt"
+    notes: |
+      Good cross-model agreement for this PFT.
+      CLASSIC 'dcdcldbdltr' is closest proxy for temperate oak.
+
+  boreal_deciduous_broadleaf:
+    description: "Boreal zone deciduous broadleaf"
+    example_species: ["aspen", "birch"]
+    climate_zone: "Boreal (50-65N latitude)"
+    model_codes:
+      CLASSIC: "dcdcldbdltr"  # WARNING: same as temperate deciduous
+      CLM45: "broadleaf-deciduous-tree-boreal"
+      LPJmL: "boreal-broadleaved-summergreen-tree"
+      MC2-USFS: "borealdeciduousforest"
+
+  tropical_evergreen_broadleaf:
+    description: "Tropical rainforest evergreen trees"
+    example_species: ["mahogany", "kapok", "rubber tree"]
+    climate_zone: "Tropical (0-23N/S latitude)"
+    model_codes:
+      CLASSIC: "evgbdltr"
+      CLM45: "broadleaf-evergreen-tree-tropical"
+      LPJmL: "tropical-broadleaved-evergreen-tree"
+      MC2-USFS: "tropicalevergreenbroadleafforest"
+      CARAIB: ["brevtrt", "brevdtt"]
+    notes: |
+      CARAIB distinguishes drought-tolerant vs rainforest tropical.
+
+  needleleaf_deciduous:
+    description: "Deciduous conifers (larch)"
+    example_species: ["Siberian larch", "European larch", "tamarack"]
+    climate_zone: "Boreal (50-70N latitude)"
+    model_codes:
+      CLASSIC: "dcdndltr"
+      CLM45: "needleleaf-deciduous-tree-boreal"
+      LPJmL: "boreal-needleleaved-summergreen-tree"
+      MC2-USFS: null  # Not a separate category
+    notes: "Primarily larch species. MC2-USFS doesn't separate deciduous needleleaf."
+
+# -----------------------------------------------------------------------------
 # USAGE NOTES
 # -----------------------------------------------------------------------------
 usage_notes:
@@ -363,3 +870,10 @@ usage_notes:
   - "ISIMIP2b forestry sector has species-level data but only for beech and conifers"
   - "Global biomes models preferred over regional forestry for cross-geography consistency"
   - "Dataset counts of 1001 indicate pagination limit; actual counts may differ"
+  - "Agriculture sector uses compound variable names: {metric}-{crop}-{irrigation}"
+  - "Bean crop code changed between rounds: 'ben' (ISIMIP2a) -> 'bea' (ISIMIP3)"
+  - "Search for crops using variable patterns like 'yield-bea' not just 'bea'"
+  - "Some crops are model-specific: cotton (cot) ONLY in CLM-Crop, not in CGMS-WOFOST or LPJ-GUESS"
+  - "Always check multiple models within a simulation round - crop coverage varies by model"
+  - "ISIMIP2a variable names include harmonization suffix: {metric}-{crop}-{irr}-{harm} (e.g., yield-cot-firr-default)"
+  - "When API returns 0 results, try partial matches or check older simulation rounds (ISIMIP2a/2b)"
