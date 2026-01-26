@@ -1,0 +1,40 @@
+Location,User-defined name
+Region,User-defined region
+Subregion,User-defined sub-region
+Lat,Decimal format latitude
+Lon,Decimal format longitude
+Hazard,"Which of the analyzed risks is being described
+Aggregate Climate Score: Average of the below hazards
+Acute: Drought, Hurricanes, Wildfire
+Yield by Asset Type
+Carbon Sequestration"
+Hazard_Measure,"How the risks are being measured
+(Weighted) Aggregate Score
+Carbon sequestration and yield by tree type (kg / m^2)
+Aridity Index (intensity of aridity [-])
+Burned Area (% area per yr)
+Root Zone Soil Moisture (mm per yr)
+Soil Moisture Drought Length (num months below 30% saturation)
+Streamflow Drought Intensity (intensity of river drought [-])
+Tropical Cyclones (% area impacted by hurricane force winds per yr)"
+Decade,Values provided from 2010 - 2090 decades
+Scenario,"Low SSP 1-2.4, Medium SSP 2-4.5, and High SSP4-8.5 Emissions Scenarios"
+Raw_Hazard_Value,Median value of the hazard (in units described in Hazard_Measure) for the given decade
+Percentile_Score,Translated raw hazard scores into 1-100 percentiles 
+Relative_Hazard_Score,Qualitative relative hazard score from very low to very high
+Decadal_Trend_Strength,How strong (units / decade) is the trend through a given decade
+Decadal_Trend_Significance,How significant (p-value) is the trend through a given decade
+Long_Term_Trend_Strength,How strong (units / decade) is the overall trend across all decades
+Long_Term_Trend_Significance,How significant (p-value) is the overall trend across all decades
+Relative_Hazard_Score_Number,Numeric represenation of the relative hazard score (1-5)
+Trend_Aggregated_For_Looker,N/A
+Advanced_Data_Measures,"(Optional) specific threshold used to quantify hazard (e.g., ""below X degrees C"" or ""above Y mm Precip""); usually N/A for most measures "
+Advanced_Data_Measures_Units,"(Optional) specific units of an advanced data measure (e.g., ""# of days"" or ""cumulative degree days""); usually N/A for most measures"
+Raw_Hazard_Value_25th,25th percentile of the hazard (in units described in Hazard_Measure) for the given decade
+Raw_Hazard_Value_75th,75th percentile of the hazard (in units described in Hazard_Measure) for the given decade
+Asset_Type,General asset type (e.g. Timber)
+Sub-Asset_Unit,Specific asset type (e.g. Broadleaf Drought Deciduous Trees)
+Country,Country
+State,State
+City,City
+Rating,Overall risk rating compared to other locations analyzed
