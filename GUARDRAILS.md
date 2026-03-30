@@ -132,3 +132,42 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 
 **Implementation**: `scripts/generate_maps.py` uses symmetric scaling for both trend maps (lines 602-610) and change maps (lines 761-765).
 
+---
+
+## 6. Water Index Is a Separate Workflow From Standard TCFD
+
+**Rule**: The water risk index (`waterIndexUnderlyingData_*.nc`, 20 value types) is a **completely independent data product** from the standard TCFD annualized pipeline (6 value classes). **NEVER apply standard TCFD pipeline concepts** (kernel smoothing, Theil-Sen trends, percentile-of-score ranking, shared 2020s baseline) to the water index workflow.
+
+**Why this matters**:
+- The standard TCFD pipeline produces 6 value classes: smoothed median, percentile score, trend, significance, lower/upper CI bounds
+- The water index produces 20 value types: 12 monthly ensemble means + annual mean + 7 annual quantile breakpoints (Q05-Q95)
+- These are fundamentally different statistical approaches — confusing them produces incorrect output
+- The R code that generated the original water index files was NOT found in `_deprecated/` — it was a separate codebase
+
+**Required behavior**:
+- Water index scripts: `process_water_tws.py`, `process_water_variable.py`, `config_water_*.py`, `validate_water_tws.py`, `compare_water_index.py`, `download_water_*.py`, `diagnose_*_models.py`
+- Standard TCFD scripts: `process_qg.py`, `process_fish_*.py`, `process_health_*.py`, `generate_maps.py`, `isimip-pipeline` CLI
+- Never import functions from one workflow into the other
+- Never apply `/isimip-process-visualize` skill to water index processing
+
+---
+
+## 7. Water Index Value Types Must Follow the 20-Type Format
+
+**Rule**: Water index output files MUST have exactly 20 value_types with this specific structure:
+- **vt 0-11**: Per-month ensemble means (Jan-Dec) within each decade
+- **vt 12**: Annual mean (= mean of vt 0-11, NOT a smoothed median)
+- **vt 13-19**: Annual quantile breakpoints Q05, Q15, Q25, Q50, Q75, Q85, Q95
+
+**Why this matters**:
+- The water index requires seasonal cycle information (vt 0-11) for downstream risk assessment
+- Quantile breakpoints (vt 13-19) capture ensemble spread in physical units, not derived statistics
+- vt 12 is simply the mean of the 12 monthly means — no smoothing, no kernel, no special processing
+- Quantiles are computed by pooling raw annual values across all ensemble members and years within the decade
+
+**Required behavior**:
+- Quantiles MUST be monotonically non-decreasing: Q05 <= Q15 <= Q25 <= Q50 <= Q75 <= Q85 <= Q95
+- vt 12 MUST exactly equal `np.nanmean(vt0:vt12)` — validated by `validate_water_tws.py`
+- Annual values for quantiles are aggregated using the variable-specific method (mean for stocks, sum for fluxes)
+- No kernel smoothing, no Theil-Sen trends, no percentile-of-score ranking in this workflow
+
