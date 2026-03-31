@@ -23,13 +23,18 @@ Processes monthly ISIMIP data for 6 water variables into per-month ensemble mean
 - **Output**: `C:\Cai_data\WaterIndex\waterIndexUnderlyingData_{var}_ssp.nc` — dimensions `(lat=360, lon=720, scenario=3, value_type=20, decade=9)`
 - **Tooling**: Standalone scripts only (NOT the `isimip-pipeline` CLI)
 - **Key concepts**: Per-month ensemble means (vt 0-11), annual mean (vt 12), annual quantile breakpoints Q05-Q95 (vt 13-19). No trends, no percentile scoring, no kernel smoothing.
-- **Normalization**: Robust z-score per impact model (median/IQR from 2015-2024 reference period → target mean=1000, SD=200) applied before ensemble averaging to align models with different baseline assumptions.
+- **Normalization**: Robust z-score per impact model (median/IQR from 2015-2024 reference period → target mean=1000, SD=200) applied before ensemble averaging **only when model scales diverge significantly** (e.g., TWS). Per-variable decision documented in memory.
 - **QA/QC**: `validate_water_tws.py` (quantile ordering, annual mean consistency, seasonal sanity, cross-scenario checks); `compare_water_index.py` (trend-focused RCP vs SSP HTML comparison with Theil-Sen slope maps and spatial Spearman R²)
+- **Units**: Output units match the original RCP files for each variable. See `config_water_variables.py` for per-variable `unit_conversion_factor`.
 
-| Variable | Aggregation | Notes |
-|----------|-------------|-------|
-| tws, rootmoist | **mean** | Stock variables |
-| dis, qr, potevap, precip | **sum** | Flux variables (kg/m2/s → mm/month) |
+| Variable | Aggregation | Output Units | Notes |
+|----------|-------------|--------------|-------|
+| tws | **mean** | kg m-2 (normalized) | Stock; 4 models, normalized to synthetic units |
+| rootmoist | **mean** | % max capacity | Stock; WEB-DHM-SG only (÷1187.29 × 100) |
+| qr | **sum** | kg m-2 s-1 | Flux; 4 models, raw ISIMIP units, no normalization |
+| dis | **mean** | m3 s-1 | TODO |
+| potevap | **sum** | kg m-2 s-1 | Flux; 4 models, h08 selectively normalized to reference ensemble (cwatm/miroc/watergap2-2e) |
+| precip | **sum** | TBD | TODO — climate forcing InputData, not model output |
 
 ## Project Structure
 
@@ -47,7 +52,8 @@ TCFD/
 │   ├── process_water_*.py    # Water: processing scripts
 │   ├── validate_water_tws.py # Water: QA/QC validation
 │   ├── compare_water_index.py # Water: RCP vs SSP comparison report
-│   └── diagnose_tws_models.py # Water: model distribution diagnostics
+│   ├── diagnose_tws_models.py # Water: model distribution diagnostics
+│   └── download_water_*.py    # Water: per-variable ISIMIP download scripts
 │
 ├── config/                   # ISIMIP search catalog cache
 ├── data/                     # Raw + processed data (gitignored)

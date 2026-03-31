@@ -73,7 +73,7 @@ def compute_normalization_stats(
         with open(cache_path) as f:
             stats = json.load(f)
         for model, s in stats.items():
-            log(f"  {model}: median={s['median']:.1f}, IQR={s['iqr']:.1f}")
+            log(f"  {model}: median={s['median']:.4g}, IQR={s['iqr']:.4g}")
         return stats
 
     ref_start, ref_end = ref_years
@@ -135,8 +135,8 @@ def compute_normalization_stats(
                 "p75": p75,
                 "n": int(len(pooled)),
             }
-            log(f"    {model}: median={median:.1f}, IQR={iqr:.1f} "
-                f"(P25={p25:.1f}, P75={p75:.1f}, n={len(pooled):,})")
+            log(f"    {model}: median={median:.4g}, IQR={iqr:.4g} "
+                f"(P25={p25:.4g}, P75={p75:.4g}, n={len(pooled):,})")
         else:
             log(f"    WARNING: no data for {model}")
 
@@ -157,7 +157,11 @@ def apply_normalization(
     target_mean: float = NORM_TARGET_MEAN,
     target_sd: float = NORM_TARGET_SD,
 ) -> np.ndarray:
-    """Apply robust z-score normalization: target_mean + (value - median) / IQR * target_sd."""
+    """Apply robust z-score normalization: target_mean + (value - median) / IQR * target_sd.
+
+    When normalizing a single outlier model to the ensemble, set target_mean and
+    target_sd to the reference models' pooled median and IQR respectively.
+    """
     if model_iqr <= 0:
         return data
     return target_mean + (data - model_median) / model_iqr * target_sd
@@ -378,7 +382,9 @@ class WaterVariableProcessor:
                     if self.norm_stats and model in self.norm_stats:
                         ms = self.norm_stats[model]
                         da_chunk = da_chunk.copy(data=apply_normalization(
-                            da_chunk.values, ms["median"], ms["iqr"]))
+                            da_chunk.values, ms["median"], ms["iqr"],
+                            target_mean=ms.get("target_mean", NORM_TARGET_MEAN),
+                            target_sd=ms.get("target_sd", NORM_TARGET_SD)))
 
                     ensemble_monthly.append(da_chunk)
 
@@ -461,7 +467,7 @@ class WaterVariableProcessor:
             "title": f"Water Index Underlying Data - {self.var.long_name}",
             "variable": self.var.name,
             "variable_long_name": self.var.long_name,
-            "units": "normalized (robust z-score)" if self.norm_stats else self.var.units_output,
+            "units": self.var.units_output,
             "units_raw": self.var.units_raw,
             "source": self.var.simulation_round,
             "scenarios": ", ".join(scenarios),
@@ -478,12 +484,13 @@ class WaterVariableProcessor:
             attrs["normalization_formula"] = (
                 "target_mean + (value - model_median) / model_IQR * target_sd"
             )
-            attrs["normalization_target_mean"] = float(NORM_TARGET_MEAN)
-            attrs["normalization_target_sd"] = float(NORM_TARGET_SD)
             attrs["normalization_ref_period"] = f"{NORM_REF_YEARS[0]}-{NORM_REF_YEARS[1]}"
+            attrs["normalization_models_normalized"] = ", ".join(sorted(self.norm_stats.keys()))
             for model, s in self.norm_stats.items():
                 attrs[f"normalization_{model}_median"] = s["median"]
                 attrs[f"normalization_{model}_iqr"] = s["iqr"]
+                attrs[f"normalization_{model}_target_mean"] = s.get("target_mean", NORM_TARGET_MEAN)
+                attrs[f"normalization_{model}_target_sd"] = s.get("target_sd", NORM_TARGET_SD)
 
         ds = xr.Dataset(
             {
@@ -625,6 +632,12 @@ def main():
         help="Enable per-model robust z-score normalization before ensemble averaging",
     )
     parser.add_argument(
+        "--normalize-models", type=str, default=None,
+        help=("Comma-separated list of models to normalize (others become the reference). "
+              "Target median/IQR are derived from the reference models. "
+              "E.g., --normalize-models h08 normalizes only h08 to match the other models."),
+    )
+    parser.add_argument(
         "--norm-cache", type=Path, default=None,
         help="Path to cache normalization statistics JSON (default: data/normalization_stats_{var}.json)",
     )
@@ -650,11 +663,7 @@ def main():
 
     # Normalization pre-pass (if requested)
     norm_stats = None
-    if args.normalize:
-        log("\n--- Model Normalization ---")
-        log(f"Reference period: {NORM_REF_YEARS[0]}-{NORM_REF_YEARS[1]}")
-        log(f"Target: mean={NORM_TARGET_MEAN}, SD={NORM_TARGET_SD}")
-
+    if args.normalize or args.normalize_models:
         # Need to discover files first for normalization stats
         temp_processor = WaterVariableProcessor(var_config)
         inventory = temp_processor.discover_files(data_dir)
@@ -663,11 +672,50 @@ def main():
             sys.exit(1)
 
         norm_cache = args.norm_cache or (PROJECT_ROOT / "data" / f"normalization_stats_{var_config.name}.json")
-        norm_stats = compute_normalization_stats(
+        all_stats = compute_normalization_stats(
             inventory, var_config.name, cache_path=norm_cache)
-        if not norm_stats:
+        if not all_stats:
             log("WARNING: No normalization stats computed, proceeding without normalization")
-            norm_stats = None
+        elif args.normalize_models:
+            # Selective normalization: normalize only specified models,
+            # using the other models' pooled stats as target
+            models_to_normalize = [m.strip() for m in args.normalize_models.split(",")]
+            reference_models = [m for m in all_stats if m not in models_to_normalize]
+
+            if not reference_models:
+                log("ERROR: --normalize-models includes all models, no reference models left!")
+                sys.exit(1)
+
+            # Pool reference models' values to get target median/IQR
+            ref_medians = [all_stats[m]["median"] for m in reference_models]
+            ref_iqrs = [all_stats[m]["iqr"] for m in reference_models]
+            target_median = float(np.median(ref_medians))
+            target_iqr = float(np.median(ref_iqrs))
+
+            log(f"\n--- Selective Model Normalization ---")
+            log(f"Models to normalize: {', '.join(models_to_normalize)}")
+            log(f"Reference models: {', '.join(reference_models)}")
+            log(f"Target (from reference): median={target_median:.4g}, IQR={target_iqr:.4g}")
+
+            norm_stats = {}
+            for model in models_to_normalize:
+                if model not in all_stats:
+                    log(f"WARNING: {model} not found in stats, skipping")
+                    continue
+                norm_stats[model] = {
+                    **all_stats[model],
+                    "target_mean": target_median,
+                    "target_sd": target_iqr,
+                }
+                ms = all_stats[model]
+                log(f"  {model}: median={ms['median']:.4g}, IQR={ms['iqr']:.4g} "
+                    f"-> target median={target_median:.4g}, IQR={target_iqr:.4g}")
+        else:
+            # Full normalization (all models to synthetic target)
+            log(f"\n--- Model Normalization ---")
+            log(f"Reference period: {NORM_REF_YEARS[0]}-{NORM_REF_YEARS[1]}")
+            log(f"Target: mean={NORM_TARGET_MEAN}, SD={NORM_TARGET_SD}")
+            norm_stats = all_stats
 
     processor = WaterVariableProcessor(var_config, norm_stats=norm_stats)
     processor.run(data_dir, output_path, args.chunk_size)
