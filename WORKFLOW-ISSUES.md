@@ -158,6 +158,20 @@ The per-scenario file loading loop only tried scenarios in this dictionary, so r
 
 ---
 
+### 2026-03-31: Comparison Report Maps Blank for Small-Valued Variables
+
+**What happened**: After reprocessing qr in raw kg/m²/s units (values ~10⁻⁶), the `compare_water_index.py` HTML report showed all maps as blank/zero.
+
+**Root cause**: `_subsample()` used `np.round(arr, 2)` — fixed 2 decimal places. Values of 0.000005 kg/m²/s round to 0.00.
+
+**Impact**: All heatmap panels in the comparison report appeared empty. Statistical tables and correlations were unaffected (computed before rounding).
+
+**Fix applied**: Changed `_subsample()` to use adaptive significant-figure rounding (4 sig figs based on `max_abs` of the array) instead of fixed decimal places. `compare_water_index.py` line 170.
+
+**Lesson**: Avoid fixed decimal rounding in generic visualization code — use significant figures when data scale varies across variables.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

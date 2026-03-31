@@ -32,7 +32,7 @@ Processes monthly ISIMIP data for 6 water variables into per-month ensemble mean
 | tws | **mean** | kg m-2 (normalized) | Stock; 4 models, normalized to synthetic units |
 | rootmoist | **mean** | % max capacity | Stock; WEB-DHM-SG only (÷1187.29 × 100) |
 | qr | **sum** | kg m-2 s-1 | Flux; 4 models, raw ISIMIP units, no normalization |
-| dis | **mean** | m3 s-1 | TODO |
+| dis | **mean** | m3 s-1 | Stock; 5 models, no normalization, raw ISIMIP units |
 | potevap | **sum** | kg m-2 s-1 | Flux; 4 models, h08 selectively normalized to reference ensemble (cwatm/miroc/watergap2-2e) |
 | precip | **sum** | TBD | TODO — climate forcing InputData, not model output |
 

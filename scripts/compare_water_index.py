@@ -167,7 +167,18 @@ def compute_pixel_trends(
 # ---------------------------------------------------------------------------
 
 def _subsample(arr2d: np.ndarray, step: int = SPATIAL_STEP) -> np.ndarray:
-    return np.round(arr2d[::step, ::step], 2)
+    sub = arr2d[::step, ::step]
+    # Round to 4 significant figures instead of fixed decimal places,
+    # so small values (e.g., 1e-6 kg/m2/s) are not truncated to zero.
+    valid = sub[~np.isnan(sub)]
+    if len(valid) == 0:
+        return sub
+    max_abs = np.max(np.abs(valid))
+    if max_abs == 0:
+        return sub
+    # Number of decimal places to keep 4 significant figures
+    decimals = max(0, int(4 - np.floor(np.log10(max_abs))) - 1)
+    return np.round(sub, decimals)
 
 
 def _to_list(arr2d: np.ndarray):
