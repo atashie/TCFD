@@ -168,6 +168,6 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 **Required behavior**:
 - Quantiles MUST be monotonically non-decreasing: Q05 <= Q15 <= Q25 <= Q50 <= Q75 <= Q85 <= Q95
 - vt 12 MUST exactly equal `np.nanmean(vt0:vt12)` — validated by `validate_water_tws.py`
-- Annual values for quantiles are aggregated using the variable-specific method (mean for stocks, sum for fluxes)
+- Annual values for quantiles are **always aggregated using mean** (matching vt12 units), regardless of whether the variable is a stock or flux. Summing monthly rate values (kg/m²/s) produces values ~12× the rate, breaking units consistency with vt0-12. See WORKFLOW-ISSUES.md 2026-04-07 incident.
 - No kernel smoothing, no Theil-Sen trends, no percentile-of-score ranking in this workflow
 

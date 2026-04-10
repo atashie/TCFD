@@ -172,6 +172,33 @@ The per-scenario file loading loop only tried scenarios in this dictionary, so r
 
 ---
 
+### 2026-04-07: Quantile Breakpoints 12x Too Large for Flux Variables
+
+**What happened**: The annual quantile breakpoints (vt13-19) for flux variables (potevap, qr) were computed by **summing** 12 monthly rate values instead of averaging them. Since the output is stored in raw rate units (kg/m²/s), this produced quantiles ~12× larger than the annual mean (vt12).
+
+**Root cause**: In `process_water_variable.py` lines 436-439, the quantile annual aggregation branched on `self.var.aggregation`:
+```python
+if self.var.aggregation == "mean":
+    annual = subset.groupby("time.year").mean(dim="time")
+else:
+    annual = subset.groupby("time.year").sum(dim="time")
+```
+For flux variables with `aggregation="sum"` (potevap, qr), this summed the 12 monthly rates. But vt12 (annual mean) was correctly computed as `nanmean(vt0-11)`, creating an internal units inconsistency.
+
+**Evidence**: At (0°N, 30°E) for potevap ssp370 decade 2050:
+- vt12 (Annual Mean) = 4.252e-05 kg/m²/s
+- vt16 (Annual Q50) = 5.064e-04 kg/m²/s (before fix)
+- Ratio vt16/vt12 = 11.91 ≈ 12 (number of months)
+- Old RCP file had consistent Q50 ≈ Annual Mean
+
+**Impact**: Broken quantile breakpoints (vt13-19) in both potevap and qr SSP output files. Monthly means (vt0-11) and annual mean (vt12) were unaffected.
+
+**Fix applied**: Changed quantile computation to always use `.mean()`, keeping all 20 value types in consistent rate units. Both potevap and qr reprocessed and comparison reports regenerated. Confirmed post-fix: potevap vt16/vt12 = 0.992, qr vt16/vt12 = 0.761 (right-skewed, expected).
+
+**Rule updated**: GUARDRAILS.md Section 7 — clarified that quantile annual aggregation always uses mean to match vt12 units.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

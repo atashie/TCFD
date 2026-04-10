@@ -433,10 +433,9 @@ class WaterVariableProcessor:
                         if len(subset.time) == 0:
                             continue
 
-                        if self.var.aggregation == "mean":
-                            annual = subset.groupby("time.year").mean(dim="time")
-                        else:
-                            annual = subset.groupby("time.year").sum(dim="time")
+                        # Always use mean to keep quantiles in the same
+                        # units as vt0-12 (rate units for flux variables).
+                        annual = subset.groupby("time.year").mean(dim="time")
 
                         # annual has shape (n_years_this_member, lat_chunk, lon)
                         member_annual_values.append(annual.values)

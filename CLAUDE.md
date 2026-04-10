@@ -22,7 +22,7 @@ Processes monthly ISIMIP data for 6 water variables into per-month ensemble mean
 - **Purpose**: Water risk scoring (total water storage, discharge, runoff, evapotranspiration, soil moisture, precipitation)
 - **Output**: `C:\Cai_data\WaterIndex\waterIndexUnderlyingData_{var}_ssp.nc` — dimensions `(lat=360, lon=720, scenario=3, value_type=20, decade=9)`
 - **Tooling**: Standalone scripts only (NOT the `isimip-pipeline` CLI)
-- **Key concepts**: Per-month ensemble means (vt 0-11), annual mean (vt 12), annual quantile breakpoints Q05-Q95 (vt 13-19). No trends, no percentile scoring, no kernel smoothing.
+- **Key concepts**: Per-month ensemble means (vt 0-11), annual mean (vt 12), annual quantile breakpoints Q05-Q95 (vt 13-19). Quantile annual aggregation always uses mean (not sum) to keep vt 13-19 in same units as vt 0-12. No trends, no percentile scoring, no kernel smoothing.
 - **Normalization**: Robust z-score per impact model (median/IQR from 2015-2024 reference period → target mean=1000, SD=200) applied before ensemble averaging **only when model scales diverge significantly** (e.g., TWS). Per-variable decision documented in memory.
 - **QA/QC**: `validate_water_tws.py` (quantile ordering, annual mean consistency, seasonal sanity, cross-scenario checks); `compare_water_index.py` (trend-focused RCP vs SSP HTML comparison with Theil-Sen slope maps and spatial Spearman R²)
 - **Units**: Output units match the original RCP files for each variable. See `config_water_variables.py` for per-variable `unit_conversion_factor`.
