@@ -166,10 +166,28 @@ search_results:
     exposure_lange2020:
       description: "Pre-computed extreme-event exposure (Lange et al. 2020, Earth's Future). Drought = land fraction where monthly soil moisture falls below the 2.5th percentile of the preindustrial baseline."
       type: "DerivedOutputData (annual, ready to process)"
-      variables:
-        led: "Land area annually exposed to drought"
-        lec: "Land area annually exposed to crop failure (companion; GEPIC model)"
-        # population-exposed companions also exist in the lange2020 set for 6 hazard categories
+      # AUTHORITATIVE ENUMERATED FAMILY — verified 2026-07-24 via paginated datasets API.
+      # Lange 2020 covers SIX hazard categories; the code is always 'le' + ONE letter.
+      # DO NOT GUESS codes. A prior session guessed 'letc' for tropical cyclone, got 0
+      # hits, and wrongly concluded TC exposure didn't exist — the real code is 'let'.
+      # This family ALSO answers searches for tropical-cyclone / heatwave / river-flood /
+      # wildfire / crop-failure exposure, not only drought.
+      family:
+        led: {hazard: "drought",         datasets: 219, impact_models: "8 GHM/land (clm45,h08,jules-w1,lpjml,mpi-hm,orchidee,pcr-globwb,watergap2)", data_nature: "binary {0,1} per cell (verified)"}
+        ler: {hazard: "river flood",     datasets: 218, impact_models: "8 GHM/land (same set as led)"}
+        lew: {hazard: "wildfire",        datasets: 134, impact_models: "multiple (caraib, ...)"}
+        lec: {hazard: "crop failure",    datasets: 90,  impact_models: "gepic"}
+        leh: {hazard: "heatwave",        datasets: 30,  impact_models: "hwmid-humidex (derived index)"}
+        let: {hazard: "tropical cyclone", datasets: 28, impact_models: "ke-tg-meanfield (Emanuel KE wind model, derived)", data_nature: "FRACTIONAL area [0,1) per cell (verified 2026-07-24, NOT binary); 1 impact model x 4 GCMs = thin ensemble -> spatial smoothing applied"}
+      not_real: ["letc", "lecdd", "letr"]  # guessed codes; each returns 0 hits
+      common_coverage:  # identical across all six members
+        product: "DerivedOutputData"
+        simulation_round: "ISIMIP2b only (NO ISIMIP3b/SSP version of this family)"
+        climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]  # 4 CMIP5 GCMs
+        scenarios: ["historical", "picontrol", "rcp26", "rcp60"]  # NO rcp85, NO SSP
+        timestep: "annual"
+        grid: "global 0.5deg"
+        data_nature: "VARIES BY HAZARD -- value-check each member before processing. led=binary{0,1} (verified), let=fractional[0,1) (verified 2026-07-24), ler/lew/lec/leh=UNVERIFIED. Decadal stat = MEAN either way (mean of binary flags OR mean of fractional area = expected annual exposed-area fraction)."
       isimip2b:
         led:
           # TRUE coverage via paginated API (CLI listing caps at 20): 219 datasets.
@@ -188,9 +206,13 @@ search_results:
           timestep: "annual"
           datasets_seen: ">=20 (listing capped)"
       notes: |
-        Most "drought-specific" off-the-shelf product in ISIMIP. Caveat: indexed
-        results are all ISIMIP2b (EWEMBI, RCP, older CMIP5 GCMs), annual, rcp26/rcp60
-        only. ISIMIP3b/SSP version of led NOT yet confirmed - needs targeted check.
+        Most "drought-specific" off-the-shelf product in ISIMIP, and the whole family
+        (led/ler/lew/lec/leh/let) shares the same structure so any member is processable
+        with an adapted process_led_drought.py. All ISIMIP2b (EWEMBI, RCP, CMIP5 GCMs),
+        annual, rcp26/rcp60 only. ISIMIP3b/SSP version of this family NOT found (0 hits).
+        Processing status: led=DONE, let=DONE (2026-07-24; let uses 5x5 spatial
+        smoothing + two-tier zero-inflated percentile, see process_let_cyclone.py).
+        ler/lew/lec/leh remaining -- value-check binary-vs-fractional before each.
 
     hydrologic_building_blocks:
       description: "Raw water-sector variables for computing hydrological/agricultural drought. Most are ALREADY pulled/processed in the Water Risk Index."

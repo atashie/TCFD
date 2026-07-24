@@ -170,3 +170,39 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 - Annual values for quantiles are **always aggregated using mean** (matching vt12 units), regardless of whether the variable is a stock or flux. Summing monthly rate values (kg/m²/s) produces values ~12× the rate, breaking units consistency with vt0-12. See WORKFLOW-ISSUES.md 2026-04-07 incident.
 - No kernel smoothing, no Theil-Sen trends, no percentile-of-score ranking in this workflow
 
+---
+
+## 8. Never Guess Specifier Codes — Enumerate; Treat count=0 / count=1001 as Triggers
+
+**Rule**: ISIMIP specifiers (variable codes, PFTs, crops, size classes, hazard-exposure codes) are a **controlled vocabulary**. **Never conclude a variable does or doesn't exist from a guessed code.** Enumerate the actual family, and treat both an empty and a maxed-out result count as a signal to verify further — never as a final answer.
+
+**Why this matters**:
+- A plausible-looking code can be wrong: tropical-cyclone exposure is `let`, not the mnemonic `letc`. Guessing `letc` returned `count=0`, which was misread as "doesn't exist," nearly missing a ready-to-process TCFD layer. See WORKFLOW-ISSUES.md 2026-07-24.
+- `count=0` for something that plausibly exists is a **red flag**, not a conclusion.
+- `count=1001` is the **API maximum = truncated**; the result set is incomplete and must NOT be generalized from.
+
+**Required behavior**:
+- **Enumerate families, don't guess members.** The Lange 2020 extreme-event exposure family is exactly six: `led` (drought), `leh` (heatwave), `lew` (wildfire), `ler` (river flood), `lec` (crop failure), `let` (tropical cyclone) — all ISIMIP2b, annual, binary. Authoritative table in `config/isimip_search_catalog.yaml` → `search_results.drought.exposure_lange2020.family`. Consult it before searching TC/heatwave/flood/wildfire/crop-failure exposure.
+- On `count=0` for a plausible variable: fall back to file-server enumeration (`https://files.isimip.org/{round}/...`) or query each candidate code before concluding non-existence.
+- On `count=1001`: narrow the query (by round/product/sector/model) until under the cap before drawing any conclusion about coverage.
+- **When processing one member of a known family, record the whole family in the catalog** at that time (do not leave siblings un-enumerated).
+
+---
+
+## 9. Verify a Variable's Data Nature Empirically Before Choosing Statistics
+
+**Rule**: Before selecting the decadal statistic, aggregation, or percentile method, **inspect the actual raw values**. Do not infer a variable's data nature from its name, CF long_name, or a sibling variable.
+
+**Why this matters**:
+- The Lange 2020 exposure family shares a filename pattern and a "land area ... exposed to X" long_name, but the underlying values differ by member: `led` (drought) is a **binary {0,1}** per-cell flag, while `let` (tropical cyclone) is a **continuous fraction [0,1)** (~97% exact 0, remainder smooth over (0,1), never 1). Verified 2026-07-24 after a user challenge; assuming `let` inherited `led`'s binary nature would have mis-framed the product.
+- Binary vs fractional vs continuous changes the correct decadal statistic (mean vs median), the CI definition, and the percentile treatment.
+
+**Required behavior**:
+- For any new variable, print min/max, the counts of exact-0 / exact-1 / interior values, and the number of unique values before processing. Two exact values = categorical/binary; a smooth interior distribution = continuous/fractional.
+- Record the verified data nature in the catalog (`data_nature`) and in the output metadata.
+- Never copy a sibling variable's processor attributes verbatim — re-derive the framing from the verified values.
+
+**Related techniques** (documented in WORKFLOW-ISSUES.md 2026-07-24; patterns, not hard rules):
+- **Thin ensembles** (few members, e.g. 1 impact model × 4 GCMs): apply spatial smoothing (5×5 exponential-decay, cos(lat)-scaled, normalized over non-NaN neighbours) to per-member decadal maps to borrow strength from neighbours. Reference: `scripts/process_let_cyclone.py`.
+- **Zero-inflated hazards**: two-tier percentile (zeros → 1; non-zeros ranked against the non-zero 2020s baseline → [2,100]) so the exposed gradient isn't crushed into the top quantiles.
+

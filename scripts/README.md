@@ -43,6 +43,17 @@ python scripts/process_led_drought.py
 **Input**: `data/raw/drought_led_annual/*_2006_2099.nc4`
 **Output**: `data/processed/drought_led_annual/led_{rcp26,rcp60}_processed.nc`
 
+### process_let_cyclone.py
+
+Processes `let` tropical-cyclone exposure (Lange 2020, ISIMIP2b) into the TCFD 6-value-class format. Unlike `led`, `let` is a **continuous fraction** [0,1) per cell (area of the cell exposed to TCs), so the decadal **mean** is the expected annual exposed-area fraction. Because the ensemble is thin (1 impact model `ke-tg-meanfield` × 4 GCMs = 4 members), it applies **5×5 exponential-decay spatial smoothing** (L=0.7, cos(lat)-scaled, non-NaN-normalized) to each per-member decadal map, and a **two-tier percentile** for the zero-inflated field (zeros→1; non-zeros ranked vs the non-zero 2020s baseline → [2,100]). See WORKFLOW-ISSUES.md 2026-07-24.
+
+```bash
+python scripts/process_let_cyclone.py
+```
+
+**Input**: `data/raw/drought_let_annual/*_2006_2099.nc4`
+**Output**: `data/processed/cyclone_let_annual/let_{rcp26,rcp60}_processed.nc`
+
 ### generate_qa_report.py
 
 Generates QA reports for processed data.
