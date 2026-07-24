@@ -154,6 +154,121 @@ crop_codes:
 search_results:
 
   # -------------------------
+  # drought searches
+  # -------------------------
+  # NOTE: "drought" is a cascade, not one variable. ISIMIP offers (a) a ready-made
+  # exposure layer (Lange 2020 derived output) and (b) the raw hydrologic building
+  # blocks in the water sector from which SPI/SPEI/soil-moisture drought is computed.
+  # Counts below are floor values: the CLI listing caps at 20 rows per query.
+  drought:
+    last_searched: "2026-07-24"
+
+    exposure_lange2020:
+      description: "Pre-computed extreme-event exposure (Lange et al. 2020, Earth's Future). Drought = land fraction where monthly soil moisture falls below the 2.5th percentile of the preindustrial baseline."
+      type: "DerivedOutputData (annual, ready to process)"
+      variables:
+        led: "Land area annually exposed to drought"
+        lec: "Land area annually exposed to crop failure (companion; GEPIC model)"
+        # population-exposed companions also exist in the lange2020 set for 6 hazard categories
+      isimip2b:
+        led:
+          # TRUE coverage via paginated API (CLI listing caps at 20): 219 datasets.
+          impact_models: ["clm45", "h08", "jules-w1", "lpjml", "mpi-hm", "orchidee", "pcr-globwb", "watergap2"]  # 8 GHM/land models
+          climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]  # 4 GCMs
+          bias_adjustment: ["ewembi"]
+          scenarios: ["historical", "picontrol", "rcp26", "rcp60"]  # NO rcp85/SSP
+          timestep: "annual"
+          period: "2006-2099 (some members extend to 2299 - not used)"
+          future_members: "rcp26=31, rcp60=31 (mpi-hm missing 2 GCM combos)"
+          data_nature: "BINARY per-cell annual flag {0,1}; fraction emerges on aggregation"
+          processed: "2026-07-24 -> TCFD layer. See memory project_led_drought_layer, scripts/process_led_drought.py"
+        lec:
+          impact_models: ["gepic"]
+          scenarios: ["historical", "picontrol", "rcp26", "rcp60"]
+          timestep: "annual"
+          datasets_seen: ">=20 (listing capped)"
+      notes: |
+        Most "drought-specific" off-the-shelf product in ISIMIP. Caveat: indexed
+        results are all ISIMIP2b (EWEMBI, RCP, older CMIP5 GCMs), annual, rcp26/rcp60
+        only. ISIMIP3b/SSP version of led NOT yet confirmed - needs targeted check.
+
+    hydrologic_building_blocks:
+      description: "Raw water-sector variables for computing hydrological/agricultural drought. Most are ALREADY pulled/processed in the Water Risk Index."
+      variables:
+        soilmoist: "Soil moisture (agricultural/soil drought). NL search parser did NOT map 'soil moisture' -> use exact code 'soilmoist'."
+        rootmoist: "Root-zone soil moisture. ALREADY in Water Index (WEB-DHM-SG)."
+        dis: "River discharge; low-flow percentiles = hydrological drought. ALREADY in Water Index (5 models)."
+        tws: "Total water storage (GRACE-like). ALREADY in Water Index (4 models)."
+        potevap: "Potential ET; combine with precip for SPEI. ALREADY in Water Index (4 models)."
+        qtot: "Total runoff. ISIMIP2a hist confirmed across 5 models (caraib, dlem, jules-b1, lpj-guess, lpjml), monthly, >=20 datasets. ISIMIP3b versions also exist."
+        qs: "Surface runoff."
+        qsb: "Subsurface runoff / baseflow (baseflow drought)."
+        groundwstor: "Groundwater storage (groundwater drought)."
+        swe: "Snow water equivalent (snow drought)."
+        pr: "Precipitation (climate InputData) for SPI. = Water Index 'precip', the one remaining variable."
+      notes: |
+        A soil-moisture or water-balance drought index could be assembled largely
+        from data already in hand (dis, tws, potevap, rootmoist), with precip pending.
+
+    vegetation_impacts:
+      description: "Ecological drought impacts (secondary indicators)."
+      variables:
+        npp: "Net primary productivity - declines under drought."
+        gpp: "Gross primary productivity."
+        burntarea: "Burnt area - drought-driven fire."
+        ffire: "Fire carbon flux."
+        yield-noirr: "Rainfed crop yields ({crop}-noirr) - drought-sensitive."
+        aet: "Actual ET (growing-season water use)."
+        gsprcp: "Growing-season precipitation."
+
+  # -------------------------
+  # biodiversity searches (BioScen1.5)
+  # -------------------------
+  biodiversity:
+    last_searched: "2026-07-22"
+
+    isimip2b:
+      project: "BioScen1.5"
+      sectors: ["biodiversity"]
+      impact_models:
+        - "BioScen15-SDM-GAM"   # stacked species distribution model, GAM algorithm
+        - "BioScen15-SDM-GBM"   # stacked species distribution model, GBM algorithm
+        - "BioScen15-MEM-GAM"   # macroecological richness model, GAM algorithm
+        - "BioScen15-MEM-GBM"   # macroecological richness model, GBM algorithm
+      not_archived: "BioScen1.5-SDM-MaxEnt (impact model registered on isimip.org, no output on file server)"
+      climate_forcings: ["GFDL-ESM2M", "HadGEM2-ES", "IPSL-CM5A-LR", "MIROC5"]  # 4 GCMs
+      bias_adjustment: ["EWEMBI"]
+      scenarios:
+        climate: ["rcp26", "rcp60"]   # NO rcp85; historical + pre-industrial baselines also present
+        soc: ["nosoc"]
+        sens: ["co2"]
+      temporal:
+        resolution: "30-year running mean"
+        future_period: "2009-2080 (10 time slices)"
+        historical: "single 30yr-mean labeled 1990"
+        preindustrial: "baseline slice present"
+      spatial:
+        resolution: "0.5 degree"
+        grid: "720 x 360"
+        coverage: "global"
+      taxa:
+        - "amphibians (2964 species)"
+        - "birds (8493 species)"
+        - "mammals (4039 species)"
+      variables:
+        sdm: ["{taxon}sumprob", "end{taxon}sumprob (endemic subset)", "thr{taxon}sumprob (IUCN-threatened subset)"]
+        sdm_note: "SDM-GAM archives all/endemic/threatened; SDM-GBM archives all-species only"
+        mem: ["{taxon}sr"]
+        internal_dispersal_layers: ["presence (no dispersal)", "dispersal1-4 (d/2, d, 2d buffers)", "fulldisp (unlimited)"]
+      units:
+        sdm: "summed probability of occurrence per cell (species-richness proxy)"
+        mem: "species richness (count) per cell"
+      notes: >
+        BioScen1.5. SDM = stacked single-species distribution models (15496 vertebrates) summed to a
+        richness proxy; MEM = macroecological model of community richness. ISIMIP2b only (no ISIMIP3b
+        biodiversity output). Refs: Biber et al. 2019 J. Biogeography; Warren et al. 2018.
+
+  # -------------------------
   # cwood searches
   # -------------------------
   cwood:

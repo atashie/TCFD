@@ -8,12 +8,13 @@ This codebase pulls, processes, and validates ISIMIP climate model data for two 
 
 Processes ISIMIP data into annualized decadal statistics for physical climate risk assessment.
 
-- **Purpose**: TCFD and CDP climate risk disclosures (timber, fisheries, health, agriculture, etc.)
+- **Purpose**: TCFD and CDP climate risk disclosures (timber, fisheries, health, agriculture, drought, etc.)
 - **Output**: `{variable}_{scenario}_processed.nc` — 6 value classes (median, percentile, trend, significance, lower_ci, upper_ci)
-- **Tooling**: `isimip-pipeline` CLI + `scripts/process_*.py` (e.g., `process_qg.py`, `process_fish_b30cm.py`)
+- **Tooling**: `isimip-pipeline` CLI + `scripts/process_*.py` (e.g., `process_qg.py`, `process_fish_b30cm.py`, `process_led_drought.py`)
 - **Skills**: `/isimip-search-download`, `/isimip-process-visualize`, `/isimip-extract-aggregate`
-- **Visualization**: `scripts/generate_maps.py`
+- **Visualization**: `scripts/generate_maps.py` (diverging trend/change maps auto-reverse to red=worse when a processed file sets `percentile_direction: higher_is_worse`)
 - **Key concepts**: Shared 2020s baseline, adaptive windowing, kernel smoothing, Theil-Sen trends, percentile-of-score ranking
+- **Binary/exposure variables** (e.g. `led` drought exposure — a per-cell annual 0/1 flag): decadal statistic must be the **mean** (drought frequency), NOT median; percentile scored vs the 2020s ensemble-mean spatial distribution; CIs = mean ± 1 inter-model SD. Needs a dedicated processor (`process_led_drought.py`) — `process_qg.py` cannot be reused (it parses GCM from filename field [1], but lange2020 files put the impact model there). See WORKFLOW-ISSUES.md 2026-07-24.
 
 ### 2. Water Risk Index (20 value types, monthly)
 

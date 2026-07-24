@@ -141,7 +141,8 @@ def create_map_figure(
     cmin: Optional[float] = None,
     cmax: Optional[float] = None,
     anomaly_mask: Optional[np.ndarray] = None,
-    colorbar_title: str = "Value"
+    colorbar_title: str = "Value",
+    reversescale: bool = False
 ) -> go.Figure:
     """Create a Plotly geographic map figure.
 
@@ -189,6 +190,7 @@ def create_map_figure(
             size=2,
             color=val_valid.tolist(),
             colorscale=colorscale,
+            reversescale=reversescale,
             cmin=cmin,
             cmax=cmax,
             colorbar=dict(
@@ -440,7 +442,16 @@ class MapCollectionGenerator:
             self.variable_units = first_ds.attrs.get("units", "")
             self.variable_long_name = first_ds.attrs.get("long_name", variable)
 
+        # Diverging maps (trend/change): for "higher is worse" hazards (e.g. drought,
+        # mortality) reverse RdBu so positive = red = worsening. Absent the attribute
+        # (older processed files), keep the default RdBu (blue = positive).
+        self.higher_is_worse = (
+            first_ds.attrs.get("percentile_direction", "") == "higher_is_worse"
+        )
+
         log(f"  Metadata: {self.variable_long_name} [{self.variable_units}]")
+        if self.higher_is_worse:
+            log("  Direction: higher_is_worse -> trend/change use reversed RdBu (red = worse)")
 
         # Filter out non-projection scenarios (picontrol, historical)
         # These are used to enhance baseline robustness but not shown as separate projections
@@ -647,7 +658,8 @@ class MapCollectionGenerator:
                         lons, lats, values, title,
                         colorscale=COLORSCALES.get(metric, "Viridis"),
                         cmin=cmin, cmax=cmax,
-                        colorbar_title=colorbar_label
+                        colorbar_title=colorbar_label,
+                        reversescale=(metric == "trend" and self.higher_is_worse)
                     )
 
                     html += '<div class="map-container">\n'
@@ -668,7 +680,8 @@ class MapCollectionGenerator:
                     lons, lats, values, title,
                     colorscale=COLORSCALES.get(metric, "Viridis"),
                     cmin=cmin, cmax=cmax,
-                    colorbar_title=colorbar_label
+                    colorbar_title=colorbar_label,
+                    reversescale=(metric == "trend" and self.higher_is_worse)
                 )
 
                 html += '<div class="map-container" style="grid-column: span 2;">\n'
@@ -777,8 +790,10 @@ class MapCollectionGenerator:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             html = generate_html_header(variable, "change", scenario, self.scenarios, self.scenario_labels)
 
+            pos_color, neg_color = ("red", "blue") if self.higher_is_worse else ("blue", "red")
             html += '<div class="stats-box"><h3>Absolute Change: 2090s minus 2020s</h3>'
-            html += '<p>Positive values (red) indicate increase, negative values (blue) indicate decrease.</p></div>\n'
+            html += (f'<p>Positive values ({pos_color}) indicate increase, '
+                     f'negative values ({neg_color}) indicate decrease.</p></div>\n')
 
             val_2020 = ds["median"].sel(decade=DECADES["current"]).values
             val_2090 = ds["median"].sel(decade=DECADES["future"]).values
@@ -795,7 +810,8 @@ class MapCollectionGenerator:
                 lons, lats, change, title,
                 colorscale="RdBu",
                 cmin=cmin, cmax=cmax,
-                colorbar_title=colorbar_label
+                colorbar_title=colorbar_label,
+                reversescale=self.higher_is_worse
             )
 
             # Single centered map for change

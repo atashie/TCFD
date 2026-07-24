@@ -124,13 +124,12 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 **Required behavior**:
 - For trend and change maps: `max_abs = np.percentile(np.abs(all_values), 98); cmin, cmax = -max_abs, max_abs`
 - Do NOT use percentile-based scaling like `cmin = np.percentile(all_values, 2), cmax = np.percentile(all_values, 98)`
-- Convention for vegetation/productivity variables ("higher is better"):
-  - Positive values (increase) = blue = good
-  - Zero = white = no change
-  - Negative values (decrease) = red = bad
-  - Use `RdBu` colorscale (red-white-blue)
+- **Colorscale direction is keyed to the variable's `percentile_direction` attribute** (set by the processor):
+  - `higher_is_better` (or unset — vegetation/productivity): default `RdBu`, positive (increase) = blue = good, negative = red = bad
+  - `higher_is_worse` (hazards — drought, mortality): `generate_maps.py` reverses `RdBu` so positive (increase) = **red = worse**, negative = blue = better
+  - Zero = white = no change in both cases
 
-**Implementation**: `scripts/generate_maps.py` uses symmetric scaling for both trend maps (lines 602-610) and change maps (lines 761-765).
+**Implementation**: `scripts/generate_maps.py` uses symmetric scaling for trend and change maps, and `create_map_figure(..., reversescale=...)` flips the diverging scale when the processed file declares `percentile_direction: higher_is_worse`. Variables without that attribute keep the default `RdBu`. See WORKFLOW-ISSUES.md 2026-07-24.
 
 ---
 

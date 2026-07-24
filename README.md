@@ -84,7 +84,7 @@ This project uses data from ISIMIP (Inter-Sectoral Impact Model Intercomparison 
 
 - **Simulation Rounds**: ISIMIP3b (SSP scenarios), ISIMIP2b (RCP scenarios)
 - **Climate Scenarios**: SSP126, SSP370, SSP585
-- **Variables**: Groundwater runoff (qg), burnt area, evapotranspiration, and more
+- **Variables**: Groundwater runoff (qg), drought exposure (led), burnt area, evapotranspiration, and more
 - **Models**: Multi-model ensembles (GFDL, IPSL, MPI, MRI, UKESM)
 
 ## Documentation
