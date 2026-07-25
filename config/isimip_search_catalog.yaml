@@ -175,7 +175,7 @@ search_results:
       family:
         led: {hazard: "drought",         datasets: 219, impact_models: "8 GHM/land (clm45,h08,jules-w1,lpjml,mpi-hm,orchidee,pcr-globwb,watergap2)", data_nature: "binary {0,1} per cell (verified)"}
         ler: {hazard: "river flood",     datasets: 218, impact_models: "8 GHM/land (same set as led)"}
-        lew: {hazard: "wildfire",        datasets: 134, impact_models: "multiple (caraib, ...)"}
+        lew: {hazard: "wildfire",        datasets: 134, impact_models: "5 DGVM/fire (caraib,lpj-guess,lpjml,orchidee,visit) x 4 GCMs; future rcp26=31/rcp60=19; data_nature UNVERIFIED. NOTE: this is the EXPOSURE member -- distinct from the direct 'burntarea' burnt-area-fraction fire output, which was the one actually processed (see search_results.wildfire)."}
         lec: {hazard: "crop failure",    datasets: 90,  impact_models: "gepic"}
         leh: {hazard: "heatwave",        datasets: 30,  impact_models: "hwmid-humidex (derived index)"}
         let: {hazard: "tropical cyclone", datasets: 28, impact_models: "ke-tg-meanfield (Emanuel KE wind model, derived)", data_nature: "FRACTIONAL area [0,1) per cell (verified 2026-07-24, NOT binary); 1 impact model x 4 GCMs = thin ensemble -> spatial smoothing applied"}
@@ -213,6 +213,8 @@ search_results:
         Processing status: led=DONE, let=DONE (2026-07-24; let uses 5x5 spatial
         smoothing + two-tier zero-inflated percentile, see process_let_cyclone.py).
         ler/lew/lec/leh remaining -- value-check binary-vs-fractional before each.
+        For WILDFIRE the direct 'burntarea' fire output (NOT the lew exposure member)
+        was chosen and processed 2026-07-24 -- see search_results.wildfire.
 
     hydrologic_building_blocks:
       description: "Raw water-sector variables for computing hydrological/agricultural drought. Most are ALREADY pulled/processed in the Water Risk Index."
@@ -242,6 +244,43 @@ search_results:
         yield-noirr: "Rainfed crop yields ({crop}-noirr) - drought-sensitive."
         aet: "Actual ET (growing-season water use)."
         gsprcp: "Growing-season precipitation."
+
+  # -------------------------
+  # wildfire searches (fire sector + biomes burntarea)
+  # -------------------------
+  wildfire:
+    last_searched: "2026-07-24"
+    description: "Wildfire has THREE distinct ISIMIP representations -- enumerate all, don't assume the exposure family is the only option."
+    products:
+      lew_exposure:
+        note: "Lange 2020 land-area-exposed-to-unprecedented-wildfire. See drought.exposure_lange2020.family (lew). Exposure framing; NOT processed."
+      burntarea:
+        long_name: "Burnt area fraction (percent of grid cell burned per year)"
+        note: "DIRECT biophysical fire output (the one processed 2026-07-24). API count for bare 'burntarea' = 1001 (TRUNCATED) -> enumerated per round."
+        isimip2b:
+          datasets: 648
+          impact_models_all: ["caraib", "clm45", "lpj-guess", "lpjml", "mc2-usfs-r87g5c1", "orchidee-dgvm", "orchidee", "visit"]  # 8 models
+          annual_models: ["lpj-guess", "lpjml", "mc2-usfs-r87g5c1"]  # only these 3 publish ANNUAL (263 annual datasets); the other 5 are monthly-only
+          climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]
+          scenarios: ["historical", "picontrol", "rcp26", "rcp60", "rcp85"]
+          timesteps: ["monthly (385)", "annual (263)"]
+          soc_variants: "many (1860soc/2005soc/rcpXXsoc/histsoc/nosoc); pin 2005soc (lpj-guess,lpjml) / nosoc (mc2-usfs) + co2 to isolate the climate signal"
+          variable_form: "plain 'burntarea' (total); NO PFT suffixes in 2b"
+          units: "% (percent of cell burned/yr) across all 3 annual models -- SAME unit"
+          data_nature: |
+            Continuous fraction in PERCENT [0,100], zero-inflated to varying degrees. Value-checked 2026-07-24:
+            lpj-guess  units=% min=0.1 max=97 mean=0.71 zeros=0.00% (FLOORED at 0.1%, no true zeros; long_name MISLABELED 'Fire Return Interval' but data are burnt-%)
+            lpjml      units=% min=0   max=80 mean=0.57 zeros=1.05% long_name='burnt area fraction'
+            mc2-usfs   units=% min=0   max=100 mean=3.84 zeros=44.8% (coarse biome model, ~5-7x hotter outlier); TIME AXIS = 'days since 1661' (others 'years since')
+        isimip3b:
+          datasets: 560
+          note: "Monthly output is PFT-decomposed (burntarea-c3crop/-c3grass/...); annual is single-model (mc2-usfs, burntarea-total). Thin/messy vs 2b -> not chosen."
+          scenarios: ["ssp126", "ssp370", "ssp585", "historical", "picontrol"]
+      ffire:
+        long_name: "Fire carbon emissions flux (kg C m-2 s-1), PFT-split"
+        note: "797 datasets, ISIMIP3a/3b only (no 2b), mostly monthly, PFT-decomposed (ffire-c3crop...). Emissions metric -- least aligned with an asset-facing wildfire risk layer."
+    chosen: "burntarea, ISIMIP2b, annual, 3 models x 4 GCMs x {rcp26,rcp60,rcp85} = 36 members. Raw %, NO normalization (same unit), NO spatial smoothing (12/scenario is thick), baseline-anchored trend."
+    processed: "2026-07-24 -> TCFD layer. scripts/process_burntarea_fire.py; data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc. Verified: global-mean burnt% flat rcp26, +6.6% rcp60, +14.8% rcp85 by 2090s. See memory project_burntarea_fire_layer, WORKFLOW-ISSUES.md 2026-07-24, GUARDRAILS §9-§10."
 
   # -------------------------
   # biodiversity searches (BioScen1.5)
