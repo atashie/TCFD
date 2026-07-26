@@ -68,6 +68,20 @@ python scripts/process_burntarea_fire.py
 **Input**: `data/raw/wildfire_burntarea_annual/*_2006_2099.nc4`
 **Output**: `data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc`
 
+### process_csoil_soilcarbon.py
+
+Processes `csoil-total` (soil organic carbon stock, ISIMIP3b `biomes`) into the TCFD 6-value-class format — the direct **subsurface carbon-storage** signal (distinct from the vegetation pools `cveg`/`croot`/`cvegbg` and the net-sink flux `nbp`). Ensemble = 3 models (`classic`, `jules-es-vn6p3`, `mc2-usfs`) × their CMIP6 GCMs (2 + 5 + 5) × {ssp126, ssp370, ssp585} = 12 members/scenario. Value-checked 2026-07-25 (see WORKFLOW-ISSUES.md):
+- All 3 report **kg C m⁻²** with **comparable magnitudes** (2020s medians ~5.8/7.7/10.3) → **no normalization** (equal-weight "model democracy"); inter-member spread = CI. Layer starts at the 2020s baseline (ISIMIP3b csoil begins 2015 — no full 2010s).
+- **Direction is `higher_is_better`** (stored carbon is an asset; the risk is **loss**) → percentile **inverted** (low stock / decline → high risk; red = carbon loss in maps).
+- **Mixed CO₂**: `jules-es-vn6p3` publishes only its fixed-2015-CO₂ run for csoil, so its trend is muted; `classic`/`mc2-usfs` are transient. All hold land use fixed. Retained as 12 members per user decision. Baseline-anchored trend (kg C m⁻² decade⁻¹); no spatial smoothing (thick ensemble).
+
+```bash
+python scripts/process_csoil_soilcarbon.py
+```
+
+**Input**: `data/raw/soilcarbon_csoil_annual/*_csoil-total_global_annual_2015_2100.nc`
+**Output**: `data/processed/soilcarbon_csoil_annual/csoil_{ssp126,ssp370,ssp585}_processed.nc`
+
 ### generate_qa_report.py
 
 Generates QA reports for processed data.

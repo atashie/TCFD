@@ -40,6 +40,30 @@ variable_definitions:
     description: "Leaf carbon pool."
     use_case: "Canopy biomass indicator."
 
+  csoil:
+    long_name: "Carbon Mass in Soil Pool"
+    units: "kg m-2"
+    description: "Total soil organic carbon stock (subsurface storage pool). Stock, not flux. Bulk pool = 'csoil-total'."
+    use_case: "Subsurface / soil carbon storage. Processed csoil-total (ISIMIP3b) -> TCFD layer 2026-07-25 (see search_results.soil_carbon)."
+
+  croot:
+    long_name: "Carbon Mass in Roots"
+    units: "kg m-2"
+    description: "Root biomass carbon (root-zone living carbon). Stock. ISIMIP3b only (not published in ISIMIP2b future runs)."
+    use_case: "Root-zone biomass carbon."
+
+  cvegbg:
+    long_name: "Carbon Mass in Below-Ground Vegetation"
+    units: "kg m-2"
+    description: "Below-ground vegetation carbon (roots + below-ground woody); cvegag is the above-ground counterpart. Stock."
+    use_case: "Broader root-zone biomass carbon than croot."
+
+  nbp:
+    long_name: "Net Biome Production"
+    units: "kg m-2 s-1"
+    description: "Net land carbon sink = NPP - Rh - disturbance. Flux; >0 = land absorbing carbon."
+    use_case: "Carbon sequestration RATE (net sink). ISIMIP3b biomes."
+
   burntarea:
     long_name: "Burnt Area Fraction"
     units: "fraction"
@@ -281,6 +305,39 @@ search_results:
         note: "797 datasets, ISIMIP3a/3b only (no 2b), mostly monthly, PFT-decomposed (ffire-c3crop...). Emissions metric -- least aligned with an asset-facing wildfire risk layer."
     chosen: "burntarea, ISIMIP2b, annual, 3 models x 4 GCMs x {rcp26,rcp60,rcp85} = 36 members. Raw %, NO normalization (same unit), NO spatial smoothing (12/scenario is thick), baseline-anchored trend."
     processed: "2026-07-24 -> TCFD layer. scripts/process_burntarea_fire.py; data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc. Verified: global-mean burnt% flat rcp26, +6.6% rcp60, +14.8% rcp85 by 2090s. See memory project_burntarea_fire_layer, WORKFLOW-ISSUES.md 2026-07-24, GUARDRAILS §9-§10."
+
+  # -------------------------
+  # soil / subsurface carbon searches (biomes sector)
+  # -------------------------
+  soil_carbon:
+    last_searched: "2026-07-25"
+    description: "Subsurface / root-zone carbon. Lives in the biomes sector as carbon-pool STATE variables; there is no dedicated soil sector. Enumerate STOCKS (csoil soil, croot/cvegbg root-zone) vs the net-sink FLUX (nbp)."
+    note: "Catalog's biomes_models variable lists were INCOMPLETE for carbon -> enumerated the file server directly (11 ISIMIP2b + 5 ISIMIP3b biomes models). The data.isimip.org API is behind Anubis anti-bot -> use files.isimip.org + curl (WebFetch truncates long listings). See GUARDRAILS §8."
+    variables:
+      csoil: "Soil organic carbon stock (kg C m-2) -- the direct subsurface storage pool. Bulk = 'csoil-total' (CLASSIC PFT-split, JULES RothC pool-split, MC2 single)."
+      croot: "Root biomass carbon (kg C m-2). ISIMIP3b only; NOT in ISIMIP2b future runs."
+      cvegbg: "Below-ground vegetation carbon (roots + below-ground woody); cvegag = above-ground. ISIMIP2b: JULES-ES-55, MC2-USFS. ISIMIP3b: CLASSIC, JULES, MC2, ELM-ECA."
+      nbp: "Net Biome Production = net land carbon-sink flux (kg C m-2 s-1) = sequestration RATE. ISIMIP3b (all 5 biomes models); NOT in ISIMIP2b future."
+    availability:
+      isimip2b:  # RCP26/60/85, CMIP5; csoil broad but NO croot/nbp in future runs
+        csoil_models: ["lpj-guess", "lpjml", "orchidee", "orchidee-dgvm", "caraib", "dlem", "jules-es-55", "mc2-usfs", "visit(monthly)"]  # ~8 annual + visit monthly
+        cvegbg_models: ["jules-es-55", "mc2-usfs"]
+        croot: "absent (future runs)"
+        nbp: "absent (future runs)"
+      isimip3b:  # SSP126/370/585, CMIP6 -- the FULL below-ground story
+        csoil_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]   # + elm-eca, visit monthly-only
+        croot_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]   # + elm-eca monthly
+        cvegbg_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]  # + elm-eca monthly
+        nbp: ["classic", "jules-es-vn6p3", "mc2-usfs", "elm-eca", "visit"]
+    chosen: "csoil-total, ISIMIP3b, annual, {ssp126,ssp370,ssp585}. 12 members/scenario = classic(2 GCMs) + jules-es-vn6p3(5) + mc2-usfs(5). Raw kg C m-2, NO normalization (comparable magnitudes, same unit), NO spatial smoothing (thick), higher_is_better (risk=loss, percentile INVERTED), baseline-anchored trend. Layer starts at 2020s baseline (3b begins 2015)."
+    co2_treatment: "MIXED (user decision 2026-07-25 to retain 12 members): jules-es-vn6p3 publishes ONLY the fixed-2015-CO2 (2015co2) csoil run; classic/mc2-usfs are transient (default). JULES's soil-C trend is muted (no fertilization). Land use fixed: 2015soc-from-histsoc (classic/jules) / nat (mc2-usfs). See GUARDRAILS §9."
+    data_nature: |
+      All 3 models report kg C m-2 with COMPARABLE magnitudes (2020s medians ~5.8/7.7/10.3), value-checked 2026-07-25:
+      classic         kg C m-2  median 5.76  max 70.3  zeros 4.48% (desert/ice)  calendar=365_day
+      jules-es-vn6p3  kg C m-2  median 10.28 max 67.9  zeros 0.00%               calendar=proleptic_gregorian
+      mc2-usfs        kg C m-2  median 7.67  max 37.8  zeros 0.00% (coarse biome model, nat soc)  calendar=365_day
+      Time axis 'days since 1601' for ALL; only the calendar differs -> calendar-aware year parse.
+    processed: "2026-07-25 -> TCFD layer. scripts/process_csoil_soilcarbon.py; data/processed/soilcarbon_csoil_annual/csoil_{ssp126,ssp370,ssp585}_processed.nc. Verified: CI ordering 100%, baseline bit-identical, trend<->change corr 1.0, global-mean csoil +1.1% ssp126 / -1.4% ssp370 / -2.2% ssp585 by 2090s. See memory project_csoil_soilcarbon_layer, WORKFLOW-ISSUES.md 2026-07-25, GUARDRAILS §8-§9."
 
   # -------------------------
   # biodiversity searches (BioScen1.5)
