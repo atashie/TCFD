@@ -1,11 +1,13 @@
 """Generate synoptic and diagnostic maps for processed climate data.
 
-Creates individual HTML files for each map collection, comparing 2020s (current)
-to 2090s (end-of-century) values across scenarios and metrics.
+Creates individual HTML files for each map collection, comparing an early decade
+to 2090s (end-of-century) values across scenarios and metrics. The early decade is
+the 2020s for most metrics, but the 2030s for `trend`, whose 2020s value is
+identically zero by the baseline-anchored definition (see METRIC_DECADES).
 
 Following the process-metrics skill requirements:
 - Individual HTML files per collection (avoid browser crashes)
-- 2020s vs 2090s comparison structure
+- Early-decade vs 2090s comparison structure
 - 6σ anomaly detection (flag only, do not alter data)
 """
 
@@ -24,6 +26,45 @@ DECADES = {
     "current": 2020,
     "future": 2090
 }
+
+# Per-metric override of the side-by-side comparison decades.
+#
+# `trend` is baseline-anchored to the 2020s: trend[d] = (median[d] - median[2020])
+# / elapsed decades, so trend[2020] has zero elapsed span and is identically zero.
+# Its map carried no signal, and including that all-zero panel also dragged down
+# the 98th-percentile symmetric colour scale shared with the 2090s panel. The
+# 2030s is the shortest non-trivial span — a single decade of change, expected to
+# read as patchier and less spatially coherent than the 7-decade 2090s rate.
+METRIC_DECADES = {
+    "trend": (2030, DECADES["future"]),
+}
+
+
+def comparison_decades(metric: str, available=None) -> List[Tuple[str, int]]:
+    """Return the ``(label, decade)`` pairs to show side by side for a metric.
+
+    Args:
+        metric: Metric name, e.g. ``"median"`` or ``"trend"``.
+        available: Decades actually present in the dataset. When the preferred
+            early decade is missing, falls back to the earliest decade after the
+            2020s baseline so the panel is never blank.
+    """
+    early, late = METRIC_DECADES.get(
+        metric, (DECADES["current"], DECADES["future"])
+    )
+
+    if available is not None:
+        present = [int(d) for d in available]
+        if early not in present:
+            later = sorted(d for d in present if d > DECADES["current"])
+            early = later[0] if later else DECADES["current"]
+
+    if early == DECADES["current"]:
+        early_label = f"{early}s (Current)"
+    else:
+        early_label = f"{early}s (Early)"
+
+    return [(early_label, early), (f"{late}s (Future)", late)]
 
 # SSP scenarios (ISIMIP3b)
 SSP_SCENARIO_LABELS = {
@@ -281,6 +322,12 @@ def generate_html_header(
 
     scenario_label = scenario_labels.get(scenario, scenario)
 
+    # Reflect the decades this metric actually shows — `trend` starts at the 2030s.
+    (early_label, _), (late_label, _) = comparison_decades(metric)
+    subtitle = f"{early_label} vs {late_label.replace('(Future)', '(End of Century)')}"
+    if metric == "trend":
+        subtitle += " — baseline-anchored rate vs the 2020s"
+
     return f"""<!DOCTYPE html>
 <html>
 <head>
@@ -312,7 +359,7 @@ def generate_html_header(
     <div class="header">
         <h1>{variable.upper()} - {METRIC_DESCRIPTIONS.get(metric, metric)}</h1>
         <div class="scenario">{scenario_label}</div>
-        <div class="subtitle">2020s (Current) vs 2090s (End of Century)</div>
+        <div class="subtitle">{subtitle}</div>
     </div>
     <div class="nav">
         <div class="nav-section">
@@ -599,7 +646,9 @@ class MapCollectionGenerator:
         for scenario, ds in self.data.items():
             if metric in ds.data_vars:
                 if has_decade_dim:
-                    for decade in [DECADES["current"], DECADES["future"]]:
+                    # Same decades the maps will show, so the shared colour scale
+                    # is derived from exactly the panels being drawn.
+                    for _, decade in comparison_decades(metric, ds.decade.values):
                         if decade in ds.decade.values:
                             vals = ds[metric].sel(decade=decade).values
                             valid = vals[~np.isnan(vals)]
@@ -639,9 +688,9 @@ class MapCollectionGenerator:
             metric_has_decade = 'decade' in ds[metric].dims
 
             if metric_has_decade:
-                # Standard case: show 2020s vs 2090s comparison
-                for decade_label, decade in [("2020s (Current)", DECADES["current"]),
-                                              ("2090s (Future)", DECADES["future"])]:
+                # Early vs end-of-century comparison. `trend` starts at the 2030s
+                # rather than the 2020s (see METRIC_DECADES).
+                for decade_label, decade in comparison_decades(metric, ds.decade.values):
                     if decade not in ds.decade.values:
                         html += f'<div class="map-container"><p>No data for {decade_label}</p></div>\n'
                         continue
@@ -928,7 +977,7 @@ class MapCollectionGenerator:
         metrics = [
             ("median", "Median Values", "Ensemble median values (2020s vs 2090s)"),
             ("percentile", "Percentile Ranks", "Percentile ranks vs 2020s baseline"),
-            ("trend", "Trends", "Decadal trend analysis"),
+            ("trend", "Trends", "Baseline-anchored decadal rate (2030s vs 2090s)"),
             ("confidence", "Confidence Intervals", "Lower (25th) and upper (75th) bounds"),
             ("change", "Change Maps", "Absolute change (2090s - 2020s)"),
             ("anomaly", "Anomaly Detection", f"Values >{ANOMALY_SIGMA}σ from 2020s mean"),
@@ -1035,41 +1084,70 @@ class MapCollectionGenerator:
 def main():
     """Main entry point.
 
+    Reads a published layer from S3 and writes its maps back into the same
+    version prefix, so the maps stay pinned to the data version they describe.
+    Maps sit outside the version's `_COMPLETE.json` gate (they are regenerable
+    derived output), so re-running this never invalidates a published layer.
+
     Usage:
-        python generate_maps.py [variable] [processed_dir] [output_dir]
+        python generate_maps.py <layer_id> [variable] [--version V] [--local-only]
 
     Examples:
-        python generate_maps.py                          # Default: qg from data/processed
-        python generate_maps.py leh                      # Generate maps for leh variable
-        python generate_maps.py leh ./outputs/processed  # Custom processed directory
-        python generate_maps.py leh ./outputs/processed ./reports/maps  # Full custom paths
+        python generate_maps.py wildfire_burntarea_annual
+        python generate_maps.py drought_led_annual led
+        python generate_maps.py cyclone_let_annual --version v2026-07-27_3412446
+        python generate_maps.py soilcarbon_csoil_annual --local-only
     """
+    import argparse
     import sys
 
-    # Get project root (parent of scripts directory)
-    project_root = Path(__file__).parent.parent
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" / "src"))
+    from isimip_pipeline import storage
 
-    # Parse command-line arguments
-    variable = sys.argv[1] if len(sys.argv) > 1 else "qg"
-    processed_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else project_root / "data" / "processed"
-    output_dir = Path(sys.argv[3]) if len(sys.argv) > 3 else project_root / "reports" / "maps"
+    parser = argparse.ArgumentParser(description="Generate maps for a published layer.")
+    parser.add_argument("layer_id", help="Canonical layer id, e.g. wildfire_burntarea_annual")
+    parser.add_argument("variable", nargs="?", default=None,
+                        help="Variable name; inferred from the layer's manifest if omitted")
+    parser.add_argument("--version", default=None,
+                        help="Version to map (default: the layer's current version)")
+    parser.add_argument("--local-only", action="store_true",
+                        help="Write maps to the local cache without uploading")
+    args = parser.parse_args()
+
+    version = args.version or storage.resolve_current(args.layer_id)
+    vprefix = storage.version_prefix(args.layer_id, version)
+
+    # Refuse to map data that has not passed its own publication gate.
+    storage.verify_complete(vprefix, require=["layer.json"])
+
+    variable = args.variable
+    if variable is None:
+        variable = storage.read_json(f"{vprefix}/layer.json").get("variable")
+        if not variable:
+            parser.error("layer.json records no variable; pass one explicitly")
+
+    processed_dir = storage.pull_prefix(f"{vprefix}/data")
+    output_dir = storage.cache_root() / "_maps" / args.layer_id / version
 
     log("=" * 60)
     log("Generating Synoptic and Diagnostic Maps")
     log("=" * 60)
+    log(f"Layer: {args.layer_id}")
+    log(f"Version: {version}")
     log(f"Variable: {variable}")
-    log(f"Processed data: {processed_dir}")
-    log(f"Output directory: {output_dir}")
+    log(f"Processed data: s3://{storage.BUCKET}/{vprefix}/data")
     log("=" * 60)
 
     generator = MapCollectionGenerator(processed_dir, output_dir)
-
-    # Generate maps for specified variable
     generator.generate_all_collections(variable)
 
     log("\n" + "=" * 60)
-    log("Map generation complete!")
-    log(f"Output directory: {output_dir / variable}")
+    if args.local_only:
+        log(f"Map generation complete (local only): {output_dir / variable}")
+    else:
+        prefix = storage.publish_derived(args.layer_id, "maps",
+                                         output_dir / variable, version=version)
+        log(f"Map generation complete: s3://{storage.BUCKET}/{prefix}")
     log("=" * 60)
 
 

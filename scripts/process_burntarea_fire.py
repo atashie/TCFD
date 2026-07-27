@@ -33,14 +33,21 @@ Output: burntarea_{scenario}_processed.nc with variables
 
 import os
 import re
-import glob
+import sys
 import warnings
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" / "src"))
+from isimip_pipeline import storage  # noqa: E402
+from utils.layer_publish import publish_processed_layer  # noqa: E402
+
 VAR = "burntarea"
+LAYER_ID = "wildfire_burntarea_annual"
+RAW_PATTERN = "*_2006_2099.nc4"
 DECADES = [2010, 2020, 2030, 2040, 2050, 2060, 2070, 2080, 2090]
 BASELINE_DECADE = 2020
 WINDOW_YEARS = 10
@@ -180,15 +187,14 @@ def make_pct_fn(baseline_flat):
 
 
 def main():
-    root = Path(__file__).parent.parent
-    raw_dir = root / "data" / "raw" / "wildfire_burntarea_annual"
-    out_dir = root / "data" / "processed" / "wildfire_burntarea_annual"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    files = sorted(glob.glob(str(raw_dir / "*_2006_2099.nc4")))
+    files = [str(p) for p in storage.stage_raw(LAYER_ID, RAW_PATTERN)]
     if not files:
-        log(f"ERROR: no burntarea member files found in {raw_dir}")
+        log(f"ERROR: no burntarea member files found in "
+            f"s3://{storage.BUCKET}/{storage.raw_prefix(LAYER_ID)}")
+        log("Upload members with storage.ingest_raw() first.")
         return
+    stage = storage.staging_dir(LAYER_ID)
+    out_dir = stage / "data"
     meta = {f: parse_name(f) for f in files}
     scenarios = sorted({m["scenario"] for m in meta.values()})
     models = sorted({m["model"] for m in meta.values()})
@@ -351,7 +357,15 @@ def main():
         )
         path = out_dir / f"burntarea_{s}_processed.nc"
         ds_out.to_netcdf(path)
-        log(f"  saved {path}")
+        log(f"  staged {path.name}")
+
+    log("\nPublishing to S3...")
+    publish_processed_layer(
+        LAYER_ID,
+        stage,
+        created_by="scripts/process_burntarea_fire.py",
+        notes="See WORKFLOW-ISSUES.md 2026-07-24; GUARDRAILS §9-§10.",
+    )
 
     log("\nDone.")
 

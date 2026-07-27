@@ -1,5 +1,7 @@
 # TCFD Utility Scripts
 
+Outputs go to S3, not local disk — see [STORAGE.md](../STORAGE.md). Scripts still referencing `data/` are pending the Python rebuild.
+
 Standalone Python scripts for data processing and visualization.
 
 ## Scripts
@@ -12,8 +14,14 @@ Generates interactive Plotly maps from processed climate data.
 python scripts/generate_maps.py
 ```
 
-**Input**: `data/processed/*.nc` (processed NetCDF files)
-**Output**: `reports/maps/{variable}/` (HTML map files)
+**Input**: a published layer in S3 (`…/layers/{layer_id}/current/`, gate-verified)
+**Output**: `…/layers/{layer_id}/{version}/maps/` (HTML map files, ungated/regenerable)
+
+```bash
+python scripts/generate_maps.py wildfire_burntarea_annual
+python scripts/generate_maps.py drought_led_annual --version v2026-07-27_3412446
+python scripts/generate_maps.py cyclone_let_annual --local-only
+```
 
 Features:
 - Per-scenario map files (SSP126, SSP370, SSP585)
@@ -40,8 +48,8 @@ Processes `led` drought exposure (Lange 2020, ISIMIP2b) into the TCFD 6-value-cl
 python scripts/process_led_drought.py
 ```
 
-**Input**: `data/raw/drought_led_annual/*_2006_2099.nc4`
-**Output**: `data/processed/drought_led_annual/led_{rcp26,rcp60}_processed.nc`
+**Input**: `s3://…/TCFD/raw/isimip/drought_led_annual/*_2006_2099.nc4`
+**Output**: published layer `drought_led_annual` — `led_{rcp26,rcp60}_processed.nc`
 
 ### process_let_cyclone.py
 
@@ -51,8 +59,9 @@ Processes `let` tropical-cyclone exposure (Lange 2020, ISIMIP2b) into the TCFD 6
 python scripts/process_let_cyclone.py
 ```
 
-**Input**: `data/raw/drought_let_annual/*_2006_2099.nc4`
-**Output**: `data/processed/cyclone_let_annual/let_{rcp26,rcp60}_processed.nc`
+**Input**: `s3://…/TCFD/raw/isimip/cyclone_let_annual/*_2006_2099.nc4`
+  (raw prefix renamed from `drought_let_annual`, which held cyclone data)
+**Output**: published layer `cyclone_let_annual` — `let_{rcp26,rcp60}_processed.nc`
 
 ### process_burntarea_fire.py
 
@@ -65,8 +74,8 @@ Processes `burntarea` (wildfire burnt-area fraction, ISIMIP2b `biomes`) into the
 python scripts/process_burntarea_fire.py
 ```
 
-**Input**: `data/raw/wildfire_burntarea_annual/*_2006_2099.nc4`
-**Output**: `data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc`
+**Input**: `s3://…/TCFD/raw/isimip/wildfire_burntarea_annual/*_2006_2099.nc4`
+**Output**: published layer `wildfire_burntarea_annual` — `burntarea_{rcp26,rcp60,rcp85}_processed.nc`
 
 ### process_csoil_soilcarbon.py
 
@@ -79,8 +88,8 @@ Processes `csoil-total` (soil organic carbon stock, ISIMIP3b `biomes`) into the 
 python scripts/process_csoil_soilcarbon.py
 ```
 
-**Input**: `data/raw/soilcarbon_csoil_annual/*_csoil-total_global_annual_2015_2100.nc`
-**Output**: `data/processed/soilcarbon_csoil_annual/csoil_{ssp126,ssp370,ssp585}_processed.nc`
+**Input**: `s3://…/TCFD/raw/isimip/soilcarbon_csoil_annual/*_csoil-total_global_annual_2015_2100.nc`
+**Output**: published layer `soilcarbon_csoil_annual` — `csoil_{ssp126,ssp370,ssp585}_processed.nc`
 
 ### generate_qa_report.py
 

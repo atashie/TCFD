@@ -59,10 +59,21 @@ TCFD/
 │   └── download_water_*.py    # Water: per-variable ISIMIP download scripts
 │
 ├── config/                   # ISIMIP search catalog cache
-├── data/                     # Raw + processed data (gitignored)
-├── reports/                  # Generated reports (gitignored)
 └── _deprecated/              # Archived legacy R code
 ```
+
+## Storage: S3 is canonical
+
+**Data lives in S3, never on local disk.** See [STORAGE.md](STORAGE.md) for the full layout contract. Local `data/` and `reports/` directories are gone; the local cache is ephemeral scratch under `/tmp/tcfd-cache` (override with `TCFD_CACHE_ROOT`) and deleting it never loses data.
+
+- **Bucket/prefix**: `s3://climate-ai-data-science-shiny-app-data/TCFD/` (`us-east-2`)
+- **All keys are built by `isimip_pipeline/storage.py`** — never hardcode an S3 key.
+- **A published layer version is immutable.** Reprocessing creates a new version `v{YYYY-MM-DD}_{git-sha}` (plus `-dirty` on an uncommitted tree). `publish_layer_version` refuses to overwrite an existing version unless told to.
+- **Consumers read `…/layers/{layer_id}/current/`** and must call `storage.verify_complete()` first — a version prefix whose `_COMPLETE.json` is absent or mismatched is in-flight or corrupt, never data.
+- `_COMPLETE.json` gates `data/` + `layer.json` only. `qa/` and `maps/` live in the version prefix (evidence stays pinned to its data) but are regenerable and ungated, so re-running `generate_maps.py` never invalidates a layer.
+- **Credentials**: never pin static `AWS_*` env vars — `storage.s3_filesystem()` drops them so the SageMaker container provider auto-refreshes. Pinning a ~1h token kills long jobs mid-run.
+
+Migrated to S3 so far: `process_led_drought.py`, `process_let_cyclone.py`, `process_burntarea_fire.py`, `process_csoil_soilcarbon.py`, `generate_maps.py`. The remaining `scripts/` still reference local paths and are pending the Python rebuild.
 
 ## CLI Quick Reference (TCFD/CDP only)
 
@@ -90,4 +101,5 @@ isimip-pipeline cleanup        # Delete raw data after verification
 | Document | Purpose |
 |----------|---------|
 | [GUARDRAILS.md](GUARDRAILS.md) | Critical rules that must never be violated |
+| [STORAGE.md](STORAGE.md) | S3 layout contract, versioning, publish protocol, credentials |
 | [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) | Incident log and resolutions |
