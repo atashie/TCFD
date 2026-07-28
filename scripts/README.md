@@ -31,8 +31,8 @@ Features:
 - Trend panels compare the **2030s vs 2090s** (the 2020s trend is identically 0, since trends are anchored to the 2020s baseline)
 - **`contact_sheet.html`** — per-member panels at full 0.5° (built by the processor via `utils/contact_sheet.py`, adopted through `finalize_layer(extra_maps=...)`, linked at the top of `index.html`). Embedded base64 PNGs, one pixel per grid cell, so 17 members cost ~1.8 MB instead of ~4.4M JSON numbers.
 - Colourbars carry **no title** — the quantity/units label is a `<sub>` line under each figure title, so the colourbar stays as narrow as its tick labels instead of stealing width from the map.
-- **`maps_bundle.zip`** — the whole collection in one object (~9 MB), because the S3 console downloads one file at a time and the ~20 HTML pages are interlinked. Unzip and open `index.html`; all links are relative so navigation still works.
-- Values are serialized at **5 significant figures** (`_compact()`), which cut the collection from 82 MB to 53 MB with a max relative error of 1.3e-5 — far below what a colour scale can render. Display only; the NetCDF in `data/` keeps full precision.
+- **`maps_bundle.zip`** — the whole collection in one object (~9.5 MB, 21 files), because the S3 console downloads one file at a time and the ~20 HTML pages are interlinked. Unzip and open `index.html`; all links are relative so navigation still works.
+- Values are serialized at **5 significant figures** (`_compact()`) — a ~35% payload cut at a max relative error of 1.3e-5, far below what a colour scale can render. Display only; the NetCDF in `data/` keeps full precision. The collection is ~57 MB uncompressed / ~9.5 MB zipped (the `go.Heatmap` z-grid carries ocean nulls the old scatter omitted, so the raster is slightly larger but pixel-exact).
 
 ### generate_qa_report.py
 

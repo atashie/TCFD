@@ -30,8 +30,9 @@ TCFD/
 │       └── {layer_id}/
 │           ├── v2026-07-27_3412446/         # immutable version
 │           │   ├── data/{var}_{scenario}_processed.nc
-│           │   ├── qa/report.html, diagnostics.json
-│           │   ├── maps/index.html, {var}_{metric}_{scenario}.html
+│           │   ├── qa/qa_report.html, qa_report.json
+│           │   ├── maps/index.html, {var}_{metric}_{scenario}.html,
+│           │   │        contact_sheet.html, maps_bundle.zip
 │           │   ├── layer.json               # science manifest: provenance + decisions
 │           │   └── _COMPLETE.json           # sha256 gate — written LAST
 │           ├── current/{var}_{scenario}_processed.nc     # copy of active version's data/

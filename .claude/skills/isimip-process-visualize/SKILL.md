@@ -130,7 +130,7 @@ the superseded version stays as history and `_VERSION.json` records the chain.
 
 ### 5. Hand the user something they can actually open
 
-- **`maps/maps_bundle.zip`** (~8 MB) is the whole map collection in one object. The S3
+- **`maps/maps_bundle.zip`** (~9.5 MB) is the whole map collection in one object. The S3
   console downloads one file at a time, so never ask the user to fetch ~20 interlinked
   HTML pages individually. Unzip, open `index.html` — links are relative.
 - **`maps/contact_sheet.html`** is the FIRST thing to review — per-member, full 0.5°.
@@ -140,7 +140,7 @@ the superseded version stays as history and `_VERSION.json` records the chain.
   is display-only — full precision stays in the NetCDF. Do not "fix" this by writing full
   float64: it inflates the collection ~1.5× for precision no colour scale can show.
 - Do not merge the collection into one giant self-contained HTML. plotly.js already comes
-  from the CDN, so there is nothing to de-duplicate, and it would be ~53 MB with every
+  from the CDN, so there is nothing to de-duplicate, and it would be ~57 MB with every
   figure instantiated at once.
 
 ### 6. Review the QA report before claiming success
