@@ -16,6 +16,13 @@ dependencies = [
     "isimip-client>=1.0.0",
     "xarray>=2024.1.0",
     "netcdf4>=1.6.0",
+    # storage.py imports s3fs directly and S3 is the canonical store (STORAGE.md),
+    # so without this a fresh install yields a package whose entire storage layer
+    # cannot import. Nothing else in this list pulls it in transitively.
+    "s3fs>=2024.2.0",
+    # Imported directly by the processors to decode non-standard CF calendars.
+    # netCDF4 happens to depend on it, but a direct import belongs here explicitly.
+    "cftime>=1.6.0",
     "scipy>=1.11.0",
     "pandas>=2.0.0",
     "numpy>=1.24.0",
