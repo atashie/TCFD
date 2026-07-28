@@ -172,6 +172,70 @@ def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+BUNDLE_NAME = "maps_bundle.zip"
+
+
+def bundle_map_collection(map_dir: Path) -> Optional[Path]:
+    """Zip a finished map collection into a single downloadable archive.
+
+    The S3 console downloads one object at a time, which makes retrieving ~20
+    interlinked HTML files for manual review tedious. A single archive is one
+    click; unzip it and open index.html, and the cross-navigation still works
+    because every link is relative.
+
+    Deliberately a ZIP rather than one giant self-contained HTML: the collection
+    is ~50 MB of genuine data payload (plotly.js itself is loaded from CDN, so
+    there is nothing to de-duplicate by merging). Zipped that is ~4x smaller, and
+    it keeps full resolution and one figure per page instead of asking a browser
+    to instantiate every map at once.
+    """
+    import zipfile
+
+    files = sorted(p for p in map_dir.iterdir()
+                   if p.is_file() and p.name != BUNDLE_NAME)
+    if not files:
+        return None
+    out = map_dir / BUNDLE_NAME
+    out.unlink(missing_ok=True)          # never nest a previous bundle inside
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED,
+                         compresslevel=9) as z:
+        for p in files:
+            z.write(p, arcname=p.name)
+    raw = sum(p.stat().st_size for p in files)
+    log(f"  Bundled {len(files)} files: {BUNDLE_NAME} "
+        f"({out.stat().st_size/1048576:.1f} MB, from {raw/1048576:.1f} MB)")
+    return out
+
+
+def _compact(a: np.ndarray, sig: int = 5) -> list:
+    """Round to `sig` significant digits for serialization into the HTML.
+
+    Plotly writes each coordinate/value as its full float64 repr, so a single
+    panel embeds ~70k strings like "5.7176923751831055" (~18 chars) where 6 would
+    do. That is ~38% of every map file, for precision no colour scale can render.
+
+    Rounding is by SIGNIFICANT digits, not decimal places: these layers span many
+    orders of magnitude (soil carbon runs from ~4e-6 to ~180 kg m-2), and a fixed
+    `round(x, 4)` would flatten the small tail to zero. Display-only — the
+    published NetCDF in data/ keeps full precision.
+    """
+    a = np.asarray(a, dtype="float64")
+    out = np.zeros_like(a)
+    nz = np.isfinite(a) & (a != 0)
+    if np.any(nz):
+        mag = np.floor(np.log10(np.abs(a[nz])))
+        # Clip the exponent: for a subnormal input (|a| ~ 1e-320) the factor would
+        # overflow to inf, making round(a*inf)/inf = NaN and silently deleting a
+        # finite cell from the map. 10**300 is far beyond any real payload.
+        exponent = np.clip(sig - 1 - mag, -300.0, 300.0)
+        factor = np.power(10.0, exponent)
+        rounded = np.round(a[nz] * factor) / factor
+        # Belt and braces: never let the rounding introduce a non-finite value.
+        out[nz] = np.where(np.isfinite(rounded), rounded, a[nz])
+    out[~np.isfinite(a)] = np.nan
+    return out.tolist()
+
+
 def create_map_figure(
     lons: np.ndarray,
     lats: np.ndarray,
@@ -202,90 +266,73 @@ def create_map_figure(
     Returns:
         Plotly Figure object
     """
-    # Create meshgrid and flatten
-    lon_grid, lat_grid = np.meshgrid(lons, lats)
-    lon_flat = lon_grid.flatten()
-    lat_flat = lat_grid.flatten()
-    val_flat = values.flatten()
-
-    # Remove NaN values
-    valid_mask = ~np.isnan(val_flat)
-    lon_valid = lon_flat[valid_mask]
-    lat_valid = lat_flat[valid_mask]
-    val_valid = val_flat[valid_mask]
-
-    # Auto-calculate color range if not specified
+    # --- Raster, not markers -------------------------------------------------
+    # This used to be a Scattergeo of one 2px marker per land cell. On the 300px-tall
+    # canvas that gave 0.83px per 0.5-deg cell, so markers were 2.4x the cell size and
+    # overplotted ~6x by area: ~70k dots splattered together into chunky blobs that
+    # looked like coarse data and masked the real resolution of the layer. A Heatmap
+    # draws one rectangle per grid cell instead, so a cell is a cell at every zoom
+    # level, NaN (ocean) stays blank, and zooming reveals true 0.5-deg detail.
+    #
+    # It is also cheaper: the scatter had to serialize lon, lat AND value per land cell
+    # (3 numbers x ~70k), whereas the heatmap sends the 2D z-grid plus two short axis
+    # vectors.
+    #
+    # Trade-off accepted: go.Heatmap needs cartesian axes, so the plotly `geo` basemap
+    # (coastlines/ocean fill) is gone. The land mask itself outlines the continents, and
+    # degree gridlines are kept for orientation -- for QA/QC, seeing the data
+    # unobstructed matters more than a basemap.
+    finite = values[np.isfinite(values)]
     if cmin is None:
-        cmin = np.percentile(val_valid, 2) if len(val_valid) > 0 else 0
+        cmin = np.percentile(finite, 2) if finite.size else 0
     if cmax is None:
-        cmax = np.percentile(val_valid, 98) if len(val_valid) > 0 else 1
+        cmax = np.percentile(finite, 98) if finite.size else 1
 
     fig = go.Figure()
-
-    # Main data scatter
-    fig.add_trace(go.Scattergeo(
-        lon=lon_valid.tolist(),
-        lat=lat_valid.tolist(),
-        mode='markers',
-        marker=dict(
-            size=2,
-            color=val_valid.tolist(),
-            colorscale=colorscale,
-            reversescale=reversescale,
-            cmin=cmin,
-            cmax=cmax,
-            colorbar=dict(
-                title=colorbar_title,
-                exponentformat="power",  # Use ×10⁻⁶ style instead of μ
-                showexponent="all"       # Show exponent on all tick labels
-            ) if showscale else None,
-            showscale=showscale
-        ),
-        hovertemplate="Lon: %{lon:.1f}<br>Lat: %{lat:.1f}<br>Value: %{marker.color:.3e}<extra></extra>"
+    fig.add_trace(go.Heatmap(
+        x=_compact(np.asarray(lons), 6),
+        y=_compact(np.asarray(lats), 6),
+        z=[_compact(row) for row in values],
+        zmin=cmin,
+        zmax=cmax,
+        colorscale=colorscale,
+        reversescale=reversescale,
+        zsmooth=False,                   # never interpolate: it would fake resolution
+        hoverongaps=False,               # no hover box over ocean
+        showscale=showscale,
+        colorbar=dict(
+            title=colorbar_title,
+            exponentformat="power",      # Use ×10⁻⁶ style instead of μ
+            showexponent="all"
+        ) if showscale else None,
+        hovertemplate="Lon: %{x:.2f}<br>Lat: %{y:.2f}<br>Value: %{z:.3e}<extra></extra>",
     ))
 
     # Add anomaly markers if provided
-    if anomaly_mask is not None:
-        anom_flat = anomaly_mask.flatten()
-        anom_valid = anom_flat[valid_mask]
-        if np.any(anom_valid):
-            anom_lons = lon_valid[anom_valid]
-            anom_lats = lat_valid[anom_valid]
-            fig.add_trace(go.Scattergeo(
-                lon=anom_lons.tolist(),
-                lat=anom_lats.tolist(),
-                mode='markers',
-                marker=dict(
-                    size=6,
-                    color='red',
-                    symbol='x',
-                    line=dict(width=1, color='darkred')
-                ),
-                name=f'Anomalies (n={len(anom_lons)})',
-                hovertemplate="ANOMALY<br>Lon: %{lon:.1f}<br>Lat: %{lat:.1f}<extra></extra>"
-            ))
+    if anomaly_mask is not None and np.any(anomaly_mask & np.isfinite(values)):
+        lon_grid, lat_grid = np.meshgrid(lons, lats)
+        sel = anomaly_mask & np.isfinite(values)
+        fig.add_trace(go.Scatter(
+            x=_compact(lon_grid[sel], 6),
+            y=_compact(lat_grid[sel], 6),
+            mode='markers',
+            marker=dict(size=5, color='red', symbol='x',
+                        line=dict(width=1, color='darkred')),
+            name=f'Anomalies (n={int(sel.sum())})',
+            hovertemplate="ANOMALY<br>Lon: %{x:.2f}<br>Lat: %{y:.2f}<extra></extra>",
+        ))
 
+    axis = dict(showgrid=True, gridcolor='rgba(120,120,120,0.25)', gridwidth=0.5,
+                zeroline=False, constrain='domain')
     fig.update_layout(
         title=dict(text=title, x=0.5, font=dict(size=14)),
-        geo=dict(
-            projection_type='equirectangular',
-            showland=True,
-            landcolor='rgb(243, 243, 243)',
-            showocean=True,
-            oceancolor='rgb(204, 229, 255)',
-            showcoastlines=True,
-            coastlinecolor='rgb(100, 100, 100)',
-            coastlinewidth=0.5,
-            showlakes=True,
-            lakecolor='rgb(204, 229, 255)',
-            showcountries=True,
-            countrycolor='rgb(180, 180, 180)',
-            lataxis=dict(range=[-90, 90]),
-            lonaxis=dict(range=[-180, 180])
-        ),
-        margin=dict(l=0, r=0, t=40, b=0),
-        height=300,
-        showlegend=bool(anomaly_mask is not None and np.any(anomaly_mask))
+        xaxis=dict(range=[-180, 180], dtick=60, title=None,
+                   scaleanchor='y', scaleratio=1, **axis),
+        yaxis=dict(range=[-90, 90], dtick=30, title=None, **axis),
+        plot_bgcolor='rgb(250,250,250)',
+        margin=dict(l=40, r=0, t=40, b=30),
+        height=440,                      # >= 360 data rows, so no vertical under-sampling
+        showlegend=bool(anomaly_mask is not None and np.any(anomaly_mask)),
     )
 
     return fig
@@ -1099,10 +1146,6 @@ def main():
         python generate_maps.py soilcarbon_csoil_annual --local-only
     """
     import argparse
-    import sys
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" / "src"))
-    from isimip_pipeline import storage
 
     parser = argparse.ArgumentParser(description="Generate maps for a published layer.")
     parser.add_argument("layer_id", help="Canonical layer id, e.g. wildfire_burntarea_annual")
@@ -1113,6 +1156,25 @@ def main():
     parser.add_argument("--local-only", action="store_true",
                         help="Write maps to the local cache without uploading")
     args = parser.parse_args()
+    return run(args.layer_id, args.variable, args.version, args.local_only)
+
+
+def run(layer_id, variable=None, version=None, local_only=False):
+    """Generate and publish a layer's map collection; returns the output location.
+
+    Importable so processors can emit maps as part of a normal run
+    (scripts/utils/finalize.py), not only via the CLI.
+    """
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" / "src"))
+    from isimip_pipeline import storage
+
+    class _Args:
+        pass
+    args = _Args()
+    args.layer_id, args.variable = layer_id, variable
+    args.version, args.local_only = version, local_only
 
     version = args.version or storage.resolve_current(args.layer_id)
     vprefix = storage.version_prefix(args.layer_id, version)
@@ -1129,26 +1191,57 @@ def main():
     processed_dir = storage.pull_prefix(f"{vprefix}/data")
     output_dir = storage.cache_root() / "_maps" / args.layer_id / version
 
+    # layer.json records the ISIMIP variable TOKEN (e.g. "csoil-total"), but a
+    # processor may name its outputs with a shorter stem (e.g. csoil_ssp126_
+    # processed.nc). Reconcile against what is actually in data/ instead of failing
+    # on the mismatch. Only when the variable was inferred, never when passed.
+    renamed_from = None
+    if args.variable is None and not list(processed_dir.glob(f"{variable}_*_processed.nc")):
+        stems = {p.stem.replace("_processed", "").rsplit("_", 1)[0]
+                 for p in processed_dir.glob("*_processed.nc")}
+        if len(stems) == 1:
+            renamed_from, variable = variable, stems.pop()
+
     log("=" * 60)
     log("Generating Synoptic and Diagnostic Maps")
     log("=" * 60)
     log(f"Layer: {args.layer_id}")
     log(f"Version: {version}")
-    log(f"Variable: {variable}")
+    log(f"Variable: {variable}"
+        + (f"  (layer.json records {renamed_from!r}; matched the file naming instead)"
+           if renamed_from else ""))
     log(f"Processed data: s3://{storage.BUCKET}/{vprefix}/data")
     log("=" * 60)
+
+    # Clear any previous run's output for this version before regenerating. The
+    # directory is version-keyed and therefore reused, and bundle_map_collection()
+    # zips whatever it finds: a rerun that emits FEWER files (a dropped scenario or
+    # metric) would otherwise leave stale pages behind, ship them inside the new
+    # archive, and publish them to S3 alongside current ones.
+    target = output_dir / variable
+    if target.exists():
+        stale = [p for p in target.iterdir() if p.is_file()]
+        for p in stale:
+            p.unlink()
+        if stale:
+            log(f"  Cleared {len(stale)} file(s) from a previous run of this version")
 
     generator = MapCollectionGenerator(processed_dir, output_dir)
     generator.generate_all_collections(variable)
 
+    bundle_map_collection(target)
+
     log("\n" + "=" * 60)
     if args.local_only:
-        log(f"Map generation complete (local only): {output_dir / variable}")
+        location = str(output_dir / variable)
+        log(f"Map generation complete (local only): {location}")
     else:
         prefix = storage.publish_derived(args.layer_id, "maps",
                                          output_dir / variable, version=version)
-        log(f"Map generation complete: s3://{storage.BUCKET}/{prefix}")
+        location = f"s3://{storage.BUCKET}/{prefix}"
+        log(f"Map generation complete: {location}")
     log("=" * 60)
+    return location
 
 
 if __name__ == "__main__":

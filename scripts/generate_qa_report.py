@@ -1,114 +1,505 @@
-"""Generate QA report for processed qg data."""
+"""Generate a QA/QC report for a published TCFD layer and publish it to qa/.
 
-import xarray as xr
-import numpy as np
-from pathlib import Path
+Runs the invariant checks that the 6-value-class contract depends on, plus
+per-scenario summary statistics, and writes both a machine-readable
+``qa_report.json`` and a human-readable ``qa_report.html`` into the layer
+version's ``qa/`` prefix.
+
+The checks are driven by each file's OWN declared attributes (``trend_definition``,
+``percentile_direction``, ``baseline_source``) rather than hardcoded per variable,
+so the same report serves every annualized layer (led, let, burntarea, csoil, ...).
+
+``qa/`` is deliberately OUTSIDE the ``_COMPLETE.json`` gate (STORAGE.md): the report
+is regenerable evidence pinned to its data, so re-running this never invalidates a
+published layer.
+
+Usage:
+    python scripts/generate_qa_report.py soilcarbon_csoil_annual
+    python scripts/generate_qa_report.py drought_led_annual --version v2026-07-24_abc1234
+    python scripts/generate_qa_report.py cyclone_let_annual --local-only
+"""
+
+import argparse
+import html
 import json
+import sys
+import warnings
+from datetime import datetime, timezone
+from pathlib import Path
 
-def generate_report():
-    """Generate summary statistics and save as JSON report."""
-    # Get project root (parent of scripts directory)
-    project_root = Path(__file__).parent.parent
-    processed_dir = project_root / "data" / "processed"
-    output_path = project_root / "reports" / "qg_qa_report.json"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+import numpy as np
+import xarray as xr
 
-    report = {
-        "variable": "qg",
-        "description": "Groundwater runoff (baseflow)",
-        "processing_parameters": {},
-        "scenarios": {}
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" / "src"))
+from isimip_pipeline import storage  # noqa: E402
+
+VALUE_CLASSES = ["median", "percentile", "trend", "lower_ci", "upper_ci"]
+TOL = 1e-4          # absolute tolerance for the trend<->change identity
+CI_TOL = 1e-6       # float32 slack for CI ordering comparisons
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+class Check:
+    """One pass/fail assertion plus the evidence behind it."""
+
+    def __init__(self, results):
+        self.results = results
+
+    def __call__(self, scope, name, passed, detail="", severity="error"):
+        self.results.append({
+            "scope": scope, "check": name, "passed": bool(passed),
+            "detail": str(detail), "severity": severity,
+        })
+        mark = "PASS" if passed else ("WARN" if severity == "warning" else "FAIL")
+        log(f"  {mark:4s}  [{scope}] {name}" + (f"  -> {detail}" if detail else ""))
+        return bool(passed)
+
+
+def _finite(a):
+    return a[np.isfinite(a)]
+
+
+def seam_spacing(a, axis=1, min_share=0.4):
+    """Most common spacing between gradient 'seams', in cells, or None if smooth.
+
+    Finds columns (or rows) whose mean |gradient| far exceeds its local median, then
+    reports the modal gap between them. Unlike grid_periodicity() this assumes neither a
+    candidate block width nor alignment to the array origin, and it works on blocks that
+    are merely SMOOTH inside rather than exactly constant -- the case that defeated both
+    the exact-tie and fixed-modulo tests when a ~4x5 deg member was hiding in a 0.5 deg
+    ensemble.
+
+    Returns ``(spacing_cells, n_gaps_at_that_spacing, n_gaps_total)`` when one spacing
+    accounts for at least ``min_share`` of the gaps, else None.
+    """
+    import collections
+    g = np.abs(np.diff(a, axis=axis))
+    with np.errstate(invalid="ignore"):
+        prof = np.nanmean(g, axis=1 - axis)
+    if not np.isfinite(prof).any() or np.nanmean(prof) == 0:
+        return None
+    prof = prof / np.nanmean(prof)
+    w = 9
+    pad = np.pad(prof, (w // 2, w // 2), mode="edge")
+    local = np.nanmedian(np.lib.stride_tricks.sliding_window_view(pad, w), axis=1)
+    peaks = np.flatnonzero(np.isfinite(prof) & np.isfinite(local) & (prof > 2.0 * local))
+    if peaks.size < 5:
+        return None
+    gaps = np.diff(peaks)
+    gaps = gaps[gaps > 1]
+    if gaps.size < 4:
+        return None
+    spacing, count = collections.Counter(gaps.tolist()).most_common(1)[0]
+    if count / gaps.size < min_share:
+        return None
+    return int(spacing), int(count), int(gaps.size)
+
+
+def grid_periodicity(a, k):
+    """Ratio of mean |gradient| on columns/rows INSIDE a k-block vs on its seams.
+
+    A model that runs natively coarser than 0.5 deg and was replicated onto the ISIMIP
+    grid keeps the declared 360x720 dims, so a dimension check cannot see it — but its
+    values are constant within each k x k block, leaving zero gradient inside a block
+    and all the gradient on the seams. Ratio ~1 means genuinely 0.5 deg; ratio well
+    below 1 means a coarse component at k*0.5 deg is present.
+
+    Returns ``(lon_ratio, lat_ratio)``. Detects a coarse component even when it is
+    diluted by finer members in an ensemble mean, which is why it is worth running on
+    the published field rather than trusting the raw files' declared grid.
+    """
+    out = []
+    for axis in (1, 0):
+        g = np.abs(np.diff(a, axis=axis))
+        with np.errstate(invalid="ignore"):
+            prof = np.nanmean(g, axis=1 - axis)
+        idx = np.arange(prof.size)
+        inside, seam = prof[idx % k != 0], prof[idx % k == 0]
+        inside, seam = inside[np.isfinite(inside)], seam[np.isfinite(seam)]
+        if inside.size < 5 or seam.size < 5 or np.mean(seam) == 0:
+            out.append(float("nan"))
+        else:
+            out.append(float(np.mean(inside) / np.mean(seam)))
+    return out[0], out[1]
+
+
+def summarize(ds, var, decades):
+    """Per-decade summary statistics for one value class."""
+    out = {}
+    a = ds[var].values
+    for i, d in enumerate(decades):
+        f = _finite(a[i])
+        if f.size == 0:
+            out[str(d)] = None
+            continue
+        out[str(d)] = {
+            "n_finite": int(f.size),
+            "min": round(float(f.min()), 6),
+            "p05": round(float(np.percentile(f, 5)), 6),
+            "median": round(float(np.median(f)), 6),
+            "mean": round(float(f.mean()), 6),
+            "p95": round(float(np.percentile(f, 95)), 6),
+            "max": round(float(f.max()), 6),
+        }
+    return out
+
+
+def check_layer(ds_by_scen, layer_id, version):
+    results = []
+    chk = Check(results)
+    scenarios = sorted(ds_by_scen)
+    first = ds_by_scen[scenarios[0]]
+    attrs = dict(first.attrs)
+    decades = [int(d) for d in first.decade.values]
+    declared_baseline = attrs.get("baseline_decade")
+    baseline = int(declared_baseline) if declared_baseline is not None else decades[0]
+    # If a file DECLARES a baseline that is not on its own decade axis, silently
+    # falling back to index 0 would test a different decade while every label still
+    # said the declared one -- a passing report about the wrong slice.
+    baseline_ok = baseline in decades
+    b_idx = decades.index(baseline) if baseline_ok else 0
+    # Match hyphen OR underscore: processors write the prose form
+    # "baseline-anchored rate: ...", the manifest uses baseline_anchored. Testing
+    # only one spelling silently SKIPS the identity check below, which is worse
+    # than failing it.
+    trend_def = str(attrs.get("trend_definition", "")).replace("-", "_")
+    anchored = "baseline_anchored" in trend_def
+    hib = attrs.get("percentile_direction", "") == "higher_is_better"
+    shared_baseline = "shared" in str(attrs.get("baseline_source", ""))
+
+    log(f"\nLayer {layer_id} @ {version}")
+    log(f"  scenarios={scenarios}  decades={decades}  baseline={baseline}s")
+    log(f"  percentile_direction={attrs.get('percentile_direction','?')}  "
+        f"trend={'baseline-anchored' if anchored else attrs.get('trend_definition','?')}")
+
+    log("\n--- structure ---")
+    chk("layer", "declared baseline_decade exists on the decade axis", baseline_ok,
+        f"declared={declared_baseline!r}, decades={decades}"
+        + ("" if baseline_ok else f" -- FALLING BACK to {decades[0]}s; every "
+                                  f"baseline check below targets that instead"))
+    for s in scenarios:
+        ds = ds_by_scen[s]
+        missing = [v for v in VALUE_CLASSES if v not in ds.data_vars]
+        chk(s, "all value classes present", not missing, f"missing={missing}")
+        chk(s, "dims are (decade, lat, lon)",
+            ds["median"].dims == ("decade", "lat", "lon"), str(ds["median"].dims))
+        chk(s, "decade axis matches",
+            [int(d) for d in ds.decade.values] == decades,
+            str([int(d) for d in ds.decade.values]))
+
+    log("\n--- value-class invariants ---")
+    for s in scenarios:
+        ds = ds_by_scen[s]
+        m, lo, hi = (ds[k].values for k in ("median", "lower_ci", "upper_ci"))
+        fin = np.isfinite(m) & np.isfinite(lo) & np.isfinite(hi)
+        viol = int(np.sum((lo[fin] > m[fin] + CI_TOL) | (m[fin] > hi[fin] + CI_TOL)))
+        chk(s, "CI ordering lower <= median <= upper", viol == 0, f"violations={viol}")
+
+        # A zero-width CI is legitimate where every contributing member reports
+        # exactly 0 (barren desert/ice), and suspect anywhere else -- report the
+        # split rather than one ambiguous count.
+        collapsed = np.isclose(lo[fin], hi[fin])
+        at_zero = collapsed & np.isclose(m[fin], 0.0)
+        n_all, n_zero = int(collapsed.sum()), int(at_zero.sum())
+        extra = ""
+        if "n_models" in ds.data_vars and n_all > n_zero:
+            nmo_f = ds["n_models"].values[fin]
+            resid = collapsed & ~at_zero
+            single = int(np.sum(nmo_f[resid] <= 1))
+            extra = (f"; of the {n_all - n_zero:,} non-zero ones, {single:,} are "
+                     f"single-model cells (a lone model's GCMs agreeing exactly)")
+        chk(s, "CI zero-width only on all-zero cells", n_all == n_zero,
+            f"{n_all:,} zero-width of {int(fin.sum()):,} finite "
+            f"({100*n_all/max(int(fin.sum()),1):.3f}%); {n_zero:,} are all-zero "
+            f"(expected), {n_all - n_zero:,} are not{extra}", severity="warning")
+
+        p = ds["percentile"].values
+        pf = _finite(p)
+        chk(s, "percentile within [1, 100]",
+            bool(pf.min() >= 1 - CI_TOL and pf.max() <= 100 + CI_TOL),
+            f"[{pf.min():.3f}, {pf.max():.3f}]")
+
+        # Declared direction must match the realized sign of corr(value, risk pct).
+        b, bp = m[b_idx], p[b_idx]
+        g = np.isfinite(b) & np.isfinite(bp)
+        r = float(np.corrcoef(b[g], bp[g])[0, 1]) if int(g.sum()) > 2 else float("nan")
+        if hib:
+            chk(s, "percentile INVERTED (higher_is_better)", r < -0.9,
+                f"corr(median, percentile)={r:+.4f}, expected strongly negative")
+        else:
+            chk(s, "percentile aligned (higher_is_worse)", r > 0.9,
+                f"corr(median, percentile)={r:+.4f}, expected strongly positive")
+
+        t = ds["trend"].values
+        chk(s, f"trend == 0 in baseline decade ({baseline}s)",
+            bool(np.all(_finite(t[b_idx]) == 0)),
+            f"max|trend[{baseline}]|={np.nanmax(np.abs(t[b_idx])):.3e}")
+
+        if anchored:
+            worst, n_compared = 0.0, 0
+            for i in range(len(decades)):
+                span = i - b_idx
+                if span == 0:
+                    continue
+                dev = np.abs(t[i] * span - (m[i] - m[b_idx]))
+                df = _finite(dev)
+                if df.size:
+                    worst = max(worst, float(df.max()))
+                    n_compared += int(df.size)
+            # worst stays 0.0 if NOTHING was comparable, which would report PASS
+            # having compared nothing -- the same vacuous-pass class as the
+            # hyphen/underscore bug above. Require actual comparisons.
+            chk(s, "trend x elapsed_decades == change map",
+                n_compared > 0 and worst < TOL,
+                f"max abs deviation={worst:.3e} over {n_compared:,} cells"
+                + ("" if n_compared else "  -- NOTHING COMPARABLE: trend and median "
+                                         "finite masks may be disjoint"))
+        else:
+            # Never let an unrecognized trend definition quietly drop the check.
+            chk(s, "trend<->change identity CHECKED", False,
+                f"skipped: trend_definition not recognized as baseline-anchored "
+                f"({trend_def[:60]!r})", severity="warning")
+
+        if "n_members" in ds.data_vars:
+            nm = ds["n_members"].values
+            nmf = _finite(nm)
+            declared = attrs.get("n_members")
+            chk(s, "n_members never exceeds declared ensemble size",
+                bool(nmf.max() <= float(declared)) if declared else True,
+                f"max={nmf.max():.0f} declared={declared}")
+            chk(s, "coverage counts align with finite data",
+                int(np.sum(np.isfinite(nm[b_idx]))) == int(np.sum(np.isfinite(m[b_idx]))),
+                f"counts={int(np.sum(np.isfinite(nm[b_idx]))):,} "
+                f"data={int(np.sum(np.isfinite(m[b_idx]))):,}")
+
+    if shared_baseline and len(scenarios) > 1:
+        log("\n--- shared baseline (must be identical across scenarios) ---")
+        for k in VALUE_CLASSES:
+            ref = ds_by_scen[scenarios[0]][k].values[b_idx]
+            same = all(np.allclose(ref, ds_by_scen[s][k].values[b_idx], equal_nan=True)
+                       for s in scenarios[1:])
+            chk("cross-scenario", f"{baseline}s {k} identical across scenarios", same)
+
+    log("\n--- land coverage ---")
+    for s in scenarios:
+        m = ds_by_scen[s]["median"].values
+        n = int(np.sum(np.isfinite(m[b_idx])))
+        chk(s, "land cells non-empty", n > 0,
+            f"{n:,} cells ({100*n/m[b_idx].size:.2f}% of grid)")
+
+    log("\n--- effective spatial resolution ---")
+    # Declared dims cannot reveal a natively coarse member replicated onto the 0.5 deg
+    # grid; only the values can. Warning, not failure: a coarse member may be a
+    # deliberate, documented trade-off for ensemble depth.
+    #
+    # Test a WIDE range of block widths. A first version of this check stopped at k=4
+    # (2 deg) and reported the layer as essentially clean, while the dominant artifact
+    # was a member on a ~4x5 deg grid (k=8..10) -- an order of magnitude coarser than
+    # anything it looked for. Also report the measured seam SPACING, which needs no
+    # candidate list and no assumption that blocks align to the array origin.
+    s0 = scenarios[0]
+    base = ds_by_scen[s0]["median"].values[b_idx]
+    for k in (2, 3, 4, 6, 8, 10, 12):
+        rlon, rlat = grid_periodicity(base, k)
+        clean = all(np.isnan(r) or r > 0.90 for r in (rlon, rlat))
+        chk("grid", f"no {k*0.5:g}-deg block structure in the ensemble", clean,
+            f"inside/seam gradient ratio lon={rlon:.3f} lat={rlat:.3f} "
+            f"(1.0 = native 0.5 deg; <0.90 = a coarser member is present)",
+            severity="warning")
+    for axis, name in ((1, "lon"), (0, "lat")):
+        sp = seam_spacing(base, axis)
+        chk("grid", f"no dominant {name} seam spacing", sp is None,
+            "none detected (field is smooth at 0.5 deg)" if sp is None else
+            f"seams every {sp[0]} cells = {sp[0]*0.5:g} deg "
+            f"({sp[1]} of {sp[2]} gaps) -> a member is effectively that coarse",
+            severity="warning")
+    if "n_models" in ds_by_scen[s0].data_vars:
+        nmo = ds_by_scen[s0]["n_models"].values[b_idx]
+        one = int(np.sum(np.isfinite(base) & (nmo == 1)))
+        n = int(np.sum(np.isfinite(base)))
+        chk("grid", "no cells rendered by a single model alone", one == 0,
+            f"{one:,} of {n:,} land cells ({100*one/max(n,1):.2f}%) come from one model, "
+            f"so they inherit that model's native resolution unchanged",
+            severity="warning")
+
+    return results, dict(scenarios=scenarios, decades=decades, baseline=baseline,
+                         attrs=attrs, anchored=anchored, higher_is_better=hib)
+
+
+def build_report(layer_id, version, ds_by_scen, results, meta):
+    scenarios = meta["scenarios"]
+    decades = meta["decades"]
+    stats = {}
+    for s in scenarios:
+        ds = ds_by_scen[s]
+        present = [v for v in VALUE_CLASSES + ["n_members", "n_models"] if v in ds.data_vars]
+        stats[s] = {v: summarize(ds, v, decades) for v in present}
+        m = ds["median"].values
+        g = [float(np.nanmean(m[i])) for i in range(len(decades))]
+        stats[s]["_global_mean_by_decade"] = {str(d): round(v, 6) for d, v in zip(decades, g)}
+        stats[s]["_global_mean_change_pct"] = (
+            round(100 * (g[-1] / g[0] - 1), 4) if g[0] else None)
+
+    n_fail = sum(1 for r in results if not r["passed"] and r["severity"] == "error")
+    n_warn = sum(1 for r in results if not r["passed"] and r["severity"] == "warning")
+    return {
+        "layer_id": layer_id,
+        "version": version,
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "generated_by": "scripts/generate_qa_report.py",
+        "summary": {
+            "checks_run": len(results),
+            "passed": sum(1 for r in results if r["passed"]),
+            "failed": n_fail,
+            "warnings": n_warn,
+            "verdict": "PASS" if n_fail == 0 else "FAIL",
+        },
+        "layer_attributes": {k: str(v) for k, v in meta["attrs"].items()},
+        "checks": results,
+        "statistics": stats,
     }
 
-    for nc_file in sorted(processed_dir.glob("qg_*.nc")):
-        print(f"Analyzing {nc_file.name}...")
 
-        ds = xr.open_dataset(nc_file)
-        scenario = ds.attrs.get("scenario", nc_file.stem.split("_")[1])
+def render_html(rep):
+    s = rep["summary"]
+    colour = "#2e7d32" if s["verdict"] == "PASS" else "#c62828"
+    rows = []
+    for r in rep["checks"]:
+        if r["passed"]:
+            badge, bg = "PASS", "#e8f5e9"
+        elif r["severity"] == "warning":
+            badge, bg = "WARN", "#fff8e1"
+        else:
+            badge, bg = "FAIL", "#ffebee"
+        rows.append(
+            f'<tr style="background:{bg}"><td><b>{badge}</b></td>'
+            f'<td>{html.escape(r["scope"])}</td><td>{html.escape(r["check"])}</td>'
+            f'<td><code>{html.escape(r["detail"])}</code></td></tr>')
 
-        # Store processing parameters (from first file)
-        if not report["processing_parameters"]:
-            report["processing_parameters"] = {
-                "window_years": int(ds.attrs.get("window_years", 20)),
-                "baseline_decade": int(ds.attrs.get("baseline_decade", 2020)),
-                "decades": [int(d) for d in ds.decade.values],
-            }
+    stat_blocks = []
+    for scen, sv in rep["statistics"].items():
+        gm = sv.get("_global_mean_by_decade", {})
+        chg = sv.get("_global_mean_change_pct")
+        heads = "".join(f"<th>{d}s</th>" for d in gm)
+        cells = "".join(f"<td>{v:.4f}</td>" for v in gm.values())
+        stat_blocks.append(f"<h3>{html.escape(scen)}</h3>")
+        if chg is not None:
+            stat_blocks.append(
+                f"<p>Global-mean change, first to last decade: <b>{chg:+.2f}%</b></p>")
+        stat_blocks.append(
+            f'<table><tr><th>global mean</th>{heads}</tr>'
+            f'<tr><td>median</td>{cells}</tr></table>')
 
-        scenario_stats = {
-            "file": nc_file.name,
-            "dimensions": {
-                "decades": len(ds.decade),
-                "lat": len(ds.lat),
-                "lon": len(ds.lon),
-            },
-            "decades": {}
-        }
+    attrs = "".join(
+        f"<tr><td><code>{html.escape(k)}</code></td><td>{html.escape(v[:400])}"
+        f"{'&hellip;' if len(v) > 400 else ''}</td></tr>"
+        for k, v in sorted(rep["layer_attributes"].items()))
 
-        for decade in ds.decade.values:
-            decade_data = ds.sel(decade=decade)
-            median_vals = decade_data["median"].values
-            pct_vals = decade_data["percentile"].values
+    return f"""<title>QA report — {html.escape(rep['layer_id'])}</title>
+<style>
+ body{{font-family:-apple-system,Segoe UI,Roboto,sans-serif;margin:2rem auto;max-width:1100px;
+       padding:0 1rem;line-height:1.5;color:#222}}
+ table{{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}}
+ th,td{{border:1px solid #ddd;padding:.4rem .6rem;text-align:left;vertical-align:top}}
+ th{{background:#f5f5f5}} code{{font-size:.85em;word-break:break-word}}
+ .verdict{{display:inline-block;padding:.3rem .9rem;border-radius:4px;color:#fff;
+           background:{colour};font-weight:700}}
+ .wrap{{overflow-x:auto}}
+</style>
+<h1>QA/QC report</h1>
+<p><b>{html.escape(rep['layer_id'])}</b> &middot; version
+<code>{html.escape(rep['version'])}</code><br>
+generated {html.escape(rep['generated_utc'])} by
+<code>{html.escape(rep['generated_by'])}</code></p>
+<p><span class="verdict">{s['verdict']}</span>
+&nbsp; {s['passed']}/{s['checks_run']} checks passed &middot;
+{s['failed']} failed &middot; {s['warnings']} warnings</p>
+<h2>Checks</h2>
+<div class="wrap"><table>
+<tr><th>result</th><th>scope</th><th>check</th><th>evidence</th></tr>
+{''.join(rows)}
+</table></div>
+<h2>Statistics</h2>
+<div class="wrap">{''.join(stat_blocks)}</div>
+<h2>Layer attributes</h2>
+<div class="wrap"><table><tr><th>attribute</th><th>value</th></tr>{attrs}</table></div>
+"""
 
-            # Calculate summary stats (excluding NaN)
-            valid_median = median_vals[~np.isnan(median_vals)]
-            valid_pct = pct_vals[~np.isnan(pct_vals)]
 
-            decade_stats = {
-                "median": {
-                    "mean": float(np.mean(valid_median)) if len(valid_median) > 0 else None,
-                    "min": float(np.min(valid_median)) if len(valid_median) > 0 else None,
-                    "max": float(np.max(valid_median)) if len(valid_median) > 0 else None,
-                    "std": float(np.std(valid_median)) if len(valid_median) > 0 else None,
-                },
-                "percentile": {
-                    "mean": float(np.mean(valid_pct)) if len(valid_pct) > 0 else None,
-                    "p25": float(np.percentile(valid_pct, 25)) if len(valid_pct) > 0 else None,
-                    "p50": float(np.percentile(valid_pct, 50)) if len(valid_pct) > 0 else None,
-                    "p75": float(np.percentile(valid_pct, 75)) if len(valid_pct) > 0 else None,
-                },
-                "valid_cells": int(len(valid_median)),
-                "total_cells": int(median_vals.size),
-                "coverage_pct": float(len(valid_median) / median_vals.size * 100),
-            }
-            scenario_stats["decades"][str(int(decade))] = decade_stats
+def run(layer_id, variable=None, version=None, local_only=False):
+    """Build and publish the QA report. Returns the report dict.
 
-        report["scenarios"][scenario] = scenario_stats
+    Importable so processors can emit QA evidence as part of a normal run
+    (scripts/utils/finalize.py), not only via the CLI.
+    """
+    warnings.filterwarnings("ignore")
+    version = version or storage.resolve_current(layer_id)
+    vprefix = storage.version_prefix(layer_id, version)
+    storage.verify_complete(vprefix, require=["layer.json"])   # never QA ungated data
+
+    data_dir = storage.pull_prefix(f"{vprefix}/data")
+    stems = {p.stem.replace("_processed", "").rsplit("_", 1)[0]
+             for p in data_dir.glob("*_processed.nc")}
+    stem = variable or (stems.pop() if len(stems) == 1 else None)
+    if not stem:
+        raise ValueError(f"cannot infer variable from {sorted(stems)}; pass one explicitly")
+
+    ds_by_scen = {}
+    for p in sorted(data_dir.glob(f"{stem}_*_processed.nc")):
+        scen = p.stem.replace("_processed", "").rsplit("_", 1)[-1]
+        ds_by_scen[scen] = xr.open_dataset(p)
+    if not ds_by_scen:
+        raise FileNotFoundError(f"no {stem}_*_processed.nc under {data_dir}")
+
+    log("=" * 66)
+    log(f"QA/QC report: {layer_id} @ {version}")
+    log("=" * 66)
+
+    results, meta = check_layer(ds_by_scen, layer_id, version)
+    rep = build_report(layer_id, version, ds_by_scen, results, meta)
+
+    out = storage.cache_root() / "_qa" / layer_id / version
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "qa_report.json").write_text(json.dumps(rep, indent=1))
+    (out / "qa_report.html").write_text(render_html(rep))
+
+    s = rep["summary"]
+    log(f"\n{'='*66}")
+    log(f"{s['verdict']}: {s['passed']}/{s['checks_run']} passed, "
+        f"{s['failed']} failed, {s['warnings']} warnings")
+
+    if local_only:
+        log(f"Report written locally: {out}")
+        rep["published_to"] = str(out)
+    else:
+        prefix = storage.publish_derived(layer_id, "qa", out, version=version)
+        log(f"Published: s3://{storage.BUCKET}/{prefix}")
+        rep["published_to"] = f"s3://{storage.BUCKET}/{prefix}"
+    log("=" * 66)
+    for ds in ds_by_scen.values():
         ds.close()
+    return rep
 
-    # Save report
-    with open(output_path, "w") as f:
-        json.dump(report, f, indent=2)
 
-    print(f"\nReport saved to: {output_path}")
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("layer_id")
+    ap.add_argument("variable", nargs="?", default=None,
+                    help="File stem; inferred from the data directory if omitted")
+    ap.add_argument("--version", default=None, help="Default: the layer's current version")
+    ap.add_argument("--local-only", action="store_true",
+                    help="Write the report to the local cache without uploading")
+    args = ap.parse_args()
+    try:
+        rep = run(args.layer_id, args.variable, args.version, args.local_only)
+    except (ValueError, FileNotFoundError) as e:
+        ap.error(str(e))
+    return 1 if rep["summary"]["failed"] else 0
 
-    # Print summary
-    print("\n" + "=" * 60)
-    print("QA REPORT SUMMARY")
-    print("=" * 60)
-    print(f"\nVariable: {report['variable']}")
-    print(f"Description: {report['description']}")
-    print(f"Window size: {report['processing_parameters']['window_years']} years")
-    print(f"Baseline decade: {report['processing_parameters']['baseline_decade']}s")
-    print(f"Decades processed: {report['processing_parameters']['decades']}")
-
-    for scenario, stats in report["scenarios"].items():
-        print(f"\n--- {scenario.upper()} ---")
-        print(f"Grid: {stats['dimensions']['lat']} x {stats['dimensions']['lon']}")
-
-        # Show 2020s and 2080s comparison
-        d2020 = stats["decades"].get("2020", {})
-        d2080 = stats["decades"].get("2080", {})
-
-        if d2020 and d2080:
-            pct_2020 = d2020.get("percentile", {}).get("mean")
-            pct_2080 = d2080.get("percentile", {}).get("mean")
-
-            print(f"  2020s: percentile mean = {pct_2020:.1f}%" if pct_2020 else "  2020s: no data")
-            print(f"  2080s: percentile mean = {pct_2080:.1f}%" if pct_2080 else "  2080s: no data")
-
-            if pct_2020 and pct_2080:
-                change = pct_2080 - pct_2020
-                print(f"  Change: {change:+.1f} percentile points")
 
 if __name__ == "__main__":
-    generate_report()
+    sys.exit(main())

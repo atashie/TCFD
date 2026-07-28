@@ -7,8 +7,16 @@ reports/
 *.nc4
 *.zarr/
 
-# Claude Code local settings
-.claude/
+# Claude Code local settings — machine-specific, not shared.
+# NOTE: match the CONTENTS (.claude/*), not the directory (.claude/). Git does not
+# descend into an excluded directory, so an excluded `.claude/` would make the
+# skills re-inclusion below silently ineffective.
+.claude/*
+
+# ...but the ISIMIP skills ARE shared project knowledge and must be version
+# controlled. They previously lived in the untracked ~/.claude/skills/ and were
+# lost when the environment changed; keep them in the repo.
+!.claude/skills/
 
 # Python cache
 __pycache__/

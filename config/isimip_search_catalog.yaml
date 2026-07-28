@@ -310,34 +310,110 @@ search_results:
   # soil / subsurface carbon searches (biomes sector)
   # -------------------------
   soil_carbon:
-    last_searched: "2026-07-25"
+    last_searched: "2026-07-27"   # re-enumerated in full; corrections below
     description: "Subsurface / root-zone carbon. Lives in the biomes sector as carbon-pool STATE variables; there is no dedicated soil sector. Enumerate STOCKS (csoil soil, croot/cvegbg root-zone) vs the net-sink FLUX (nbp)."
-    note: "Catalog's biomes_models variable lists were INCOMPLETE for carbon -> enumerated the file server directly (11 ISIMIP2b + 5 ISIMIP3b biomes models). The data.isimip.org API is behind Anubis anti-bot -> use files.isimip.org + curl (WebFetch truncates long listings). See GUARDRAILS §8."
+    note: "Catalog's biomes_models variable lists were INCOMPLETE for carbon -> enumerated the file server directly. The data.isimip.org API is behind Anubis anti-bot -> use files.isimip.org + curl (WebFetch truncates long listings). See GUARDRAILS §8."
+    enumeration_2026_07_27: |
+      Re-enumerated 98 directories (66,902 filenames parsed) + 17 file headers read.
+      CORRECTIONS to the 2026-07-25 entry below:
+      1. VARIABLE NAME DIFFERS BY ROUND: ISIMIP2b publishes bare 'csoil'; ISIMIP3b
+         publishes 'csoil-total' (plus PFT/pool splits). Searching 'csoil-total' in
+         2b returns NOTHING and must not be read as "absent".
+      2. ISIMIP2b csoil has 11 models, not the 9 listed: the 2026-07-25 list MISSED
+         CLM45 (annual) and VEGAS (monthly).
+      3. ELM-ECA cross-publishes csoil-total under BOTH the biomes and permafrost
+         sectors, BYTE-IDENTICAL (same sha512, 237,500,430 B). Ingesting both would
+         silently double-weight ELM-ECA. Use the biomes copy only.
+      4. ISIMIP3b biomes has NO ssp245 for any variable -- only ssp126/370/585
+         (+historical, picontrol).
+      5. Parallel curl of the file server gets RATE-LIMITED and returns EMPTY
+         listings that look like real "no data" answers (13 of 22 dirs on the first
+         pass). Harvest serially with retries and assert non-empty per directory.
+      NEW variables found, absent from the 2026-07-25 'variables' list:
+        csoillayer-total  Depth-resolved SOC. CLASSIC (20 layers) + JULES. UNUSABLE
+                          as shipped: CLASSIC's depth coord is integer-rounded so
+                          the top 10 layers all read "0 m" (cannot cut 0-30 cm, the
+                          conventional SOC accounting depth) and layer 0 holds ~81%
+                          of the column; JULES's copy has depth=1 and column values
+                          ~1042 kg C m-2, ~100x its own csoil-total. Do not use.
+        rsoil / rsoil-total   Soil respiration. ELM-ECA only (3b).
+        fvegsoil-total        Vegetation->soil C input flux. JULES only (3b).
+        flittersoil-total / flitter-total  Litter fluxes. CLASSIC, ELM-ECA (3b).
+        clitterag-total       Above-ground litter pool. 4 models (3b).
+        nsoil-total           Soil nitrogen. CLASSIC (3b).
     variables:
-      csoil: "Soil organic carbon stock (kg C m-2) -- the direct subsurface storage pool. Bulk = 'csoil-total' (CLASSIC PFT-split, JULES RothC pool-split, MC2 single)."
+      csoil: "Soil organic carbon stock (kg C m-2) -- the direct subsurface storage pool. ISIMIP2b: bare 'csoil'. ISIMIP3b: 'csoil-total' (CLASSIC PFT-split, JULES RothC pool-split, MC2 single)."
       croot: "Root biomass carbon (kg C m-2). ISIMIP3b only; NOT in ISIMIP2b future runs."
       cvegbg: "Below-ground vegetation carbon (roots + below-ground woody); cvegag = above-ground. ISIMIP2b: JULES-ES-55, MC2-USFS. ISIMIP3b: CLASSIC, JULES, MC2, ELM-ECA."
-      nbp: "Net Biome Production = net land carbon-sink flux (kg C m-2 s-1) = sequestration RATE. ISIMIP3b (all 5 biomes models); NOT in ISIMIP2b future."
+      nbp: "Net Biome Production = net land carbon-sink flux (kg C m-2 s-1) = sequestration RATE. ISIMIP3b: 5 biomes models, 22 model x GCM members per ssp. ABSENT from ISIMIP2b future runs (2b has only 'rh'). This is the SEQUESTRATION-RATE product, distinct from the csoil STOCK."
     availability:
-      isimip2b:  # RCP26/60/85, CMIP5; csoil broad but NO croot/nbp in future runs
-        csoil_models: ["lpj-guess", "lpjml", "orchidee", "orchidee-dgvm", "caraib", "dlem", "jules-es-55", "mc2-usfs", "visit(monthly)"]  # ~8 annual + visit monthly
+      isimip2b:  # RCP26/60/85, CMIP5, 4 GCMs, 2006-2099 (+historical 1861-2005)
+        csoil_annual: ["caraib", "clm45", "dlem", "jules-es-55", "lpj-guess", "lpjml", "mc2-usfs", "orchidee", "orchidee-dgvm"]   # 9 annual
+        csoil_monthly: ["vegas", "visit"]
+        csoil_members: "rcp26/rcp60: 33 model x GCM annual; rcp85: 20 (only clm45, lpj-guess, lpjml, mc2-usfs, orchidee). Uniform transient-CO2 + fixed-land-use runs available for 29 (rcp26/60) / 20 (rcp85)."
         cvegbg_models: ["jules-es-55", "mc2-usfs"]
         croot: "absent (future runs)"
-        nbp: "absent (future runs)"
-      isimip3b:  # SSP126/370/585, CMIP6 -- the FULL below-ground story
-        csoil_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]   # + elm-eca, visit monthly-only
+        nbp: "absent (future runs); 'rh' present for 11 models"
+      isimip3b:  # SSP126/370/585, CMIP6, 2015-2100 (+historical 1850-2014)
+        csoil_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]
+        csoil_monthly: ["elm-eca", "visit"]   # annualizable; visit IS in the layer, elm-eca EXCLUDED (~4x5 deg)
+        csoil_gcms: "classic 2 (gfdl-esm4, ukesm1-0-ll); elm-eca / jules / mc2-usfs / visit 5 each"
         croot_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]   # + elm-eca monthly
         cvegbg_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]  # + elm-eca monthly
         nbp: ["classic", "jules-es-vn6p3", "mc2-usfs", "elm-eca", "visit"]
-    chosen: "csoil-total, ISIMIP3b, annual, {ssp126,ssp370,ssp585}. 12 members/scenario = classic(2 GCMs) + jules-es-vn6p3(5) + mc2-usfs(5). Raw kg C m-2, NO normalization (comparable magnitudes, same unit), NO spatial smoothing (thick), higher_is_better (risk=loss, percentile INVERTED), baseline-anchored trend. Layer starts at 2020s baseline (3b begins 2015)."
-    co2_treatment: "MIXED (user decision 2026-07-25 to retain 12 members): jules-es-vn6p3 publishes ONLY the fixed-2015-CO2 (2015co2) csoil run; classic/mc2-usfs are transient (default). JULES's soil-C trend is muted (no fertilization). Land use fixed: 2015soc-from-histsoc (classic/jules) / nat (mc2-usfs). See GUARDRAILS §9."
+    resolution: |
+      DECLARED grid: 0.5 deg x 0.5 deg, 360 lat x 720 lon, lat -89.75..89.75 -- identical
+      for all 17 headers read, both rounds, every model. No regridding needed.
+      EFFECTIVE resolution DIFFERS from declared, measured 2026-07-28 after a user
+      noticed the maps looked blocky. Declared dims CANNOT reveal this -- a natively
+      coarse model replicated onto the ISIMIP grid still reports 360x720.
+        classic          NATIVE 1.0 deg x 1.0 deg, replicated 2x2 onto 0.5 deg with a
+                         ONE-CELL LONGITUDE OFFSET. Proof: 100% of lon pairs at offset 1
+                         identical, 100% of lat pairs at offset 0, and 100% of 2x2 blocks
+                         at offset (lat=0, lon=1) constant. 99.35% of lon runs are exactly
+                         2 columns; the 0.38% longer runs are constant-value desert/ice
+                         plateaus, NOT a coarser grid. Nothing coarser than 1 deg exists.
+        elm-eca          NOT 0.5 deg -- effectively ~4 deg lat x 5 deg lon (seams every
+                         10 cols / 8 rows, fine variation inside each block). EXCLUDED
+                         from the layer 2026-07-28. Its blocks are SMOOTH inside, so
+                         exact-tie tests score it clean -- use seam spacing.
+        jules-es-vn6p3   genuine 0.5 deg
+        mc2-usfs         genuine 0.5 deg (coarse *biome* model, but 0.5 deg output; it
+                         merely has the smallest land mask -- do not confuse the two)
+        visit            genuine 0.5 deg
+      No GCM contributes block structure (all 5 checked; ratios 0.94-1.08).
+      Detection methods that WORK: (a) exact-tie fraction between adjacent cells, tested
+      at BOTH offsets -- an aligned-only test misses an offset grid; (b) inside-vs-seam
+      gradient ratio per candidate block width; (c) FFT of the column-gradient profile.
+      A variance-loss-under-coarsening test does NOT discriminate blockiness from normal
+      geophysical smoothness -- all 5 models looked alike under it.
+    chosen: "csoil-total, ISIMIP3b, {ssp126,ssp370,ssp585}. 17 members/scenario = classic(2 GCMs) + jules-es-vn6p3(5) + mc2-usfs(5) + visit(5); visit is MONTHLY, annualized by the mean of each year's 12 months. elm-eca(5) is EXCLUDED (user decision 2026-07-28) -- declares 0.5 deg but is effectively ~4x5 deg; see resolution block. Path was 12 -> 22 (2026-07-27, all 5 models) -> 17 (2026-07-28, elm-eca dropped). Raw kg C m-2, NO normalization (same unit, medians within 1.8x), NO spatial smoothing (thick), higher_is_better (risk=loss, percentile INVERTED), baseline-anchored trend. Layer starts at 2020s baseline (3b begins 2015)."
+    co2_treatment: "MIXED: jules-es-vn6p3 publishes ONLY the fixed-2015-CO2 (2015co2) csoil run; classic/elm-eca/mc2-usfs/visit are transient (default). CORRECTED 2026-07-27 -- the earlier claim that JULES's soil-C trend is 'muted' by fixed CO2 is WRONG and was measured to be backwards: JULES has the STRONGEST, most scenario-sensitive response of the five (+1.57/-2.92/-4.37% by 2090s for ssp126/370/585), because without fertilization nothing offsets warming-driven decomposition. JULES is the ensemble's main source of soil-carbon LOSS. Land use fixed for all: 2015soc-from-histsoc (classic/elm-eca/jules), 2015soc (visit), nat (mc2-usfs). See GUARDRAILS §9."
     data_nature: |
-      All 3 models report kg C m-2 with COMPARABLE magnitudes (2020s medians ~5.8/7.7/10.3), value-checked 2026-07-25:
-      classic         kg C m-2  median 5.76  max 70.3  zeros 4.48% (desert/ice)  calendar=365_day
-      jules-es-vn6p3  kg C m-2  median 10.28 max 67.9  zeros 0.00%               calendar=proleptic_gregorian
-      mc2-usfs        kg C m-2  median 7.67  max 37.8  zeros 0.00% (coarse biome model, nat soc)  calendar=365_day
-      Time axis 'days since 1601' for ALL; only the calendar differs -> calendar-aware year parse.
-    processed: "2026-07-25 -> TCFD layer. scripts/process_csoil_soilcarbon.py; data/processed/soilcarbon_csoil_annual/csoil_{ssp126,ssp370,ssp585}_processed.nc. Verified: CI ordering 100%, baseline bit-identical, trend<->change corr 1.0, global-mean csoil +1.1% ssp126 / -1.4% ssp370 / -2.2% ssp585 by 2090s. See memory project_csoil_soilcarbon_layer, WORKFLOW-ISSUES.md 2026-07-25, GUARDRAILS §8-§9."
+      All 5 models report kg C m-2 (units + long_name 'Carbon Mass in Soil Pool' identical
+      across all 66 files -- no mislabelling), value-checked 2026-07-27:
+      model             GCMs cadence  median  p99.9   max   zeros  land cells  calendar
+      classic            2   annual     5.74   53.9   70.2  4.42%    ~66,678   365_day
+      mc2-usfs           5   annual     7.60   26.1   37.2  0.00%     58,919   365_day
+      elm-eca            5   MONTHLY    7.67  135.6  162.4  2.82%     62,482   365_day
+      visit              5   MONTHLY    8.84  152.3  180.4  0.00%     58,714   365_day
+      jules-es-vn6p3     5   annual    10.34   51.2   66.0  0.00%     67,647   proleptic_gregorian
+      Medians agree within 1.8x, BUT global MEANS span 2.6x (6.70 classic .. 17.72 elm-eca,
+      the latter 2.3x its own median) because elm-eca and visit carry much fatter peat tails.
+      Those extremes are TROPICAL/subtropical (median lat of top 0.1%: 5.8N elm-eca, 31.9N
+      visit) = deep tropical peat, NOT boreal permafrost. Since members are pooled with a
+      MEAN, the pooled value is more tail-sensitive than the median agreement suggests.
+      Land masks DIFFER by model (each model's GCMs share its mask exactly). With the
+      shipped 17-member ensemble: 81% of land carries all 17 members, 9.2% is
+      single-model, 2 cells single-member. (Was 5.9% single-model at 22 members --
+      dropping elm-eca left fewer models covering the thin margins, which also raised
+      zero-width-CI cells from 0.52% to 3.6%.)
+      Time axis 'days since 1601' for ALL; calendar differs -> decode with cftime, NOT
+      days/365 arithmetic, which misassigns December of each monthly member.
+      Every member spans 2015-2100 with exactly 1 or 12 steps per year.
+      Annualizing monthly members is immaterial: within-year CV 0.012% (elm-eca) / 0.108%
+      (visit); |Dec - annual mean|/mean 0.014% / 0.103% -- ~3 orders below the model spread.
+    processed: "2026-07-28 -> TCFD layer, 17 members (v2026-07-28_1897aae-dirty; supersedes the 22-member 2026-07-27 run and the 12-member 2026-07-25 run). Global-mean csoil 2020s baseline 9.3142 kg m-2; by 2090s +2.81% ssp126 / +1.18% ssp370 / +0.72% ssp585. QA 47/51 passed, 0 failed, 4 warnings -- all effective-resolution checks now PASS (no dominant seam spacing detected). Trade-off of dropping elm-eca: single-model cells rose 5.91% -> 9.23% of land and zero-width-CI cells 0.52% -> 3.6%, since fewer models cover the thin margins. EARLIER (superseded) 22-member run: scripts/process_csoil_soilcarbon.py -> S3 layer soilcarbon_csoil_annual. Verified 37/37 QA checks: CI ordering 0 violations, 2020s baseline bit-identical across scenarios, trend*span == change to 2.4e-07, percentile inverted (corr median<->pct = -0.956), scenario ordering monotonic. Global-mean csoil by 2090s: +2.50% ssp126 / +1.57% ssp370 / +1.24% ssp585. NOTE the SIGN FLIPPED vs the 12-member run (+1.1/-1.4/-2.2%): recomputing the old 3-model ensemble from the same files reproduces it to within 0.05pp, so the change is ensemble MEMBERSHIP, not processing. Per-model 2090s change is contested: visit +7.1%, elm-eca +2.6%, classic +0.8%, mc2-usfs ~0%, jules -4.4% (ssp585). See WORKFLOW-ISSUES.md 2026-07-27, GUARDRAILS §8-§9."
 
   # -------------------------
   # biodiversity searches (BioScen1.5)

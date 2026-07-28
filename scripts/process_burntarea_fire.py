@@ -44,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" / "src"))
 from isimip_pipeline import storage  # noqa: E402
 from utils.layer_publish import publish_processed_layer  # noqa: E402
+from utils.finalize import finalize_layer  # noqa: E402
 
 VAR = "burntarea"
 LAYER_ID = "wildfire_burntarea_annual"
@@ -360,12 +361,18 @@ def main():
         log(f"  staged {path.name}")
 
     log("\nPublishing to S3...")
-    publish_processed_layer(
+    version = publish_processed_layer(
         LAYER_ID,
         stage,
         created_by="scripts/process_burntarea_fire.py",
         notes="See WORKFLOW-ISSUES.md 2026-07-24; GUARDRAILS §9-§10.",
     )
+
+    # Every ingest-and-process run leaves reviewable HTML evidence behind.
+    # Never raises: the data is already published and gated, and these
+    # artifacts are regenerable (see scripts/utils/finalize.py).
+    log("\nGenerating QA/QC report and maps...")
+    finalize_layer(LAYER_ID, version=version)
 
     log("\nDone.")
 

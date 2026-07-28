@@ -298,6 +298,86 @@ For flux variables with `aggregation="sum"` (potevap, qr), this summed the 12 mo
 
 ---
 
+### 2026-07-27: csoil Ensemble Expanded 12 → 22 Members; Two Prior Claims Refuted
+
+**Context**: Re-reviewed the ISIMIP repository for soil-carbon datasets *without* trusting the existing documentation. Enumerated 98 directories (66,902 filenames) and read 17 file headers. The user then chose to keep the stock-only `csoil-total` layer on ISIMIP3b and expand it 12 → 22 members by annualizing the two monthly submissions.
+
+**What the re-enumeration corrected**:
+
+1. **A parallel harvest silently returned empty listings.** My first pass fetched 22 directories concurrently; the file server rate-limited **13 of them to zero results**, which is indistinguishable from a genuine "no data" answer. I built and reported member matrices from that truncated data before catching it. → Harvest **serially with retries and assert non-empty per directory**. An empty autoindex listing is a *failure signal*, not a finding. (Extends GUARDRAILS §8.)
+
+2. **The variable is renamed between rounds.** ISIMIP**2b** publishes bare `csoil`; ISIMIP**3b** publishes `csoil-total`. Searching `csoil-total` in 2b returns nothing, which reads as "absent" and isn't.
+
+3. **The 2b model list was still short by two.** The 2026-07-25 entry listed 9; the file server has **11** — it missed **CLM45** (annual) and **VEGAS** (monthly).
+
+4. **ELM-ECA cross-publishes under two sectors, byte-identically.** `biomes/ELM-ECA/…csoil-total…` and `permafrost/ELM-ECA/…csoil-total…` share an sha512 and size (237,500,430 B). Harvesting both would have **silently double-weighted** one model. Only the biomes copy is ingested.
+
+5. **`csoillayer-total` looks ideal for 0–30 cm SOC accounting but is unusable.** CLASSIC has 20 layers, but the depth coordinate is integer-rounded so the top ten layers all read "0 m" (no 30 cm cut is possible) and layer 0 holds ~81% of the column; JULES's copy has `depth=1` and column values ~1042 kg C m⁻², ~100× its own `csoil-total`.
+
+6. **No `ssp245`** exists for any ISIMIP3b biomes variable — only ssp126/370/585.
+
+**The "muted trend" claim was backwards.** Both GUARDRAILS §9 and the catalog stated that `jules-es-vn6p3`'s fixed-2015-CO₂ run makes its soil-carbon trend *muted*. Measured per-model global-mean 2090s change proves the opposite — JULES has the **strongest and most scenario-sensitive** response of the five:
+
+| model | CO₂ | ssp126 | ssp370 | ssp585 |
+|---|---|---|---|---|
+| classic | transient | +0.65% | +0.77% | +0.77% |
+| mc2-usfs | transient | +0.40% | −0.11% | −0.05% |
+| elm-eca | transient | +2.01% | +2.43% | +2.60% |
+| visit | transient | +6.70% | +7.31% | +7.14% |
+| **jules-es-vn6p3** | **fixed 2015** | +1.57% | **−2.92%** | **−4.37%** |
+
+Removing CO₂ fertilization does not damp the signal — it removes the *offsetting gain*, so warming-driven decomposition dominates and the loss scales with forcing. Corrected in GUARDRAILS §9, the catalog, CLAUDE.md and the processor metadata.
+
+**Consequence: the headline sign flipped.** Global-mean 2090s change moved from **+1.1% / −1.4% / −2.2%** (12 members) to **+2.50% / +1.57% / +1.24%** (22 members) for ssp126/370/585. Scenario ordering stayed monotonic, but ssp370/ssp585 flipped from net loss to net gain, because JULES — the ensemble's main loss source — fell from 42% to 23% of the weight while the two added models both accumulate carbon. **Recomputing the old 3-model ensemble from the same raw files reproduced the previous published layer to within 0.05pp**, confirming this is ensemble membership and not a processing change. The sign of the global mean should be read as **contested across models** (3 of 5 gain, 1 flat, 1 loses strongly), not settled.
+
+**Two caveats recorded rather than silently absorbed**:
+- **Tail-driven pooling.** "No normalization" was justified on medians agreeing within 1.8×, but members are pooled with a **mean**, and their global means span **2.6×** (6.70 classic … 17.72 elm-eca, the latter 2.3× its own median) because elm-eca and visit carry much fatter peat tails. Those extremes are **tropical** (median latitude of the top 0.1%: 5.8 N, 31.9 N) — deep tropical peat, not boreal permafrost. The baseline global mean rose 8.78 → 10.99 kg C m⁻² purely from adding those two models. A cross-member median would be robust to this; the mean was kept for cross-layer consistency.
+- **Heterogeneous land masks.** The 5 models do not share a mask (58,714–67,647 of 259,200 cells; each model's GCMs match exactly). ~81% of land carries all 22 members, 5.9% is single-model, and 2 cells are single-member. Cells are **retained, not masked** (user decision: a decade supplies 10 annual samples per member, so spread stays estimable). New `n_members` / `n_models` variables make coverage auditable. Note the CI is a spread over member *decadal means* (n = members), not over year × member samples — so on a single-model cell it is a 2-sample spread, and on the 2 single-member cells it collapses to zero width.
+
+**Also fixed**: years are now decoded with **cftime** rather than days/365 arithmetic. The old arithmetic put December of a monthly member at ~year+0.96, where rounding pushed it into the following year — misassigning one month in twelve. Harmless for the 3 annual models, corrupting for the 2 new monthly ones.
+
+**Verified**: 37/37 QA checks — CI ordering 0 violations, 2020s baseline bit-identical across scenarios, `trend × span == change` to 2.4e-07, percentile inverted (corr = −0.956), scenario ordering monotonic, counts ≤ 22/5 and NaN off-land. Raw: 66 files / 7.47 GB ingested to S3 with sha512 + source URLs recorded.
+
+**Processor**: `scripts/process_csoil_soilcarbon.py`.
+
+---
+
+### 2026-07-28: Declared Grid ≠ Effective Grid — CLASSIC Is Natively 1°, Not 0.5°
+
+**What happened**: Reviewing the published `soilcarbon_csoil_annual` maps, the user noticed the projections looked "blocky" — large boxes of general trend with finer detail inside them — and asked me to re-check each ingested dataset's spatial resolution. I had already "verified" the resolution during the 2026-07-27 review by reading 17 file headers, all reporting **0.5° / 360 × 720 / lat −89.75…89.75**, and reported that as uniform. That check was worthless for the question asked.
+
+**Why it was worthless**: a model that runs natively coarser and is replicated onto the ISIMIP 0.5° grid **still reports 360 × 720**. Dimensions and coordinate spacing describe the container, not the information content. Only the values can reveal the effective resolution. This is GUARDRAILS §9 ("trust the values, not the labels") applied to geometry rather than to units — I had applied it to units and magnitudes and not thought to apply it to the grid.
+
+**Measured result**: `classic` is **natively 1.0° × 1.0°**, replicated 2 × 2 onto 0.5° **with a one-cell longitude offset**:
+
+- 100% of longitude pairs at offset 1 identical; 100% of latitude pairs at offset 0
+- 100% of 2 × 2 blocks constant at offset (lat=0, lon=1)
+- 99.35% of longitude runs are exactly 2 cells; the 0.38% longer runs are constant-value desert/ice plateaus, **not** a coarser grid — nothing coarser than 1° exists
+- `elm-eca`, `jules-es-vn6p3`, `mc2-usfs`, `visit`: genuine 0.5°. No GCM contributes block structure (all 5 checked, ratios 0.94–1.08)
+
+Note `mc2-usfs` is a *coarse biome model* with *0.5° output* and the smallest land mask — a separate property that must not be conflated with output resolution.
+
+**Two false starts worth recording**:
+
+1. **An origin-aligned 2 × 2 constancy test found only 3.3%** and I nearly concluded there was no blocking. CLASSIC's blocks are offset by one cell in longitude, so an aligned-only test misses them almost entirely. **Always test both offsets.** The contradiction that exposed it: 53% of adjacent cells were exact ties while "only 3%" of 2 × 2 blocks were constant — arithmetically impossible for a genuinely unblocked field, and the signal to keep digging.
+2. **A variance-loss-under-coarsening test (R² of k × k block means) did not discriminate at all** — all five models produced smooth declining curves (R² ≈ 0.87–0.97 at 1°, ≈ 0.6–0.7 at 6°), because it cannot separate replication from ordinary geophysical autocorrelation. Discard this approach; use exact ties at both offsets, the inside-vs-seam gradient ratio, or an FFT of the column-gradient profile.
+
+**Impact on the published layer**: `classic` holds 2/22 = **9.1%** of the weight where all models report, leaving a measurable global 1° signature (inside/seam longitude gradient ratio **0.838**, vs 1.0 for a native 0.5° field). More visibly, the **3,085 cells (4.36% of land) where `classic` is the only reporting model are rendered at its native 1°** — scattered across all latitude bands (30% tropics, 32% N mid-lat, 29% boreal) and low-carbon marginal land (median 2.82 vs 10.07 kg C m⁻² layer-wide). This is the blockiness the user saw. The user's estimate of ~3° was the right instinct; the measured value is 1°.
+
+**Systematic fix**: `scripts/generate_qa_report.py` now runs an **effective-resolution check** on every layer — inside-vs-seam gradient ratio at candidate block widths 2/3/4, plus a count of cells rendered by a single model. Both are warnings, not failures, since a coarse member can be a documented trade-off for ensemble depth. On this layer it correctly reports lon = 0.838 at 1°. (The 2° warning is a harmonic of the 1° signal, not an independent finding.) Recorded in the catalog `resolution` block, the processor's `effective_resolution` attribute, and the `isimip-process-visualize` skill.
+
+**Rule**: never report spatial resolution from `ds.sizes` or coordinate spacing. Measure it from the values, at both block offsets, per member.
+
+**Resolution (corrected)**: my first answer to the user named `classic` (1°) as the cause. That was **wrong** — it is real but minor. The dominant artifact was **`elm-eca`, effectively ~4° lat × 5° lon**: gradient seams every 10 columns (5.0°, 62 of 75 detected) and every 8 rows (4.0°), with fine variation *inside* each block. It hid from three separate tests: declared dims are identical; an exact-tie test scores it clean (only 2.9% ties, because its blocks are smooth inside rather than constant); and my first origin-aligned modulo-gradient check stopped at 2° and at k=10 even *inverted* to 1.149, reading cleaner than clean. Compounding it, `elm-eca` had the fattest tail of the five (max ~160 vs 35–70 kg C m⁻²), so its coarse boxes were biased high and rendered as bright rectangles — it alone inflated the 2020s global mean from 9.32 to 10.99 kg C m⁻² (+18%).
+
+What finally worked was **rendering the field and looking at it**. Global-average statistics (tie fractions, modulo gradient ratios, variograms) all missed a localized coarse patch pattern; one image made it obvious in seconds. Render before trusting a scalar diagnostic.
+
+**Resolution taken (user decision 2026-07-28)**: `elm-eca` dropped → **17 members** (classic 2, jules 5, mc2-usfs 5, visit 5). Cost 5 land cells (0.01%); all effective-resolution checks now pass with no dominant seam spacing. Trade-off recorded: single-model cells rose 5.91% → 9.23% of land and zero-width-CI cells 0.52% → 3.6%, since fewer models cover the thin margins. `generate_qa_report.py` now tests block widths to 6° **and** measures seam spacing with no alignment assumption — the check that would have caught this unprompted.
+
+**Also fixed**: `generate_maps.py` drew one 2 px marker per land cell onto a **300 px-tall** canvas — 0.83 px per 0.5° cell, markers 2.4× cell size, ~6× overplot. That exaggerated any blockiness and made real resolution unreadable. Replaced with `go.Heatmap` (one rectangle per cell, `zsmooth=False` so nothing is interpolated into fake detail) at height 440. Note the payload did **not** shrink as I expected (55.3 MB vs 53.4 MB) because the z-grid carries ocean nulls the scatter omitted; the download path is the ~8 MB `maps_bundle.zip` regardless.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

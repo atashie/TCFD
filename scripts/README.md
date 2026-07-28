@@ -28,6 +28,24 @@ Features:
 - Multiple metrics: median, percentile, trend, confidence, change, anomaly
 - Scientific notation on colorbars
 - Index page with navigation grid
+- Trend panels compare the **2030s vs 2090s** (the 2020s trend is identically 0, since trends are anchored to the 2020s baseline)
+- **`maps_bundle.zip`** — the whole collection in one object (~8 MB), because the S3 console downloads one file at a time and the ~20 HTML pages are interlinked. Unzip and open `index.html`; all links are relative so navigation still works.
+- Values are serialized at **5 significant figures** (`_compact()`), which cut the collection from 82 MB to 53 MB with a max relative error of 1.3e-5 — far below what a colour scale can render. Display only; the NetCDF in `data/` keeps full precision.
+
+### generate_qa_report.py
+
+Runs the invariant checks the 6-value-class contract depends on, plus per-scenario statistics, and publishes `qa_report.json` + `qa_report.html`. **Layer-generic**: checks are driven by each file's own declared attributes (`trend_definition`, `percentile_direction`, `baseline_source`), so the same tool serves every annualized layer.
+
+```bash
+python scripts/generate_qa_report.py soilcarbon_csoil_annual
+python scripts/generate_qa_report.py drought_led_annual --version v2026-07-24_abc1234
+python scripts/generate_qa_report.py cyclone_let_annual --local-only
+```
+
+**Input**: a published layer in S3 (gate-verified before any check runs)
+**Output**: `…/layers/{layer_id}/{version}/qa/` (ungated/regenerable). Exit code is non-zero if any check fails.
+
+Checks: all value classes present and correctly shaped; `lower_ci ≤ median ≤ upper_ci`; zero-width CIs isolated to all-zero or single-model cells; percentile within [1,100]; percentile orientation matches the declared `percentile_direction`; `trend == 0` in the baseline decade; `trend × elapsed_decades == change map` (GUARDRAILS §10); shared baseline bit-identical across scenarios; `n_members`/`n_models` consistent with the finite data; land coverage non-empty. An unrecognized `trend_definition` is reported as a **skipped** check rather than silently dropped.
 
 ### process_qg.py
 
@@ -79,16 +97,19 @@ python scripts/process_burntarea_fire.py
 
 ### process_csoil_soilcarbon.py
 
-Processes `csoil-total` (soil organic carbon stock, ISIMIP3b `biomes`) into the TCFD 6-value-class format — the direct **subsurface carbon-storage** signal (distinct from the vegetation pools `cveg`/`croot`/`cvegbg` and the net-sink flux `nbp`). Ensemble = 3 models (`classic`, `jules-es-vn6p3`, `mc2-usfs`) × their CMIP6 GCMs (2 + 5 + 5) × {ssp126, ssp370, ssp585} = 12 members/scenario. Value-checked 2026-07-25 (see WORKFLOW-ISSUES.md):
-- All 3 report **kg C m⁻²** with **comparable magnitudes** (2020s medians ~5.8/7.7/10.3) → **no normalization** (equal-weight "model democracy"); inter-member spread = CI. Layer starts at the 2020s baseline (ISIMIP3b csoil begins 2015 — no full 2010s).
+Processes `csoil-total` (soil organic carbon stock, ISIMIP3b `biomes`) into the TCFD 6-value-class format — the direct **subsurface carbon-storage** signal (distinct from the vegetation pools `cveg`/`croot`/`cvegbg` and the net-sink flux `nbp`). Ensemble = 4 of the 5 models that publish it (`classic`, `jules-es-vn6p3`, `mc2-usfs`, `visit`) × their CMIP6 GCMs (2 + 5 + 5 + 5) × {ssp126, ssp370, ssp585} = **17 members/scenario**. **`elm-eca` is excluded** — declares 0.5° but is effectively ~4°×5° (see `EXCLUDED_MODELS`). Note ISIMIP**2b** names this variable bare `csoil`; only **3b** uses `csoil-total`. Fully value-checked 2026-07-27 (see WORKFLOW-ISSUES.md):
+- **Mixed cadence**: `visit` publishes csoil-total **only monthly** and is annualized by the **mean of each year's 12 months** — verified immaterial (within-year CV 0.108%; |Dec − annual mean|/mean 0.103%).
+- All 4 report **kg C m⁻²** with medians within **1.8×** → **no normalization** (equal-weight "model democracy"); inter-member spread = CI. Caveat: members are pooled with a *mean* and `visit` carries a much fatter (tropical peat) tail, so pooling is more tail-sensitive than the median agreement suggests. `classic` is natively **1°**, 2/17 = 12% of the weight. Layer starts at the 2020s baseline (ISIMIP3b csoil begins 2015 — no full 2010s).
 - **Direction is `higher_is_better`** (stored carbon is an asset; the risk is **loss**) → percentile **inverted** (low stock / decline → high risk; red = carbon loss in maps).
-- **Mixed CO₂**: `jules-es-vn6p3` publishes only its fixed-2015-CO₂ run for csoil, so its trend is muted; `classic`/`mc2-usfs` are transient. All hold land use fixed. Retained as 12 members per user decision. Baseline-anchored trend (kg C m⁻² decade⁻¹); no spatial smoothing (thick ensemble).
+- **Mixed CO₂**: `jules-es-vn6p3` publishes only its fixed-2015-CO₂ run. Contrary to this file's earlier note, that does **not** mute its trend — it gives `jules` the **strongest loss** of the five (−4.4% at ssp585) while the four transient models run flat-to-positive. Baseline-anchored trend (kg C m⁻² decade⁻¹); no spatial smoothing (thick ensemble).
+- **Also emits `n_members` / `n_models`** per cell: the 4 models do **not** share a land mask, so ~81% of land carries all 17 members and 9.2% is single-model. Those cells are **kept, not masked**; the counts let consumers filter.
+- Years are decoded with **cftime**, not days/365 arithmetic (which misassigns December of a monthly member).
 
 ```bash
 python scripts/process_csoil_soilcarbon.py
 ```
 
-**Input**: `s3://…/TCFD/raw/isimip/soilcarbon_csoil_annual/*_csoil-total_global_annual_2015_2100.nc`
+**Input**: `s3://…/TCFD/raw/isimip/soilcarbon_csoil_annual/*_csoil-total_global_*_2015_2100.nc` (66 files staged, 7.47 GB, both `annual` and `monthly`; 51 used after excluding `elm-eca`)
 **Output**: published layer `soilcarbon_csoil_annual` — `csoil_{ssp126,ssp370,ssp585}_processed.nc`
 
 ### generate_qa_report.py
