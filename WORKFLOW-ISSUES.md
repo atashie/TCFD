@@ -378,6 +378,43 @@ What finally worked was **rendering the field and looking at it**. Global-averag
 
 ---
 
+### 2026-07-28: Wildfire Moved to ISIMIP3b — A Mixed-Scale Member, a Wrong Annualization, and a False-FAILing QA Check
+
+**What happened**: Re-researched wildfire from scratch (user asked for an independent review rather than trusting the catalog) and rebuilt the layer on ISIMIP3b/SSP. Four separate problems surfaced.
+
+**1. The catalog's own heading was never honoured.** The wildfire section was titled "fire sector + biomes burntarea" but only `biomes` had ever been walked. For ISIMIP3b that was harmless — its 451 `burntarea-total` files are a **strict subset** of `biomes` (intersection 451, fire-only 0). For **ISIMIP3a it was a real gap**: the `fire` sector holds **10 models** found nowhere else (LPJ-GUESS-SPITFIRE, LPJ-GUESS-SIMFIRE-BLAZE, LPJmL5-fire, JULES-INFERNO, SSiB4-TRIFFID-Fire, ORCHIDEE-MICT, …) plus variables absent from all docs (`firesize`, `firenr`, `fireints`, `fireduration`, `fireros`). 3a is historical-only, so it cannot serve a projection layer, but it is the natural evaluation reference. **Rule**: if a catalog section names a sector, verify it was actually enumerated.
+
+**2. A prior characterization was backwards, and it biased the shipped layer.** The catalog called `mc2-usfs` a "5–7× hotter outlier". The ratio was right; the judgement was inverted. Area-weighted against GFED4 (~3.5 Mkm² yr⁻¹): `mc2-usfs` 5.63, `visit` 4.88, `classic` 7.26 — right order; `lpj-guess` 1.09 and `lpjml` 0.94 — **~3.5× too low**. The retired 2b trio was therefore two low-biased models against one calibrated one, so its median burnt area was biased **low**. Separately, "coarse biome model" read as a grid claim and is not one: `mc2-usfs` is genuinely 0.5° (4.6% constant 2×2 blocks, clean periodicity, no seams) — the retired layer had **no** elm-eca-class spatial defect.
+
+**3. A mixed-scale member reached a publish.** `classic`'s `2015soc-from-histsoc` burntarea files are **fraction-scaled for gfdl-esm4** (monthly mean 0.0032, max 0.32) and **percent-scaled for ukesm1-0-ll** (mean 0.31, max 35.4) — identical `units='%'` and `long_name='Burnt Area Fraction'`. That variant was chosen precisely *because* the csoil layer had pinned it for the same model, i.e. by inheritance rather than by value-check. It was caught only because the per-member load log printed one GCM at `max=1.18%` next to its sibling at `max=114%`. The build had already published `v2026-07-28_62512ee-dirty` by then; the QA gate correctly marked it **NOT verified** and the DO-NOT-USE banner fired, so nothing consumed it. **Fix**: switched to `classic`/`2015soc` (uniformly percent across both GCMs and all three SSPs, 3.58–3.74 %/yr), purged the bad version and its 6 raw objects, re-ingested with sha512 verification, re-ran. **Rule** (GUARDRAILS §9): never inherit a soc/sens variant across variables, and compare every GCM's magnitude *within* each model — a ~100× sibling gap is a unit error, not model spread.
+
+**4. Two of my own defects, one in the layer and one in the checker.**
+- **Wrong annualization would have under-scaled the layer 12×.** `visit` and `classic` publish burntarea only monthly. The csoil precedent annualizes monthly members by **mean** — correct for a *stock*, wrong here, because burnt area accumulates over its reporting interval. Settled empirically rather than by argument: `classic` publishes the same run at **daily and monthly** cadence, and each published monthly value equals the **sum** of that month's daily values (1e-6 agreement, r = 1.00000000 in all 12 months). Also surfaced that annual burnt area legitimately exceeds 100% where a cell reburns, so clamping `upper_ci` to 100 would push it **below** the median — the CI is now floored at 0 and unbounded above.
+- **`generate_qa_report.py` used Pearson to test percentile direction, which false-FAILs correct layers.** `percentile` is a percentile-of-score, i.e. a deliberately **non-linear** monotone rank transform of the value. On burntarea (45% exact zeros, tail past 100%) Pearson read **+0.53** and failed all three scenarios of a correct layer. Switched to **Spearman** (rank correlation), ≈1 by construction, which still catches a genuinely inverted or scrambled percentile. This bug would equally have hit `led` and `let`. A separate FAIL — "coverage counts align with finite data" — was mine: I omitted csoil's `nmem[nmem == 0] = np.nan` masking, leaving off-land counts as a finite 0 against a NaN median.
+
+**5. OPEN — `visit` high-latitude bias, found by rendering after every check passed.** With all four problems above fixed the layer passed QA **47/52, 0 failed**. Looking at the maps then showed bright specks on Arctic islands, which turned out to be a systematic defect: the 5 `visit` members have an **inverted zonal profile** (2090s ssp585 land-mean burnt %/yr) —
+
+| band | visit | mc2-usfs | classic |
+|---|---|---|---|
+| 45–60°N | 4.76 | 0.65 | 1.15 |
+| 60–70°N | 3.36 | 1.35 | 0.10 |
+| 70–75°N | 5.95 | 1.45 | 0.02 |
+| **>75°N** | **25.94** | 0.67 | 0.00 |
+
+`visit` thus burns more above 75°N than in the tropics (7.3% at 23°S–0°), which is not physical; its worst cells are visit-only Arctic islands saturated near 100%/yr (81.25°N/56.75°E: 0.000% in the 2020s, 100.04% in the 2090s, single model). In the pooled layer >75°N reaches 6.5/9.0/10.0 %/yr.
+
+**Why nothing caught it**: polar cells carry negligible area, so `visit`'s global area-weighted total (4.56 Mkm² yr⁻¹) is the **closest of the three models to GFED4's ~3.5**. Every aggregate and area-weighted statistic is blind to a defect confined to one latitude zone — the same lesson as GUARDRAILS §11, one axis over. **Fix to the process**: `generate_qa_report.py` now reports a **zonal profile** (land-mean by latitude band) for every layer, in both JSON and HTML, and warns when a polar band exceeds the tropical band for layers declaring `zonal_expectation: low_latitude_dominated`. A statistic that can see the defect now runs on every layer, not just this one.
+
+**Status: OPEN, no decision taken.** All 12 members are retained and nothing is masked, per the user's call: *"note the potential issue with polar region anomalies, but make no decision about exclusion until the results land."* Recorded in the layer's `known_issues` attr and the catalog's `open_issues`. For reference, dropping `visit` would leave 2 models / 7 members per scenario, with `mc2-usfs` at 71% of members and 8,245 cells (12.3% of land) resting on `classic` alone at an effective 1.0° with only 2 members — which would reopen the thin-ensemble smoothing question.
+
+**Impact**: one unverified publish (purged, never consumed); ~2.0 GB re-ingested; the QA gate and the per-member load log each caught what the other missed, and the visual review caught what both missed.
+
+**Layer**: ISIMIP3b `biomes` `burntarea-total`, ssp126/370/585, **12 members/scenario** = `mc2-usfs` (annual, 5 GCMs, `nat/default`) + `visit` (monthly→SUM, 5 GCMs, `2015soc/default`) + `classic` (monthly→SUM, 2 GCMs, `2015soc/default`, effective **1.0°**, retained deliberately). `elm-eca` excluded (~4°×5°). Raw %, no normalization, no smoothing, shared 2020s baseline, baseline-anchored trend. Supersedes the ISIMIP2b/RCP build, whose outputs no longer exist as data anywhere.
+
+**Rules created/updated**: GUARDRAILS §9 — declared units can't gate pooling; cross-GCM magnitude comparison within a model; cadence semantics (accumulate vs state) must be measured, ideally against a model publishing two cadences; don't clamp a cumulative quantity at its nominal ceiling; soc/sens soundness is per-variable.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

@@ -69,6 +69,11 @@ Watch for these, all of which have actually occurred:
 | Byte-identical cross-sector duplicate | `elm-eca` csoil-total under both `biomes` and `permafrost` — would double-weight the model |
 | Heterogeneous land masks | `csoil`: 58,714–67,647 cells across 5 models |
 | **Declared grid ≠ effective grid** | `csoil` classic declares 0.5° / 360×720 but is natively **1°**, replicated 2×2 with a one-cell longitude offset |
+| **Declared unit ≠ actual scale** | `burntarea` clm45/orchidee declare `%` on a 0–1 **fraction** scale (~1000× low) |
+| **Mis-scaling *within* one model, across GCMs** | `burntarea` classic `2015soc-from-histsoc`: gfdl-esm4 fraction-scaled, ukesm1-0-ll percent — identical `units` and `long_name`. Compare every GCM's magnitude inside each model; a ~100× sibling gap is a unit error, not model spread |
+| **soc/sens variant sound for one variable, broken for another** | `classic`/`2015soc-from-histsoc` is fine for `csoil`, mixed-scale for `burntarea`. Never inherit a variant — re-value-check it |
+| **Monthly cadence semantics assumed** | `burntarea` **accumulates** → annual = **SUM**; `csoil` is a stock → annual = **mean**. Copying the csoil precedent under-scales fire 12×. If a model publishes two cadences (classic: daily + monthly), use them as ground truth |
+| **Clamping a cumulative quantity at its nominal ceiling** | annual burnt area exceeds 100% where a cell reburns; clamping `upper_ci` to 100 drives it below the median |
 
 **Checking `ds.sizes` proves nothing about resolution.** A natively coarse model
 replicated onto the ISIMIP grid reports the same 360×720 as a native 0.5° model. Test the

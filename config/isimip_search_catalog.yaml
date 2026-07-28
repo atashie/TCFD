@@ -106,13 +106,21 @@ pft_codes:
     c4crop: "C4 crops"
     total: "All PFTs combined"
 
-  # ISIMIP2b species codes (regional forestry)
+  # ISIMIP2b/2a species codes (regional forestry, stand-level European sites)
+  # Full set verified 2026-07-28 across all 10 ISIMIP2b + all 15 ISIMIP2a forestry models.
   isimip2b_forestry:
-    fasy: "Fagus sylvatica (European beech)"
-    piab: "Picea abies (Norway spruce)"
+    acpl: "Acer platanoides (Norway maple) -- CARAIB"
+    bepe: "Betula pendula (silver birch) -- 4C, Landscape-DNDC"
+    fasy: "Fagus sylvatica (European beech) -- every model"
+    lade: "Larix decidua (European larch) -- CARAIB"
+    piab: "Picea abies (Norway spruce) -- nearest congener to Sitka spruce"
     pipi: "Pinus pinaster (Maritime pine)"
     pisy: "Pinus sylvestris (Scots pine)"
-    # NOTE: No Quercus (oak) species available
+    psme: "Pseudotsuga menziesii (Douglas-fir) -- 4C only"
+    quro: "Quercus robur (pedunculate OAK) -- 4C, FORMIND"
+    # CORRECTED 2026-07-28: this list previously held only 4 codes and asserted
+    # "No Quercus (oak) species available". Both `quro` (oak) and `psme` (Douglas-fir) exist.
+    # NOTE: NO Picea sitchensis (Sitka spruce) in any ISIMIP round.
 
 # -----------------------------------------------------------------------------
 # CROP CODES (AGRICULTURE SECTOR)
@@ -190,28 +198,43 @@ search_results:
     exposure_lange2020:
       description: "Pre-computed extreme-event exposure (Lange et al. 2020, Earth's Future). Drought = land fraction where monthly soil moisture falls below the 2.5th percentile of the preindustrial baseline."
       type: "DerivedOutputData (annual, ready to process)"
-      # AUTHORITATIVE ENUMERATED FAMILY — verified 2026-07-24 via paginated datasets API.
-      # Lange 2020 covers SIX hazard categories; the code is always 'le' + ONE letter.
-      # DO NOT GUESS codes. A prior session guessed 'letc' for tropical cyclone, got 0
-      # hits, and wrongly concluded TC exposure didn't exist — the real code is 'let'.
+      # AUTHORITATIVE ENUMERATED FAMILY — verified 2026-07-24 via paginated datasets API;
+      # CORRECTED 2026-07-28 by walking all 15 Lange2020 model dirs on files.isimip.org.
+      # Lange 2020 covers SIX hazards x TWO exposure denominators = TWELVE variables.
+      # The 2026-07-24 entry documented only the `le*` half and called the family "six";
+      # that was wrong. Every hazard also publishes a `pe*` twin:
+      #   le{d,r,w,c,h,t} = LAND AREA fraction exposed
+      #   pe{d,r,w,c,h,t} = POPULATION fraction exposed   <-- was entirely missing here
+      # The code is always 'le'/'pe' + ONE letter. DO NOT GUESS codes. A prior session
+      # guessed 'letc' for tropical cyclone, got 0 hits, and wrongly concluded TC
+      # exposure didn't exist — the real code is 'let'.
       # This family ALSO answers searches for tropical-cyclone / heatwave / river-flood /
       # wildfire / crop-failure exposure, not only drought.
+      # FILES ARE .nc4, NOT .nc — grepping a listing for '.nc"' returns zero and reads
+      # as "no data". This cost a false negative on 2026-07-28.
       family:
         led: {hazard: "drought",         datasets: 219, impact_models: "8 GHM/land (clm45,h08,jules-w1,lpjml,mpi-hm,orchidee,pcr-globwb,watergap2)", data_nature: "binary {0,1} per cell (verified)"}
-        ler: {hazard: "river flood",     datasets: 218, impact_models: "8 GHM/land (same set as led)"}
+        ler: {hazard: "river flood",     datasets: 218, impact_models: "8 GHM/land (same set as led); 31 future members/scenario (mpi-hm/hadgem2-es is a genuine 404)", data_nature: "FRACTIONAL [0, 0.9988] per cell (verified 2026-07-28, NOT binary) — 239,812 unique values, 6.1% strictly in (0,1). Equals the 100yr protection level of Zimmer2023 fldfrc (mean ratio 0.99). See search_results.flooding."}
         lew: {hazard: "wildfire",        datasets: 134, impact_models: "5 DGVM/fire (caraib,lpj-guess,lpjml,orchidee,visit) x 4 GCMs; future rcp26=31/rcp60=19; data_nature UNVERIFIED. NOTE: this is the EXPOSURE member -- distinct from the direct 'burntarea' burnt-area-fraction fire output, which was the one actually processed (see search_results.wildfire)."}
-        lec: {hazard: "crop failure",    datasets: 90,  impact_models: "gepic"}
+        lec: {hazard: "crop failure",    datasets: 90,  impact_models: "gepic AND pepic (corrected 2026-07-28 — the old 'gepic' only was wrong)"}
         leh: {hazard: "heatwave",        datasets: 30,  impact_models: "hwmid-humidex (derived index)"}
         let: {hazard: "tropical cyclone", datasets: 28, impact_models: "ke-tg-meanfield (Emanuel KE wind model, derived)", data_nature: "FRACTIONAL area [0,1) per cell (verified 2026-07-24, NOT binary); 1 impact model x 4 GCMs = thin ensemble -> spatial smoothing applied"}
+      population_twins:  # verified 2026-07-28; same models/GCMs/scenarios/mask as their le* counterpart
+        ped: {hazard: "drought",          note: "population fraction exposed"}
+        per: {hazard: "river flood",      data_nature: "FRACTIONAL [0,1] (verified) — identical mask to ler (61,995 cells). Arguably more decision-relevant than ler for a severity product."}
+        pew: {hazard: "wildfire",         note: "published by caraib, lpj-guess, lpjml, orchidee, visit"}
+        pec: {hazard: "crop failure",     note: "published by gepic and pepic"}
+        peh: {hazard: "heatwave",         note: "hwmid-humidex, nosoc"}
+        pet: {hazard: "tropical cyclone", note: "ke-tg-meanfield, nosoc"}
       not_real: ["letc", "lecdd", "letr"]  # guessed codes; each returns 0 hits
-      common_coverage:  # identical across all six members
+      common_coverage:  # identical across all twelve members
         product: "DerivedOutputData"
         simulation_round: "ISIMIP2b only (NO ISIMIP3b/SSP version of this family)"
         climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]  # 4 CMIP5 GCMs
         scenarios: ["historical", "picontrol", "rcp26", "rcp60"]  # NO rcp85, NO SSP
         timestep: "annual"
         grid: "global 0.5deg"
-        data_nature: "VARIES BY HAZARD -- value-check each member before processing. led=binary{0,1} (verified), let=fractional[0,1) (verified 2026-07-24), ler/lew/lec/leh=UNVERIFIED. Decadal stat = MEAN either way (mean of binary flags OR mean of fractional area = expected annual exposed-area fraction)."
+        data_nature: "VARIES BY HAZARD -- value-check each member before processing. led=binary{0,1} (verified 2026-07-24), let=fractional[0,1) (verified 2026-07-24), ler=fractional[0,0.9988] and per=fractional[0,1] (both verified 2026-07-28); lew/lec/leh still UNVERIFIED. Note the binary/fractional split does NOT follow the le-vs-pe or the hazard grouping, so there is no shortcut -- check every member. Decadal stat = MEAN either way (mean of binary flags OR mean of fractional area = expected annual exposed-area fraction)."
       isimip2b:
         led:
           # TRUE coverage via paginated API (CLI listing caps at 20): 219 datasets.
@@ -231,9 +254,19 @@ search_results:
           datasets_seen: ">=20 (listing capped)"
       notes: |
         Most "drought-specific" off-the-shelf product in ISIMIP, and the whole family
-        (led/ler/lew/lec/leh/let) shares the same structure so any member is processable
+        (le/pe x d,r,w,c,h,t) shares the same structure so any member is processable
         with an adapted process_led_drought.py. All ISIMIP2b (EWEMBI, RCP, CMIP5 GCMs),
-        annual, rcp26/rcp60 only. ISIMIP3b/SSP version of this family NOT found (0 hits).
+        annual, rcp26/rcp60 only.
+        CORRECTED 2026-07-28: "ISIMIP3b/SSP version of this family NOT found (0 hits)"
+        is TRUE only for the Lange2020 publication itself. An SSP-era equivalent DOES
+        exist under a different publication name -- ISIMIP3b/DerivedOutputData/
+        Heinicke2026 publishes `floodedarea` and `driedarea` (h08, jules-w2,
+        watergap2-2e x 5 CMIP6 GCMs x ssp126/370/585, annual, 0.5deg, 2015-2100).
+        `driedarea` is the SSP sibling of `led` -- BINARY like led, and correctly
+        land-masked -- so the drought layer CAN be moved to SSP. Searching for a
+        variable NAME across rounds misses this; the publication directory changes.
+        See search_results.flooding for the full Heinicke2026 assessment and its
+        floodedarea mask defect.
         Processing status: led=DONE, let=DONE (2026-07-24; let uses 5x5 spatial
         smoothing + two-tier zero-inflated percentile, see process_let_cyclone.py).
         ler/lew/lec/leh remaining -- value-check binary-vs-fractional before each.
@@ -270,41 +303,349 @@ search_results:
         gsprcp: "Growing-season precipitation."
 
   # -------------------------
-  # wildfire searches (fire sector + biomes burntarea)
+  # wildfire searches (fire sector + biomes burntarea + Lange2020 exposure)
   # -------------------------
   wildfire:
-    last_searched: "2026-07-24"
-    description: "Wildfire has THREE distinct ISIMIP representations -- enumerate all, don't assume the exposure family is the only option."
+    last_searched: "2026-07-28"   # re-enumerated in full; corrections below
+    description: "Wildfire has SEVERAL distinct ISIMIP representations -- enumerate all, don't assume the exposure family or any single one is the only option."
+    enumeration_2026_07_28: |
+      Re-walked the file server: 240 leaf directories, 224,762 filenames, 0 failed
+      requests; 8 representative files downloaded and value-checked.
+      CORRECTIONS to the 2026-07-24 entry:
+      1. THE DEDICATED `fire` SECTOR WAS NEVER WALKED. The old section was titled
+         "fire sector + biomes burntarea" but only `biomes` was enumerated.
+         - ISIMIP3b/OutputData/fire: harmless. Its 451 burntarea-total files are a
+           STRICT SUBSET of ISIMIP3b/OutputData/biomes (intersection 451, fire-only 0).
+         - ISIMIP3a/OutputData/fire: A REAL GAP. 10 models exist there and nowhere
+           else -- CLASSIC, ELM-ECA, JULES-INFERNO-VN6P3, LPJ-GUESS-SIMFIRE-BLAZE,
+           LPJ-GUESS-SPITFIRE, LPJmL5-7-10-fire, MC2-USFS, ORCHIDEE-MICT,
+           SSiB4-TRIFFID-Fire, VISIT -- plus fire variables absent from this catalog:
+           firesize, firenr, fireints, fireduration, fireros, firemortality, ffireluc.
+           3a is observed-climate (obsclim/counterclim), HISTORICAL ONLY, so it cannot
+           project; it is the natural EVALUATION reference, not a layer source.
+      2. "mc2-usfs is a 5-7x hotter outlier" IS BACKWARDS AS A CHARACTERIZATION. The
+         ratio is right but the sign of the judgement is not. Area-weighted global
+         burnt area vs GFED4 (~348 Mha/yr = ~3.5 Mkm2/yr):
+           mc2-usfs 5.63 / visit 4.88 / classic 7.26 Mkm2/yr  -> right order
+           lpj-guess 1.09 / lpjml 0.94                        -> ~3.5x TOO LOW
+           caraib 0.32                                        -> ~11x too low
+         So the 2b trio that was shipped (lpj-guess + lpjml + mc2-usfs) was 2 low-biased
+         models against 1 roughly-calibrated one -> its median burnt area was biased LOW.
+      3. "coarse biome model" READS AS A GRID CLAIM AND IS NOT ONE. mc2-usfs is
+         genuinely 0.5 deg: 4.6% constant 2x2 blocks, clean grid_periodicity (0.95-1.10),
+         no seam spacing. The retired 2b layer had NO elm-eca-class spatial defect.
+      4. MISSING PER-MODEL CAVEATS: caraib and orchidee-dgvm have NO rcp85;
+         orchidee-dgvm has only 2 GCMs. 3b mc2-usfs has 5 GCMs, not 4.
+      5. THE DECLARED UNIT CANNOT GATE A POOLING DECISION. clm45, orchidee and
+         orchidee-dgvm all declare units='%' yet sit ~1000x lower -- they are on a 0-1
+         FRACTION scale, mislabeled. Value-check magnitudes, never the unit string.
+      6. NEW -- MONTHLY burntarea ACCUMULATES: annualize by SUM, not mean. classic
+         publishes the same run at daily AND monthly cadence; each published monthly
+         value equals the SUM of that month's daily values (1e-6 agreement,
+         r=1.00000000 in all 12 months). A mean under-scales by 12x. This is the
+         OPPOSITE of csoil (a stock, correctly annualized by mean).
+      7. NEW -- 3b classic is EFFECTIVELY 1.0 deg: 100.0% of its 2x2 cell blocks are
+         exactly constant at offset (0,1). Retained deliberately (still informative);
+         elm-eca at ~4x5 deg is excluded.
+      8. NEW -- annual burnt area is CUMULATIVE and legitimately exceeds 100% where a
+         cell reburns within a year (visit 0.15% of annual values, <=120%; classic
+         0.05%, a few to ~182%; decadal means peak ~107%). Do NOT clamp to 100 --
+         clamping upper_ci there would drive it below the median.
     products:
       lew_exposure:
         note: "Lange 2020 land-area-exposed-to-unprecedented-wildfire. See drought.exposure_lange2020.family (lew). Exposure framing; NOT processed."
+        verified_2026_07_28: "5 models (caraib, lpj-guess, lpjml, orchidee at 4 GCMs; visit at only 3) -> 19 members per scenario. Scenarios rcp26 + rcp60 ONLY -- there is NO rcp85. The earlier 'rcp26=31' was a DATASET count including soc/sens variants, not members. Lives in ISIMIP2b/DerivedOutputData/Lange2020/ (filenames carry a 'lange2020_' prefix, which shifts field offsets by one vs OutputData)."
       burntarea:
-        long_name: "Burnt area fraction (percent of grid cell burned per year)"
-        note: "DIRECT biophysical fire output (the one processed 2026-07-24). API count for bare 'burntarea' = 1001 (TRUNCATED) -> enumerated per round."
+        long_name: "Burnt area fraction (percent of grid cell burned per reporting interval)"
+        note: "DIRECT biophysical fire output -- the chosen representation. API count for bare 'burntarea' = 1001 (TRUNCATED) -> enumerated per round from the file server."
+        gotcha: "ISIMIP2b publishes .nc4; ISIMIP3a/3b publish .nc. A '*.nc' filter silently drops the ENTIRE 2b round."
+        variable_form: "2b = bare 'burntarea'; 3a/3b = 'burntarea-total' plus PFT splits (burntarea-c3crop/-c3grass/...)"
         isimip2b:
           datasets: 648
-          impact_models_all: ["caraib", "clm45", "lpj-guess", "lpjml", "mc2-usfs-r87g5c1", "orchidee-dgvm", "orchidee", "visit"]  # 8 models
-          annual_models: ["lpj-guess", "lpjml", "mc2-usfs-r87g5c1"]  # only these 3 publish ANNUAL (263 annual datasets); the other 5 are monthly-only
+          impact_models_all: ["caraib", "clm45", "lpj-guess", "lpjml", "mc2-usfs-r87g5c1", "orchidee-dgvm", "orchidee", "visit"]  # 8 models, CONFIRMED
+          annual_models: ["lpj-guess", "lpjml", "mc2-usfs-r87g5c1"]  # only these 3 publish ANNUAL -- CONFIRMED
           climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]
           scenarios: ["historical", "picontrol", "rcp26", "rcp60", "rcp85"]
-          timesteps: ["monthly (385)", "annual (263)"]
+          per_model_caveats: "caraib rcp26/60 only; orchidee-dgvm rcp26/60 only AND 2 GCMs; hadgem2-es + ipsl-cm5a-lr additionally have future_extended runs to 2299"
           soc_variants: "many (1860soc/2005soc/rcpXXsoc/histsoc/nosoc); pin 2005soc (lpj-guess,lpjml) / nosoc (mc2-usfs) + co2 to isolate the climate signal"
-          variable_form: "plain 'burntarea' (total); NO PFT suffixes in 2b"
-          units: "% (percent of cell burned/yr) across all 3 annual models -- SAME unit"
+          units: "declared '%' for all 8 -- but only lpj-guess/lpjml/mc2-usfs/caraib/visit are actually on a percent scale; clm45/orchidee/orchidee-dgvm are on a 0-1 fraction scale (see correction 5)"
           data_nature: |
-            Continuous fraction in PERCENT [0,100], zero-inflated to varying degrees. Value-checked 2026-07-24:
-            lpj-guess  units=% min=0.1 max=97 mean=0.71 zeros=0.00% (FLOORED at 0.1%, no true zeros; long_name MISLABELED 'Fire Return Interval' but data are burnt-%)
-            lpjml      units=% min=0   max=80 mean=0.57 zeros=1.05% long_name='burnt area fraction'
-            mc2-usfs   units=% min=0   max=100 mean=3.84 zeros=44.8% (coarse biome model, ~5-7x hotter outlier); TIME AXIS = 'days since 1661' (others 'years since')
+            Continuous, zero-inflated to varying degrees. Value-checked 2026-07-24, re-verified 2026-07-28:
+            lpj-guess  units=% min=0.1 max=98 mean=0.71 zeros=0.00% (FLOORED at 0.1%, no true zeros; long_name MISLABELED 'Fire Return Interval' but data are burnt-%)
+            lpjml      units=% min=0   max=80 mean=0.63 zeros=1.05% long_name='burnt area fraction'
+            mc2-usfs   units=% min=0   max=100 mean=4.04 zeros=45.0% (genuinely 0.5 deg; TIME AXIS = 'days since 1661', others 'years since')
+            visit      units=% (monthly) -> annual SUM 3.33 %/yr; long_name ABSENT (None)
+            caraib     units=% (monthly) -> annual SUM 0.18 %/yr; long_name ABSENT (None); no rcp85
+            clm45/orchidee/orchidee-dgvm  declare '%' but are FRACTION-scaled (~1000x low) -- unusable for an absolute burnt-area layer
         isimip3b:
           datasets: 560
-          note: "Monthly output is PFT-decomposed (burntarea-c3crop/-c3grass/...); annual is single-model (mc2-usfs, burntarea-total). Thin/messy vs 2b -> not chosen."
+          annual_models: ["mc2-usfs-r87g5c1"]        # 5 GCMs, ssp126/370/585
+          monthly_models: ["classic", "elm-eca", "visit"]   # annualizable by SUM
+          daily_models: ["classic"]
           scenarios: ["ssp126", "ssp370", "ssp585", "historical", "picontrol"]
+          matrix: "mc2-usfs annual 5 GCMs (nat/default); visit monthly 5 GCMs (2015soc/default); classic monthly 2 GCMs (gfdl-esm4, ukesm1-0-ll; 2015soc-from-histsoc/default); elm-eca monthly 5 GCMs (EXCLUDED ~4x5 deg)"
+          effective_resolution: "mc2-usfs 0.5 deg clean; visit 0.5 deg clean; classic EFFECTIVE 1.0 deg (100% constant 2x2 blocks); elm-eca ~4x5 deg -> EXCLUDED"
       ffire:
         long_name: "Fire carbon emissions flux (kg C m-2 s-1), PFT-split"
-        note: "797 datasets, ISIMIP3a/3b only (no 2b), mostly monthly, PFT-decomposed (ffire-c3crop...). Emissions metric -- least aligned with an asset-facing wildfire risk layer."
-    chosen: "burntarea, ISIMIP2b, annual, 3 models x 4 GCMs x {rcp26,rcp60,rcp85} = 36 members. Raw %, NO normalization (same unit), NO spatial smoothing (12/scenario is thick), baseline-anchored trend."
-    processed: "2026-07-24 -> TCFD layer. scripts/process_burntarea_fire.py; data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc. Verified: global-mean burnt% flat rcp26, +6.6% rcp60, +14.8% rcp85 by 2090s. See memory project_burntarea_fire_layer, WORKFLOW-ISSUES.md 2026-07-24, GUARDRAILS §9-§10."
+        note: "797 datasets, ISIMIP3a/3b only (no 2b -- confirmed), mostly monthly but 3b DOES publish ffire-total annual (35 files). Emissions metric -- least aligned with an asset-facing wildfire risk layer."
+      fire_sector_only:
+        note: "ISIMIP3a `fire` sector only (historical, no projections): firesize, firenr, fireints, fireduration, fireros, firemortality, ffireluc. Useful for evaluation / model weighting, not as a TCFD layer source."
+    chosen: "burntarea-total, ISIMIP3b, ssp126/370/585. 12 members/scenario = mc2-usfs (annual, 5 GCMs) + visit (monthly->annual SUM, 5 GCMs) + classic (monthly->annual SUM, 2 GCMs); elm-eca EXCLUDED. Raw %, NO normalization (same unit AND within 1.6x), NO spatial smoothing (12/scenario is thick), baseline-anchored trend, shared 2020s baseline (3b starts 2015 -> no 2010s decade)."
+    chosen_rationale: "Newer round and scenario family are preferred wherever the newer data is viable (user decision 2026-07-28). The 2b option was thicker (4 models x 4 GCMs = 16/scenario incl. visit) and better calibrated in aggregate, but rests on CMIP5 forcing; recency won."
+    superseded: "The ISIMIP2b/RCP build (2026-07-24, 3 models x 4 GCMs x rcp26/60/85) is RETIRED. Its outputs went to local data/processed/, which the S3 migration removed and which was never in git, so that layer no longer exists as data anywhere -- only as the numbers recorded here (global-mean burnt% flat rcp26, +6.6% rcp60, +14.8% rcp85 by 2090s, on a LOW-biased ensemble; see correction 2)."
+    processed: "2026-07-28 -> TCFD layer wildfire_burntarea_annual (ISIMIP3b). scripts/process_burntarea_fire.py; S3 tcfd/layers/wildfire_burntarea_annual/. Global-mean burnt%: 2020s baseline 3.42, 2090s 3.74/4.36/4.65 for ssp126/370/585 = +9.3/+27.5/+35.9%. See memory project_burntarea_fire_layer, WORKFLOW-ISSUES.md 2026-07-28, GUARDRAILS §9-§11."
+    open_issues:
+      visit_high_latitude_bias: |
+        OPEN as of 2026-07-28 -- NO decision taken; do not record this as resolved.
+        The 5 `visit` members have an INVERTED zonal profile. 2090s ssp585 land-mean
+        burnt %/yr by latitude band:
+                     45-60N  60-70N  70-75N  >75N
+          visit        4.76    3.36    5.95   25.94
+          mc2-usfs     0.65    1.35    1.45    0.67
+          classic      1.15    0.10    0.02    0.00
+        visit therefore burns MORE above 75N (25.9%) than in the tropics (7.3% at
+        23S-0), which is not physical. Worst cells are visit-only Arctic islands
+        (Franz Josef Land, Severnaya Zemlya, Novaya Zemlya) saturated near 100%/yr --
+        e.g. 81.25N/56.75E reads 0.000% in the 2020s and 100.04% in the 2090s on a
+        single model. In the POOLED layer, >75N reaches 6.5/9.0/10.0 %/yr
+        (ssp126/370/585), exceeding the tropical band.
+        Why no aggregate check caught it: polar cells carry negligible area, so visit's
+        global area-weighted total (4.56 Mkm2/yr) is the CLOSEST of the three models to
+        GFED4's ~3.5. Found only by rendering and by a per-latitude breakdown.
+        Status: all 12 members RETAINED, nothing masked, pending review of the results
+        (user decision 2026-07-28: "note the potential issue with polar region
+        anomalies, but make no decision about exclusion until the results land").
+        Instrumented: the layer declares `zonal_expectation: low_latitude_dominated`,
+        and generate_qa_report.py now reports the zonal profile for every layer and
+        WARNS when a polar band exceeds the tropical band.
+        If exclusion is later chosen: dropping visit leaves 2 models / 7 members per
+        scenario (mc2-usfs 5 GCMs = 71% of members, classic 2), 8,245 cells (12.3% of
+        land) resting on classic alone at an effective 1.0 deg with only 2 members, and
+        mc2-usfs as the sole genuine 0.5 deg model -- which would reopen the
+        thin-ensemble spatial-smoothing question. visit adds only 202 unique land cells,
+        so this is about ensemble depth and grid quality, not coverage.
+        Meanwhile: treat burnt-area values poleward of ~70N as unreliable.
+
+  # -------------------------
+  # flooding searches (river / fluvial)
+  # -------------------------
+  flooding:
+    last_searched: "2026-07-28"
+    description: >
+      Severe / regional river flooding, target metric = AREA IMPACTED PER YEAR.
+      Four distinct representations exist; they are NOT interchangeable and two of
+      them do not measure what their metadata says. No dedicated 'flood' sector
+      exists -- flood products live in DerivedOutputData (CaMa-Flood post-processing).
+    enumeration_2026_07_28: |
+      Walked every round x product x sector on files.isimip.org serially, then
+      downloaded and value-checked 10 files. Findings, in order of importance:
+
+      1. THERE IS NO INUNDATION VARIABLE IN THE RAW water_global SECTOR. Confirmed
+         across all 17 ISIMIP2b + 9 ISIMIP3b water_global models: no fldfrc, no
+         flddph, no floodedarea. Flooded area exists ONLY as DerivedOutputData.
+         `maxdis` (annual max discharge, the obvious peak-flow proxy) exists in just
+         2 of 17 2b models (clm45, mpi-hm) and ZERO 3b models -> unusable as an
+         ensemble. Building flood area from daily `dis` is possible but daily dis is
+         ~929 MB per 10-year chunk per member (~1 TB+ for a full ensemble) and would
+         mean re-deriving the GEV fit + hydrodynamic routing that Zimmer2023 already
+         published. Rejected.
+
+      2. Heinicke2026 `floodedarea` IS NOT AN AREA SHARE -- IT IS BINARY. ISIMIP3b
+         Heinicke2026 declares long_name="Exposed Area Share", units="1",
+         definition="Flood fraction from cama flood". The values are strictly {0,1}.
+         Verified on 6 of 15 members spanning all 3 models, 4 GCMs and all 3 SSPs:
+         n_unique == 2 every time. Per cell it is a flood OCCURRENCE FLAG, so the
+         decadal mean is flood FREQUENCY (fraction of years flooded), not area share.
+         GUARDRAILS §8 again: value-check, never trust long_name/definition/units.
+         RE-VERIFIED HARD 2026-07-28 after the finding was challenged (the natural
+         objection is that `ler`, the 2b analogue, IS fractional -- so why not this?):
+           - download is byte-identical to the sidecar (sha512 + size match), so it is
+             not a truncation artifact;
+           - dtype float32 with NO scale_factor and NO add_offset, so nothing is being
+             silently unpacked;
+           - read with set_auto_maskandscale(False), the RAW stored values are exactly
+             {0.0, 1.0, 1e20} -- 20,885,979 zeros / 226,419 ones / 1,178,802 fill;
+           - ALL 86 timesteps have exactly 2 unique values (min=max=2);
+           - point time series switch cleanly 0->1->0 (Mississippi 32N/-91E flags in
+             years 2021, 2033, 2037), the signature of an occurrence flag.
+         It is genuinely binary. Do not re-litigate this without redoing these checks.
+
+      2b. BINARISING AT 0.5deg INFLATES FLOODED AREA BY 17-28x, so `floodedarea`
+         CANNOT be read as "% area impacted per year" even after spatial aggregation.
+         Measured directly by taking Zimmer2023 fldfrc (true sub-grid fraction),
+         coarsening it two ways to 0.5deg and area-weighting (h08/miroc5/rcp60, 2020s):
+           protection   TRUE area km2/yr   BINARY-flag km2/yr   inflation
+           none                6,104,969        106,330,690       17.4x
+           100yr                 260,894          6,951,831       26.6x
+           flopros               743,970         20,693,916       27.8x
+         A 0.5deg cell is ~2,500 km2 at mid-latitudes; flagging the whole cell when any
+         part of it floods counts ~71% of global land as "flooded" under `none` against
+         a true ~4%. The binary field answers "does this cell contain flooding?", not
+         "how much area flooded?" -- only a sub-grid fractional product answers the
+         second question.
+
+      3. Heinicke2026 `floodedarea`'S MASK IS BROKEN -- IT INCLUDES OCEAN. 245,493 of
+         259,200 cells (94.7% of the GLOBE) are non-NaN, and mid-Pacific, mid-Atlantic
+         and Antarctica all read 0.0 rather than NaN -- while Sahara and Greenland ARE
+         NaN. The NaN pattern tracks the CaMa-Flood river network, with ocean
+         zero-filled. Only 13-15% of "valid" cells are EVER flooded in 86 years. Any
+         processor must impose its own land+floodplain mask or global statistics get
+         computed over the Pacific. Note `driedarea`, from the SAME product and model,
+         IS correctly land-masked (53,713 cells) -- the defect is specific to
+         floodedarea, so a per-variable mask check is mandatory.
+
+      4. Lange2020 IS TWELVE VARIABLES, NOT SIX. The catalog documented only the `le*`
+         (land area exposed) half. Every hazard also publishes a `pe*` twin =
+         POPULATION fraction exposed: ped/per/pew/pec/peh/pet. Verified by listing all
+         15 Lange2020 model dirs. `per` (population fraction exposed to river flood)
+         is arguably more decision-relevant than `ler` for a severity product.
+         Also: `lec` is NOT gepic-only -- pepic publishes it too.
+
+      5. `ler` ~= THE 100yr PROTECTION LEVEL OF Zimmer2023, PRE-AGGREGATED TO 0.5deg.
+         Matched member (h08/miroc5/rcp60), 2020s decadal mean, Zimmer2023 fldfrc
+         aggregated 12x12 to 0.5deg vs Lange2020 ler on the shared 61,483 cells:
+           none     mean ratio 25.04   Pearson 0.319  Spearman 0.321
+           100yr    mean ratio  0.99   Pearson 0.723  Spearman 0.784   <-- match
+           flopros  mean ratio  2.54   Pearson 0.467  Spearman 0.613
+         So choosing `ler` is choosing a fixed 1-in-100 protection assumption with no
+         way to vary it, and no rcp85.
+
+      6. THE PROTECTION LEVEL IS THE SEVERITY DIAL AND IT DOMINATES THE ANSWER.
+         Same member (h08/miroc5/rcp60), global flooded area, 2020s -> 2090s decadal
+         means (km2/yr, area-weighted at 150arcsec):
+           none     6,104,969 -> 6,282,904   +2.9%   <-- flat; NO risk signal
+           100yr      260,894 ->   501,993  +92.4%
+           flopros    743,970 -> 1,130,053  +51.9%
+         `none` counts routine seasonal floodplain wetting, which happens every year in
+         both decades, so the metric SATURATES and its trend is muted. A severity
+         threshold is what exposes the climate signal.
+
+      6b. PROTECTION ORDERING IS none < flopros < 100yr, AND "flopros ~= none WHERE
+         UNDEFENDED" IS FALSE. Tempting assumption, measured and rejected. 2020s mean
+         fldfrc by region (x1e4, area-weighted), with the flopros/none ratio:
+           region                none    100yr  flopros   flopros/none
+           Bangladesh/Ganges  1664.15   261.12   313.85      0.189
+           Mississippi         803.32    28.98    11.67      0.015
+           Netherlands/NW Eur  813.03    12.80     6.50      0.008
+           Niger/Nigeria       214.31    13.16    78.11      0.364
+           Amazon              729.82    15.98    58.40      0.080
+           Mekong              645.20    48.75   224.70      0.348
+           Japan                94.64     1.23     4.08      0.043
+           Rhine/Germany       549.47    13.09    12.85      0.023
+         FLOPROS assigns non-trivial protection EVERYWHERE -- even the least-defended
+         regions retain only 19-36% of the undefended signal. So flopros is NOT a
+         proxy for "unprotected". It is spatially real, though: flopros is LESS
+         protective than a uniform 100yr in Niger (78 vs 13) and Bangladesh (314 vs
+         261), and MORE protective in the Mississippi (12 vs 29) and Netherlands
+         (6.5 vs 12.8), where defenses exceed 1-in-100. That is the correct physical
+         behaviour and it validates the layer.
+         CONSEQUENCE FOR METRIC CHOICE:
+           - want "all inundation, credit no defenses"  -> `none`   (saturating, weak trend)
+           - want "SEVERE events, credit no real-world defenses" -> `100yr`, which is a
+             1-in-100 SEVERITY THRESHOLD; calling it "protection" understates that it is
+             the natural choice when you do not want to rely on FLOPROS at all
+           - want "residual risk given actual defenses" -> `flopros`
+
+      7. ANNUAL FLOODED AREA IS EXTREMELY VOLATILE. Same member, flopros, global
+         area: 2080 = 1,207,332 km2 vs 2100 = 69,751 km2 -- a 17x swing between
+         single years. Decadal means are mandatory and a within-decade slope is
+         meaningless -> use the BASELINE-ANCHORED trend, as for burntarea and csoil.
+
+      8. NO COASTAL / SEA-LEVEL FLOODING EXISTS ANYWHERE IN ISIMIP. Sector listings
+         across all four rounds: agriculture, biodiversity, biomes, fire, forestry,
+         health, lakes_global, lakes_local, marine-fishery_*, peat, permafrost,
+         water_global, water_regional. There is no coastal sector. Coastal flood risk
+         cannot be sourced from ISIMIP.
+
+    options:
+      zimmer2023_fldfrc:
+        recommended: true
+        description: "CaMa-Flood v3.6.2 annual flooded FRACTION, downscaled to 150 arcsec (~4.6 km). The only true area-impacted metric with a protection dial and rcp85."
+        path: "ISIMIP2b/DerivedOutputData/Zimmer2023/{MODEL}/{gcm}/future/"
+        product: "DerivedOutputData (annual, ready to process)"
+        variables:
+          fldfrc: "Flooded area fraction [0,1]. VERIFIED fractional: 3,775 unique values in one year, 1.8% of cells strictly in (0,1)."
+          flddph: "Flood depth (m) -- severity intensity companion, same matrix."
+        protection_levels: ["none", "100yr", "flopros"]   # flopros = FLOod PROtection Standards database (real-world defenses)
+        impact_models: ["clm45", "cwatm", "h08", "lpjml", "matsiro", "watergap2"]   # 6 with FUTURE runs
+        historical_only_models: ["clm50", "mpi-hm", "pcr-globwb"]  # 404 on future/
+        climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]
+        scenarios: ["rcp26", "rcp60", "rcp85"]   # ALL THREE -- unlike Lange2020
+        members_per_scenario: 24   # 6 models x 4 GCMs, complete (432 future files = 24 x 3 scen x 2 vars x 3 protections)
+        soc_sens: "2005soc / co2, UNIFORM across all 432 future files -- no soc/sens divergence to reconcile (§9)"
+        timestep: "annual"
+        period: "2006-2100 (95 years) -- 2020s baseline fully available"
+        grid: "4320 x 8640 (150 arcsec, 1/24 deg). Aggregates EXACTLY 12x12 to the 0.5deg TCFD grid -> a true sub-grid area-impacted fraction, not a flag."
+        file_sizes: "fldfrc: ~0.12 GB (flopros), ~0.07 GB (100yr), ~0.55 GB (none). fldfrc/flopros full ensemble = 24 x 3 = 72 files ~= 9 GB."
+        coverage: "8,143,012 of 37,324,800 cells at 150arcsec (21.8%); aggregates to 62,066 of 259,200 0.5deg cells (23.9%). This is the CaMa-Flood floodplain domain -- ~76% of the grid is structurally NaN, which is scientifically correct but is a PRODUCT decision to confront."
+        provenance: "Global attrs are rich and self-documenting: created_with=github.com/swillner/flood-processing, citation=10.5281/zenodo.1241051, discharge_threshold=0.1mm/d, fit=gev, fit_scenario=picontrol, fit_soc=1860soc, cama_flood_version=3.6.2. Method = GEV fit to picontrol discharge -> return-period exceedance -> protection subtraction -> CaMa-Flood inundation -> 150arcsec downscale."
+        metadata_warning: "The fldfrc variable carries ONLY _FillValue -- no units, no long_name. Value-checking is not optional here."
+        evaluation_counterpart: "ISIMIP2a/DerivedOutputData/Zimmer2023 -- 12 GHMs x 4 observational forcings (gswp3, princeton, watch, watch-wfdei), historical only. The validation reference, not a layer source."
+      lange2020_ler_per:
+        description: "Pre-aggregated 0.5deg river-flood exposure. The fast path; equals a fixed 100yr protection assumption."
+        path: "ISIMIP2b/DerivedOutputData/Lange2020/{MODEL}/{gcm}/future/"
+        variables:
+          ler: "Land area fraction exposed to river flood. VERIFIED fractional [0, 0.9988] -- 239,812 unique values, 6.1% strictly in (0,1). Contrast led, which is binary."
+          per: "Population fraction exposed to river flood. Fractional [0,1], identical mask to ler."
+        impact_models: ["clm45", "h08", "jules-w1", "lpjml", "mpi-hm", "orchidee", "pcr-globwb", "watergap2"]
+        climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]
+        scenarios: ["rcp26", "rcp60"]   # NO rcp85
+        members_per_scenario: 31   # 8 x 4 minus mpi-hm/hadgem2-es (genuine 404)
+        soc_divergence: "orchidee publishes led/ler under nosoc but lew under 2005soc; the GHMs use 2005soc. Filter loosely or the ensemble collapses (§9)."
+        mask_varies_by_model: "clm45 58,567 cells vs h08/watergap2 61,995 -> n_members per cell varies, as with csoil. Emit n_members/n_models."
+        file_extension: ".nc4  -- NOT .nc. A `grep '\\.nc\"'` returns zero and reads as 'no data'."
+        file_sizes: "~8.5 MB per member-scenario. The whole ler+per ensemble is well under 1 GB."
+        timestep: "annual"
+        period: "2006-2099"
+      heinicke2026_floodedarea:
+        description: "ISIMIP3b/SSP river-flood exposure. Newest round, but the metric is flood FREQUENCY (binary flag), not area share, and the mask includes ocean."
+        path: "ISIMIP3b/DerivedOutputData/Heinicke2026/{MODEL}/{gcm}/{future,historical}/"
+        variables:
+          floodedarea: "BINARY {0,1} despite long_name='Exposed Area Share'. Decadal mean = flood frequency. Mask covers 94.7% of the globe INCLUDING OCEAN (see finding 3)."
+          driedarea: "BINARY {0,1} drought flag, CORRECTLY land-masked (53,713 cells). This is the SSP-era sibling the existing rcp-only `led` drought layer lacks."
+        impact_models: ["h08", "jules-w2", "watergap2-2e"]
+        climate_forcings: ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]
+        scenarios: ["ssp126", "ssp370", "ssp585"]
+        members_per_scenario: 15   # 3 x 5, complete; historical 1850-2014 also complete
+        soc_sens: "2015soc / default, uniform"
+        bias_adjustment: "w5e5"
+        timestep: "annual"
+        period: "future 2015-2100; historical 1850-2014"
+        grid: "360 x 720 (0.5 deg)"
+        file_sizes: "~1.0-1.4 MB per member-scenario-variable; the ENTIRE 120-file product is ~120 MB."
+        contact: "Stefanie Heinicke <heinicke@pik-potsdam.de>, PIK"
+      rejected_raw_discharge:
+        description: "Building flood area from raw water_global discharge. Rejected -- see findings 1 and 6."
+        maxdis_coverage: "ISIMIP2b clm45 + mpi-hm only (monthly); ISIMIP3b: none."
+        dis_coverage: "Daily dis is broad (2b: 11 models incl. rcp85; 3b: 6 models) but ~929 MB per 10-year chunk per member."
+    quesada_chacon2026:
+      description: "ISIMIP3a CaMa-Flood daily discharge at GRDC / no-basin gauge locations, obsclim + counterclim, 1901-2019, 9 GHMs. POINT/station data, historical only -- a routing-validation product, not a gridded flood layer."
+      path: "ISIMIP3a/DerivedOutputData/Quesada-Chacon2026/CaMa-Flood/{grdc,noba}/{obsclim,counterclim}/"
+    recommendation_2026_07_28: |
+      PRIMARY: Zimmer2023 `fldfrc`, ISIMIP2b, rcp26/60/85, 24 members/scenario,
+      aggregated 12x12 from 150arcsec to the 0.5deg TCFD grid. It is the ONLY option
+      that is a genuine area-impacted fraction -- Heinicke2026 is a binary occurrence
+      flag that overstates area 17-28x (finding 2b), and `ler` is fixed at one
+      protection level with no rcp85. Accepts the CMIP5/RCP round; no SSP equivalent
+      of a fractional flood-area product exists.
+      PROTECTION LEVEL depends on the stated use case, and it is the single biggest
+      choice in this layer (finding 6/6b). For "impacts across large areas in
+      UNPROTECTED regions" -- the 2026-07-28 user framing -- ship `none` and `100yr`
+      as the pair, NOT flopros: `none` gives unprotected magnitude, `100yr` gives the
+      severe-event signal without relying on FLOPROS defense data. flopros retains
+      only 19-36% of the signal even in the least-defended regions, so it answers a
+      different question (residual risk given actual defenses) and is the natural
+      THIRD layer, not the primary. All three are cheap enough to ship together
+      (fldfrc: none 0.55 GB, flopros 0.12, 100yr 0.07 per member-scenario).
+      CROSS-CHECK / FAST PATH: Lange2020 `ler` (+`per` for population). ~1 GB total,
+      0.5deg native, 31 members, and a process_led_drought.py sibling -- but rcp26/60
+      only and a fixed 100yr protection assumption.
+      PROCESSING NOTES: decadal MEAN (exposed-area fraction, never median);
+      baseline-anchored trend, NOT a within-decade slope (finding 7); two-tier
+      zero-inflated percentile (88% of 0.5deg cells are zero in a given year), as for
+      `let`; NO spatial smoothing (24 members is thick); NO normalization (shared
+      fraction unit); higher_is_worse (flooding is a hazard, unlike csoil); emit
+      n_members/n_models; impose an explicit land+floodplain mask.
 
   # -------------------------
   # soil / subsurface carbon searches (biomes sector)
@@ -466,57 +807,93 @@ search_results:
   # cwood searches
   # -------------------------
   cwood:
-    last_searched: "2026-01-20"
+    last_searched: "2026-07-28"   # re-enumerated in full; corrections below
 
+    # PFT-RESOLVED cwood EXISTS ONLY IN ISIMIP3b, from exactly TWO models.
+    # Verified 2026-07-28 by enumerating every biomes model in 3b/3a/2b and
+    # grepping for a `cwood-*` token. See `pft_value_conventions` below before use.
     isimip3b:
-      total_datasets: 38  # for dcdcldbdltr PFT specifically
       sectors: ["biomes"]
-      impact_models: ["CLASSIC"]
-      climate_forcings: ["GFDL-ESM4", "UKESM1-0-LL"]  # 2 GCMs available
+      impact_models: ["CLASSIC", "JULES-ES-VN6P3"]   # JULES was MISSING from this catalog
       bias_adjustment: ["w5e5"]
       scenarios:
-        climate: ["picontrol", "ssp126", "ssp370", "ssp585"]
-        soc: ["2015soc", "2015soc-from-histsoc"]
-      temporal:
-        resolution: "annual"
-        period: "2015-2100"
-      spatial:
-        resolution: "0.5 degree"
-        coverage: "global"
-      pfts_available:
-        - dcdcldbdltr
-        - dcddrybdltr
-        - dcdndltr
-        - evgbdltr
-        - evgndltr
-        - c3grass
-        - c4grass
-        - c3crop
-        - c4crop
-        - total
-      notes: "Best source for global wood carbon. Use dcdcldbdltr for oak proxy."
+        climate: ["picontrol", "ssp126", "ssp370", "ssp585"]  # JULES: no picontrol for cwood
+        soc: ["2015soc", "2015soc-from-histsoc"]   # CLASSIC both; JULES 2015soc-from-histsoc only
+      temporal: {resolution: "annual", period: "2015-2100"}
+      spatial: {resolution: "0.5 degree (declared)", coverage: "global"}
+      per_model:
+        CLASSIC:
+          climate_forcings: ["GFDL-ESM4", "UKESM1-0-LL"]   # only 2 -- NOT the 5 listed under biomes_models
+          cwood_pfts: [dcdcldbdltr, dcddrybdltr, dcdndltr, evgbdltr, evgndltr,
+                       c3crop, c4crop, c3grass, c4grass, total]
+          sens: "default (transient CO2) at every SSP; ssp585 adds 2015co2/nondep/nondep2015co2/ssp585ndep"
+          zeros: "42.6% of land cells are 0 for cwood-evgndltr (PFT absent)"
+        JULES-ES-VN6P3:
+          climate_forcings: ["GFDL-ESM4", "IPSL-CM6A-LR", "MPI-ESM1-2-HR", "MRI-ESM2-0", "UKESM1-0-LL"]
+          cwood_pfts: [bdldcd, bdlevgtemp, bdlevgtrop, ndldcd, ndlevg, shrubdcd, shrubevg,
+                       c3crop, c4crop, c3grass, c4grass, c3pasture, c4pasture, total]
+          sens: "default AND 2015co2 for every SSP (unlike csoil-total, which is 2015co2-only)"
+          zeros: "4.5% -- JULES reports a per-tile density almost everywhere"
+      conifer_pfts: |
+        Needleleaf-evergreen cwood = CLASSIC `evgndltr` (2 GCMs) + JULES `ndlevg` (5 GCMs)
+        = 7 transient-CO2 members per SSP. BOTH are all-climate classes: measured share of
+        global PFT wood in the boreal 55-70N band is 34.6% (CLASSIC) and 29.3% (JULES).
+        NO climate-zone-resolved conifer PFT carries cwood in ANY round.
+        The only 3b cwood token containing "temp" is JULES `cwood-bdlevgtemp`, which is
+        temperate BROADLEAF evergreen (a hardwood class), not a conifer.
+        JULES splits broadleaf evergreen into bdlevgtemp/bdlevgtrop but publishes a SINGLE
+        ndlevg -- proof the needleleaf-evergreen class is not internally climate-split.
+      magnitudes: "kg m-2, 'Carbon Mass in Wood'. global p50(>0): CLASSIC 2.61, JULES 6.01.
+                   UK/IRL 11.03 / 10.23; PNW-BC-SEAK 5.99 / 9.81. cwood/cveg ratio p50 0.77 / 0.90."
+      notes: "Only source of PFT-resolved wood carbon in ISIMIP. Companion `pft-{code}` cover
+              fractions published by both models under the same SSPs."
 
     isimip2b:
-      total_datasets: 1001
-      sectors: ["forestry"]
-      impact_models: ["3D-CMCC-CNR-BGC"]
-      climate_forcings: ["GFDL-ESM2M"]
-      bias_adjustment: ["EWEMBI"]
-      scenarios:
-        climate: ["picontrol", "rcp26", "rcp60", "rcp85"]
-        soc: ["2005soc", "nosoc"]
-      temporal:
-        resolution: "annual"
-        period: "2006-2099"
-      spatial:
-        resolution: "stand-level"
-        coverage: "regional (European sites)"
-      species_available:
-        - fasy  # beech
-        - piab  # Norway spruce
-        - pipi  # Maritime pine
-        - pisy  # Scots pine
-      notes: "Species-specific but NO oak (Quercus). Regional European coverage only."
+      verdict: "NO PFT-resolved cwood anywhere in 2b -- not in `biomes` (11 models grepped),
+                not in `permafrost` (CLM45/LPJmL/ORCHIDEE/ORCHIDEE-DGVM). 2b PFT output is
+                cveg / npp / gpp / pft only. Substituting cveg costs the root+leaf fraction:
+                wood is p50 77% (CLASSIC) to 90% (JULES) of conifer cveg."
+      forestry_sector:   # CORRECTED 2026-07-28: catalog previously said 1 model / 4 species / no oak
+        sectors: ["forestry"]
+        impact_models: ["3D-CMCC-CNR-BGC", "3D-CMCC-FEM", "3PGN-BW", "4C", "BASFOR",
+                        "CARAIB", "ForClim", "GOTILWAplus", "LPJ-GUESS", "PREBAS"]  # 10, not 1
+        climate_forcings: ["GFDL-ESM2M", "IPSL-CM5A-LR", "MIROC5", "HadGEM2-ES"]  # 3-4 per model
+        scenarios: {climate: ["picontrol", "rcp26", "rcp60"], note: "rcp85 only in 3PGN-BW"}
+        temporal: {resolution: "annual", period: "2006-2099"}
+        spatial: {resolution: "stand-level", coverage: "8-9 European sites: bily-kriz,
+                  collelongo, hyytiala, kroof, le-bray, peitz, solling-beech, solling-spruce, soro"}
+        species_available:   # 9 codes -- Quercus and Douglas-fir DO exist
+          - acpl  # Acer platanoides (CARAIB)
+          - bepe  # Betula pendula (4C)
+          - fasy  # Fagus sylvatica (beech)
+          - lade  # Larix decidua (CARAIB)
+          - piab  # Picea abies (Norway spruce) -- nearest congener to Sitka
+          - pipi  # Pinus pinaster (maritime pine)
+          - pisy  # Pinus sylvestris (Scots pine)
+          - psme  # Pseudotsuga menziesii (Douglas-fir) -- 4C only
+          - quro  # Quercus robur (OAK) -- 4C, FORMIND. Catalog previously said "NO oak"
+        wood_variables: "cwood, cvegag, vol (stem volume), mai (MEAN ANNUAL INCREMENT --
+                         the actual forestry productivity metric), harv, nppagwood, dbh, hei"
+        cwood_by_model: "4C (piab at 5 sites, + psme/pisy/quro/bepe/fasy), 3D-CMCC-CNR-BGC
+                         (piab 2 sites), 3D-CMCC-FEM (piab 1 site), GOTILWAplus (no piab)"
+      notes: "Site-level only, so not a griddable layer source -- but it is the ONLY place
+              ISIMIP resolves individual species, and the only place `mai` exists."
+
+    isimip2a:
+      forestry_sector:
+        impact_models: ["3D-CMCC-CNR-BGC", "3D-CMCC-FEM", "3PG", "3PGN-BW", "4C", "BASFOR",
+                        "CARAIB", "FORMIND", "ForClim", "GOTILWAplus", "LPJ-GUESS",
+                        "Landscape-DNDC", "PREBAS", "SALEM", "SIBYLA"]   # 15
+        forcings: ["gswp3", "localclim", "princeton", "watch", "watch-wfdei"]
+        notes: "Historical only (no futures). Same 8-9 European sites and same 9-species set."
+
+    sitka_spruce: |
+      NO Picea sitchensis anywhere in ISIMIP. Verified 2026-07-28 across all 10 ISIMIP2b and
+      all 15 ISIMIP2a forestry models: the species vocabulary is exactly
+      {acpl, bepe, fasy, lade, piab, pipi, pisy, psme, quro}. Nearest congener is `piab`
+      (Picea abies) at European stand sites. For a gridded Sitka-relevant layer the choice is
+      between an all-climate conifer PFT (3b, has cwood) and a temperate-needleleaf-evergreen
+      PFT (2b, cveg/npp only) -- see `temperate_needleleaf_evergreen_2b` below.
 
   # -------------------------
   # npp searches
@@ -899,14 +1276,62 @@ biomes_models:
         c3crop: "C3 crops"
         c4crop: "C4 crops"
         total: "All PFTs combined"
-      variables: ["cwood", "cleaf", "cveg", "npp", "gpp", "ra", "rh", "burntarea"]
-      climate_forcings: ["GFDL-ESM4", "UKESM1-0-LL", "MPI-ESM1-2-HR", "IPSL-CM6A-LR", "MRI-ESM2-0"]
+      variables: ["cwood", "cleaf", "cveg", "cvegag", "cvegbg", "npp", "gpp", "lai",
+                  "pft", "ra", "rh", "burntarea", "csoil-total"]
+      climate_forcings: ["GFDL-ESM4", "UKESM1-0-LL"]   # CORRECTED 2026-07-28: only 2 GCMs
+      # The other three (MPI-ESM1-2-HR, IPSL-CM6A-LR, MRI-ESM2-0) have NO `future/` directory
+      # for CLASSIC in the biomes sector -- a real 404, not an empty listing.
       scenarios: ["ssp126", "ssp370", "ssp585", "picontrol"]
       period: "2015-2100"
+      value_convention: "PER-TILE DENSITY; pft- fractions are 0-1 despite units '%'"
       notes: |
         WARNING: No climate-zone distinction in PFTs.
-        'evgndltr' includes BOTH boreal spruce AND temperate pine.
-        For climate-specific analysis, use CLM45 or MC2-USFS from ISIMIP3a/2b.
+        'evgndltr' includes BOTH boreal spruce AND temperate pine -- measured, 34.6% of its
+        global wood sits in the 55-70N band and 29.4% in the subtropical 23-40N band.
+        For climate-specific analysis use CLM45/ORCHIDEE/LPJmL/CARAIB from ISIMIP2b --
+        NOT MC2-USFS, which publishes no carbon by biome type (see its entry).
+        42.6% of land cells are zero for cwood-evgndltr (PFT absent).
+
+    JULES-ES-VN6P3:
+      # ADDED 2026-07-28 -- this model was entirely missing from the catalog, yet it is the
+      # DEEPEST 3b source of PFT-resolved wood carbon (5 GCMs vs CLASSIC's 2).
+      full_name: "Joint UK Land Environment Simulator - Earth System, vn6.3"
+      pft_scheme: "generic conifers, climate-split broadleaf"
+      pft_naming: "short-code"
+      climate_specificity: "PARTIAL - broadleaf evergreen is split temperate/tropical,
+                            needleleaf evergreen is NOT split"
+      pfts:
+        ndlevg: "Needleleaf evergreen trees (ALL conifers - boreal AND temperate)"
+        ndldcd: "Needleleaf deciduous trees (larch)"
+        bdldcd: "Broadleaf deciduous trees"
+        bdlevgtemp: "Broadleaf evergreen trees, TEMPERATE (a hardwood class, NOT a conifer)"
+        bdlevgtrop: "Broadleaf evergreen trees, tropical"
+        shrubevg: "Evergreen shrubs"
+        shrubdcd: "Deciduous shrubs"
+        c3grass: "C3 grasses"
+        c4grass: "C4 grasses"
+        c3crop: "C3 crops"
+        c4crop: "C4 crops"
+        c3pasture: "C3 pasture"
+        c4pasture: "C4 pasture"
+        total: "All PFTs combined"
+        # non-vegetation tiles also published: pft-soil, pft-ice, pft-lake, pft-urban
+      variables: ["cwood", "cveg", "cvegag", "cvegbg", "cleaf", "npp", "gpp", "lai",
+                  "pft", "csoil-total"]
+      climate_forcings: ["GFDL-ESM4", "IPSL-CM6A-LR", "MPI-ESM1-2-HR", "MRI-ESM2-0", "UKESM1-0-LL"]
+      scenarios: ["ssp126", "ssp370", "ssp585"]   # no picontrol for cwood
+      soc: ["2015soc-from-histsoc"]
+      period: "2015-2100"
+      value_convention: "PER-TILE DENSITY; closure sum(frac*value)/total = 1.000 exactly;
+                         13 veg + 4 non-veg tiles sum to exactly 100%"
+      notes: |
+        cwood-ndlevg publishes BOTH `default` (transient CO2) and `2015co2` at all three SSPs.
+        This differs from csoil-total, where JULES publishes ONLY the fixed-CO2 run -- so the
+        CO2 caveat recorded for the soil-carbon layer does NOT transfer to cwood. Check per
+        variable, not per model.
+        Only 4.5% of land cells are zero, so JULES reports a per-tile density almost
+        everywhere -- including where the PFT is implausible (cwood-bdlevgtemp reads
+        p50 10.1 kg m-2 in the UK on 2.8% cover). Non-zero density is not evidence of presence.
 
   isimip3a:
     MC2-USFS:
@@ -953,10 +1378,24 @@ biomes_models:
       scenarios: ["obsclim", "counterclim"]  # Historical only - no future projections
       period: "1901-2019"
       notes: |
-        BEST for detailed biome-specific analysis.
-        47 distinct PFTs with climate-zone specificity.
-        Historical only - no SSP/RCP projections available.
-        For loblolly pine: use 'mesictemperateneedleleafforest' or 'subtropicalevergreenneedleleafforest'
+        READ THIS BEFORE REACHING FOR MC2's BIOME NAMES. Corrected 2026-07-28.
+        The 47 biome types are published ONLY as `pft-{biome}` fields, and they are
+        ONE-HOT PRESENCE FLAGS: values are exactly 0 or 100 (MC2 assigns a single dominant
+        biome per cell), despite units "%" and long_name "Plant Functional Type Grid Fraction".
+        MC2's CARBON and NPP output is NOT resolved by biome type -- it is only
+        `-total`, `-tree`, `-grass` (cveg-total, cvegag-total, cwood-total, npp-tree, ...).
+        So there is NO WAY to get biome-specific cwood/cveg/npp from MC2, in any round.
+        The previous line "For loblolly pine: use 'mesictemperateneedleleafforest'" was
+        therefore not actionable, and is withdrawn.
+        WORSE, for maritime conifers: `pft-maritimeevergreenneedleleafforest` is IDENTICALLY
+        ZERO in every run checked -- 3b ssp370/gfdl-esm4, 3b ssp126/ukesm1-0-ll, and
+        3a obsclim historical (7,008,981 finite values, all 0). MC2's global configuration
+        never realizes that class, so it cannot serve as a Sitka-spruce biome proxy.
+        Non-zero shares for reference (3b ssp370/gfdl): borealneedleleafforest 12.0%,
+        mesictemperateneedleleafforest 6.7%, temperatedeciduousbroadleafforest 4.0%.
+        Useful only as a categorical biome MASK, never as a productivity signal.
+        3a is historical only; MC2 DOES have 3b futures (5 GCMs, ssp126/370/585) -- but
+        still only with -total/-tree/-grass carbon.
 
     CLM45:
       full_name: "Community Land Model 4.5"
@@ -1074,8 +1513,21 @@ biomes_models:
       scenarios: ["rcp26", "rcp60", "rcp85", "picontrol"]
       notes: |
         Different PFT naming scheme than CLM45/LPJmL.
-        Published output focuses on broadleaf types - needleleaf PFTs defined but not in output.
-        Use for broadleaf analysis, not conifers.
+        CORRECTED 2026-07-28: this entry previously said "needleleaf PFTs defined but not in
+        output -- use for broadleaf analysis, not conifers". WRONG. CARAIB 2b publishes SEVEN
+        needleleaf classes for BOTH cveg and npp (plus pft- cover fractions):
+          ndevtecdt, ndevteclt, ndevtedtt, ndevtedttht, ndevstdit  (evergreen)
+          ndsutecdt, ndsustswt                                     (summergreen = DECIDUOUS)
+        The codes carry NO long_name at all (attribute absent), so they were identified by
+        cover-weighted biogeography instead:
+          ndevteclt   -> peaks 40-55N (48.2%)      = the genuine TEMPERATE needleleaf evergreen
+          ndevtecdt   -> peaks 55-70N (65.0%)      = BOREAL, despite "te" in the code
+          ndevstdit / ndevtedtt / ndevtedttht      = subtropical / S-hemisphere
+        TWO DISQUALIFIERS for pooling (see pft_value_conventions):
+          - values are PER-GRIDCELL (already cover-scaled), unlike ORCHIDEE/CLM45/JULES/CLASSIC
+          - effective resolution ~1-2 deg: 49% of non-zero 2x2 blocks and 35% of 4x4 blocks
+            are exactly constant (controls: JULES 8.5%, CLASSIC 2.4%). GUARDRAILS section 11.
+        Also: no rcp85 for the PFT-resolved fields (rcp26/rcp60 only).
 
 # -----------------------------------------------------------------------------
 # CROSS-MODEL PFT EQUIVALENCE TABLE
@@ -1093,22 +1545,44 @@ pft_equivalences:
     example_species: ["loblolly pine", "Douglas fir", "ponderosa pine", "longleaf pine"]
     climate_zone: "Humid subtropical to warm temperate (25-45N latitude)"
     model_codes:
-      CLASSIC: "evgndltr"  # WARNING: includes ALL needleleaf, not just temperate
-      CLM45: "needleleaf-evergreen-tree-temperate"
-      LPJmL: "temperate-needleleaved-evergreen-tree"
-      MC2-USFS:
-        - "mesictemperateneedleleafforest"      # Humid temperate - BEST for loblolly
-        - "subtropicalevergreenneedleleafforest" # SE US coastal - also good for loblolly
-        - "drytemperateneedleleafforest"        # Dry temperate
-        - "maritimeevergreenneedleleafforest"   # Coastal
+      # NOT INTERCHANGEABLE. Each row is a different model's own PFT with its own
+      # parameter set, value convention and effective grid. Verified 2026-07-28.
+      CLASSIC: "evgndltr"        # NOT temperate -- all-climate conifer (34.6% of its wood is 55-70N)
+      JULES-ES-VN6P3: "ndlevg"   # NOT temperate -- all-climate conifer (29.3% is 55-70N)
+      CLM45: "needleleaf-evergreen-tree-temperate"     # genuinely temperate: 44.6% 23-40N + 47.9% 40-55N
+      LPJmL: "temperate-needleleaved-evergreen-tree"   # npp/gpp/pft only -- NO cveg per PFT
+      ORCHIDEE: "tendev"         # warm-temperate leaning: 43.4% 23-40N, only 18.8% 40-55N
+      ORCHIDEE-DGVM: "tendev"    # same model family as ORCHIDEE -- correlated, not independent
+      CARAIB: "ndevteclt"        # temperate one of 7 needleleaf classes; ndevtecdt is BOREAL
+      MC2-USFS: null             # NOT AVAILABLE -- biome names are one-hot presence flags,
+                                 # carbon/NPP is -total/-tree/-grass only. See MC2 notes.
+    variable_availability:
+      cwood: "ISIMIP3b ONLY, and ONLY for the all-climate classes (CLASSIC evgndltr,
+              JULES ndlevg). No temperate-resolved conifer PFT carries cwood in any round."
+      cveg: "2b: CLM45, ORCHIDEE, ORCHIDEE-DGVM, CARAIB. NOT LPJmL."
+      npp:  "2b: all of the above plus LPJmL. 3b: CLASSIC (monthly only) + JULES (annual)."
     best_for_loblolly_pine:
-      first_choice: "MC2-USFS subtropicalevergreenneedleleafforest or mesictemperateneedleleafforest"
-      with_future_scenarios: "CLM45 ISIMIP2b needleleaf-evergreen-tree-temperate"
-      generic_fallback: "CLASSIC evgndltr (but includes boreal data)"
+      # first_choice previously named MC2-USFS -- WITHDRAWN 2026-07-28, not actionable
+      # (MC2 publishes no carbon by biome type).
+      with_future_scenarios: "CLM45 ISIMIP2b needleleaf-evergreen-tree-temperate, but note
+                              its PFT coverage is ragged: 2 GCMs at rcp26, 1 transient + 1
+                              fixed-CO2 at rcp60, 2 at rcp85. Deepen with ORCHIDEE tendev (4 GCMs)."
+      generic_fallback: "CLASSIC evgndltr or JULES ndlevg (both include boreal data)"
     notes: |
-      CLASSIC combines ALL needleleaf into single 'evgndltr' category.
-      For temperate-specific analysis, prefer CLM45, LPJmL, or MC2-USFS.
-      MC2-USFS provides most detailed subdivision (mesic/dry/maritime/subtropical).
+      A generic class is NOT an internally-weighted mixture of climate-specific conifers.
+      `evgndltr`/`ndlevg` are each a SINGLE PFT with ONE global parameter set; the only
+      per-cell variation is the cover fraction and the climate forcing. Proof from the data:
+      JULES splits broadleaf evergreen into bdlevgtemp/bdlevgtrop (two tiles, two parameter
+      sets) but publishes a single ndlevg. So the cost of a generic class is a shared
+      parameterisation, and the climate-zone mixing bites at the RANKING step (percentile-of-
+      score ranks a cell against a global distribution spanning boreal to subtropical), not
+      in the raw per-cell values.
+      SPECIES-DEPENDENT TRADE-OFF: climate-zone specificity helps a single-zone species like
+      loblolly, but FRAGMENTS a hyper-oceanic species that straddles zones (e.g. Sitka spruce).
+      Measured: LPJmL temperate-NLE covers UK/Ireland (774/774 cells) but only 609/2451 in
+      PNW-BC-SEAK; LPJ-GUESS boreal-NLE covers PNW (1866 cells) but just 6 in the UK; the
+      generic classes cover both ends (CLASSIC 642/906 UK and 2394/2412 PNW; JULES 795/795
+      and 2376/2433). Choose the axis that matches the target species' range.
 
   boreal_needleleaf_evergreen:
     description: "Boreal zone evergreen conifers (spruce, fir)"
@@ -1170,6 +1644,78 @@ pft_equivalences:
       LPJmL: "boreal-needleleaved-summergreen-tree"
       MC2-USFS: null  # Not a separate category
     notes: "Primarily larch species. MC2-USFS doesn't separate deciduous needleleaf."
+
+# -----------------------------------------------------------------------------
+# PFT VALUE CONVENTIONS  (verified 2026-07-28 -- read before pooling PFT fields)
+# -----------------------------------------------------------------------------
+# A PFT-resolved carbon/NPP field is reported in ONE OF TWO INCOMPATIBLE WAYS, and the
+# choice is per-model. Pooling the two without harmonizing mixes different quantities.
+#
+#   PER-TILE DENSITY   value is the density on the PFT's OWN tile area, independent of how
+#                      much of the cell it covers. Recover the cell total as
+#                      sum_i(frac_i * value_i). Reads as "what this PFT would carry here".
+#   PER-GRIDCELL       value is already multiplied by cover, so it is the cell's share.
+#                      Convert to per-tile by DIVIDING by the cover fraction.
+#
+# Test that settles it in two file reads: if the PFT field ever EXCEEDS the all-PFT total,
+# it is per-tile. Confirm with the closure sum(frac*value)/total == 1.
+pft_value_conventions:
+  per_tile_density:
+    CLASSIC (3b):        "closure exact; pft- fractions are 0-1 DESPITE units '%'"
+    JULES-ES-VN6P3 (3b): "closure exact (p05=p50=p95=1.000); pft- is true %; 13 veg +
+                          4 non-veg tiles (soil/ice/lake/urban) sum to exactly 100%"
+    ORCHIDEE (2b):       "closure exact; pft- is 0-1 despite units '%'"
+    ORCHIDEE-DGVM (2b):  "same as ORCHIDEE"
+    CLM45 (2b):          "PFT > total in 94.4% of cells, ratio p50 2.28 -- per-tile, BUT
+                          CLM45 PUBLISHES NO pft- FRACTION AT ALL, so it can never be
+                          converted to per-gridcell and its cover is unknowable from output"
+  per_gridcell:
+    CARAIB (2b): "cveg p50 = 0 where cover <1%; pft- is true % (max 97.7)"
+    LPJmL (2b):  "PFT never exceeds total; cells with cover <1% carry ~10x smaller values.
+                  Cover is healthy in maritime-conifer regions (p50 27.3% UK/IRL,
+                  56.6% PNW-BC-SEAK -> only 4x / 2x amplification when dividing), but
+                  globally 61.8% of its non-zero cells sit below 1% cover (528x at p50),
+                  so a cover floor is required when converting."
+  metadata_traps:
+    - "CLASSIC and ORCHIDEE label pft- as '%' but store 0-1 fractions. Do not trust the unit;
+       check whether the fractions sum to 1 or to 100."
+    - "ORCHIDEE cveg-* long_name reads 'crop biomass yield' for every PFT -- an ncrename
+       artifact (visible in the file's own history attribute). The data are fine."
+    - "CARAIB carries NO long_name attribute at all on its PFT fields."
+    - "ISIMIP2b files use the .nc4 extension; ISIMIP3b uses .nc. A regex like '\\.nc'
+       silently truncates 2b filenames and every URL then 404s."
+    - "LPJmL and ORCHIDEE publish the same PFT cveg/npp under BOTH `biomes` and `permafrost`.
+       Compare checksums before ingesting both (GUARDRAILS section 8)."
+
+# -----------------------------------------------------------------------------
+# TEMPERATE NEEDLELEAF EVERGREEN ENSEMBLE, ISIMIP2b  (assembled 2026-07-28)
+# -----------------------------------------------------------------------------
+# Basis for the timber layers `timber_cveg-tempnle_annual` and `timber_npp-tempnle_annual`.
+# Chosen over 3b cwood because 2b is the only round with climate-zone-resolved conifers;
+# the cost is losing the wood-only pool (cveg is whole-plant; wood is p50 77-90% of it).
+temperate_needleleaf_evergreen_2b:
+  soc: "2005soc for every member (land use held fixed)"
+  sens: "co2 (transient) preferred; 2005co2 accepted ONLY where transient is absent"
+  temporal: {resolution: "annual", period: "2006-2099"}
+  pooled_members_per_scenario:
+    cveg: {rcp26: 8, rcp60: 8, rcp85: 6}
+    npp:  {rcp26: 12, rcp60: 12, rcp85: 10}
+  pooled:
+    ORCHIDEE: "tendev -- 4 GCMs x rcp26/60/85"
+    ORCHIDEE-DGVM: "tendev -- 2 GCMs (gfdl-esm2m, ipsl-cm5a-lr) x rcp26/60 only.
+                    SAME MODEL FAMILY as ORCHIDEE: treat as one model for democracy weighting."
+    CLM45: "needleleaf-evergreen-tree-temperate -- ragged: rcp26 {hadgem2-es, miroc5};
+            rcp60 {ipsl-cm5a-lr transient, gfdl-esm2m FIXED-CO2 only}; rcp85 {gfdl, hadgem2}"
+    LPJmL: "temperate-needleleaved-evergreen-tree -- NPP TRACK ONLY (no cveg per PFT),
+            4 GCMs x 3 RCPs; per-gridcell so converted to per-tile with a cover floor"
+  excluded:
+    CARAIB: "ndevteclt ingested but NOT pooled -- ~1-2 deg effective grid (GUARDRAILS 11),
+             per-gridcell convention, and no rcp85. Kept as a sensitivity panel."
+  effective_resolution_verified: "ORCHIDEE 3.4%, ORCHIDEE-DGVM 2.8%, CLM45 0.0%, LPJmL 0.3%
+    of non-zero 2x2 blocks constant = all native 0.5 deg. CARAIB 49% = coarse.
+    NOTE: run this test on STRICTLY POSITIVE blocks -- these fields are zero-inflated and
+    all-zero blocks otherwise register as false 'constant' evidence of a coarse grid."
+  rcp85_caveat: "rcp85 is thinner by construction (ORCHIDEE-DGVM and CARAIB do not publish it)."
 
 # -----------------------------------------------------------------------------
 # USAGE NOTES

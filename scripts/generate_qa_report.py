@@ -29,6 +29,7 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+from scipy.stats import rankdata   # average-rank ties, for the Spearman direction check
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" / "src"))
 from isimip_pipeline import storage  # noqa: E402
@@ -223,15 +224,28 @@ def check_layer(ds_by_scen, layer_id, version):
             f"[{pf.min():.3f}, {pf.max():.3f}]")
 
         # Declared direction must match the realized sign of corr(value, risk pct).
+        # RANK correlation, not Pearson: percentile is a percentile-of-score, i.e. a
+        # monotone rank transform of the value, so the relationship is monotone but
+        # deliberately NON-LINEAR. On a heavy-tailed, zero-inflated variable Pearson
+        # therefore reads far below 1 even when the mapping is perfectly ordered --
+        # burntarea (45% exact zeros, tail past 100%) scored +0.53 and FAILed a
+        # correct layer. Spearman is ~1 by construction and still catches a genuinely
+        # inverted or scrambled percentile, which is what this check is for.
         b, bp = m[b_idx], p[b_idx]
         g = np.isfinite(b) & np.isfinite(bp)
-        r = float(np.corrcoef(b[g], bp[g])[0, 1]) if int(g.sum()) > 2 else float("nan")
+        r = float("nan")
+        if int(g.sum()) > 2:
+            bv, pv = b[g], bp[g]
+            if np.ptp(bv) == 0 or np.ptp(pv) == 0:
+                r = float("nan")            # degenerate: no ordering to verify
+            else:
+                r = float(np.corrcoef(rankdata(bv), rankdata(pv))[0, 1])
         if hib:
             chk(s, "percentile INVERTED (higher_is_better)", r < -0.9,
-                f"corr(median, percentile)={r:+.4f}, expected strongly negative")
+                f"spearman(median, percentile)={r:+.4f}, expected strongly negative")
         else:
             chk(s, "percentile aligned (higher_is_worse)", r > 0.9,
-                f"corr(median, percentile)={r:+.4f}, expected strongly positive")
+                f"spearman(median, percentile)={r:+.4f}, expected strongly positive")
 
         t = ds["trend"].values
         chk(s, f"trend == 0 in baseline decade ({baseline}s)",
@@ -274,6 +288,39 @@ def check_layer(ds_by_scen, layer_id, version):
                 int(np.sum(np.isfinite(nm[b_idx]))) == int(np.sum(np.isfinite(m[b_idx]))),
                 f"counts={int(np.sum(np.isfinite(nm[b_idx]))):,} "
                 f"data={int(np.sum(np.isfinite(m[b_idx]))):,}")
+
+    # --- zonal profile -------------------------------------------------------
+    # A global or area-weighted statistic cannot see a defect confined to one latitude
+    # zone: polar cells carry almost no area, so a member projecting absurd values there
+    # passes every aggregate check. The wildfire layer's `visit` members do exactly that
+    # (~100%/yr burnt area on Arctic islands). Always REPORT the profile so a reviewer can
+    # see the shape, and warn when a layer that declares itself low-latitude-dominated
+    # has a polar band exceeding its tropical band.
+    log("\n--- zonal profile (land-mean of median by latitude band) ---")
+    zonal = {}
+    for s in scenarios:
+        ds = ds_by_scen[s]
+        lat = ds["lat"].values
+        a = ds["median"].values[-1]              # last decade = strongest signal
+        bands = [(-90, -60), (-60, -23), (-23, 23), (23, 45), (45, 60),
+                 (60, 70), (70, 75), (75, 90)]
+        prof = {}
+        for lo, hi in bands:
+            sel = (lat >= lo) & (lat < hi)
+            f = _finite(a[sel])
+            prof[f"{lo}..{hi}"] = round(float(f.mean()), 4) if f.size else None
+        zonal[s] = prof
+        log(f"  [{s}] {decades[-1]}s: " +
+            "  ".join(f"{k}={'--' if v is None else f'{v:.3f}'}" for k, v in prof.items()))
+
+        if str(attrs.get("zonal_expectation", "")).startswith("low_latitude"):
+            trop = prof.get("-23..23")
+            polar = max((prof.get("70..75") or 0.0), (prof.get("75..90") or 0.0))
+            chk(s, "polar band does not exceed tropical band",
+                not (trop and polar > trop),
+                f"tropics(-23..23)={trop}, worst polar band={polar:.3f} "
+                f"-- layer declares zonal_expectation={attrs.get('zonal_expectation')!r}",
+                severity="warning")
 
     if shared_baseline and len(scenarios) > 1:
         log("\n--- shared baseline (must be identical across scenarios) ---")
@@ -326,7 +373,8 @@ def check_layer(ds_by_scen, layer_id, version):
             severity="warning")
 
     return results, dict(scenarios=scenarios, decades=decades, baseline=baseline,
-                         attrs=attrs, anchored=anchored, higher_is_better=hib)
+                         attrs=attrs, anchored=anchored, higher_is_better=hib,
+                         zonal_profile=zonal)
 
 
 def build_report(layer_id, version, ds_by_scen, results, meta):
@@ -360,6 +408,10 @@ def build_report(layer_id, version, ds_by_scen, results, meta):
         "layer_attributes": {k: str(v) for k, v in meta["attrs"].items()},
         "checks": results,
         "statistics": stats,
+        # Land-mean by latitude band. An aggregate statistic is blind to a defect
+        # confined to one zone (polar cells carry almost no area), so the profile is
+        # recorded for every layer whether or not it triggered the warning.
+        "zonal_profile": meta.get("zonal_profile", {}),
     }
 
 
@@ -393,6 +445,32 @@ def render_html(rep):
             f'<table><tr><th>global mean</th>{heads}</tr>'
             f'<tr><td>median</td>{cells}</tr></table>')
 
+    # Zonal profile: the one view that exposes a defect confined to a latitude zone,
+    # which every area-weighted or global statistic is blind to.
+    zonal = rep.get("zonal_profile") or {}
+    zonal_html = ""
+    if zonal:
+        bands = list(next(iter(zonal.values())).keys())
+        head = "".join(f"<th>{html.escape(b)}&deg;</th>" for b in bands)
+        body = []
+        for scen, prof in zonal.items():
+            vals = [prof.get(b) for b in bands]
+            mx = max((v for v in vals if v is not None), default=None)
+            tds = "".join(
+                "<td>&mdash;</td>" if v is None else
+                (f'<td style="background:#ffe0b2"><b>{v:.3f}</b></td>'
+                 if mx is not None and v == mx else f"<td>{v:.3f}</td>")
+                for v in vals)
+            body.append(f"<tr><td>{html.escape(scen)}</td>{tds}</tr>")
+        zonal_html = (
+            "<h2>Zonal profile</h2>"
+            "<p>Land-mean of <code>median</code> by latitude band, final decade. "
+            "Highest band is shaded. A global or area-weighted mean cannot see a defect "
+            "confined to one zone &mdash; polar cells carry almost no area &mdash; so "
+            "check the <i>shape</i> here, not just the totals.</p>"
+            f'<div class="wrap"><table><tr><th>scenario</th>{head}</tr>'
+            f'{"".join(body)}</table></div>')
+
     attrs = "".join(
         f"<tr><td><code>{html.escape(k)}</code></td><td>{html.escape(v[:400])}"
         f"{'&hellip;' if len(v) > 400 else ''}</td></tr>"
@@ -424,6 +502,7 @@ generated {html.escape(rep['generated_utc'])} by
 </table></div>
 <h2>Statistics</h2>
 <div class="wrap">{''.join(stat_blocks)}</div>
+{zonal_html}
 <h2>Layer attributes</h2>
 <div class="wrap"><table><tr><th>attribute</th><th>value</th></tr>{attrs}</table></div>
 """

@@ -85,17 +85,27 @@ python scripts/process_let_cyclone.py
 
 ### process_burntarea_fire.py
 
-Processes `burntarea` (wildfire burnt-area fraction, ISIMIP2b `biomes`) into the TCFD 6-value-class format. This is the **direct biophysical fire signal** — the fraction of each cell burned per year, in **%** — and is distinct from the Lange 2020 `lew` *exposure* family. Ensemble = 3 annual fire models (`lpj-guess`, `lpjml`, `mc2-usfs`) × 4 GCMs × {rcp26, rcp60, rcp85} = 12 members/scenario. Key points, all value-checked (see WORKFLOW-ISSUES.md 2026-07-24):
-- All 3 models report **%** [0,100] → **no normalization** (equal-weight "model democracy" in raw %); inter-member spread = CI. (Contrast the water-index TWS, which needed normalization.)
-- Per-member metadata **diverges**: `mc2-usfs` uses `days since 1661` (others `years since`); `lpj-guess` mislabels its `long_name` as "Fire Return Interval" (data are burnt %) and floors at 0.1%; `mc2-usfs` is a zero-inflated, ~5–7× hotter outlier. The time parser handles days/months/years per calendar.
-- `trend` is a **baseline-anchored rate**: `(median[decade] − median[2020s]) / elapsed decades` (% decade⁻¹), so each panel is the trend *from the 2020s baseline to that decade* — spatially coherent (∝ the change map, corr = 1.0 at 2090s), unlike a within-decade annual slope (fire is too noisy year-to-year). No spatial smoothing (12-member ensemble is thick).
+Processes `burntarea-total` (wildfire burnt-area fraction, **ISIMIP3b** `biomes`) into the TCFD 6-value-class format. This is the **direct biophysical fire signal** — the fraction of each cell burned per year, in **%** — and is distinct from the Lange 2020 `lew` *exposure* family and the `ffire` emissions flux. **Moved from ISIMIP2b/RCP to ISIMIP3b/SSP on 2026-07-28** (newer round and scenario family win where the newer data is viable); the 2b build is retired. Ensemble = 12 members/scenario:
+
+| model | cadence | GCMs | soc/sens | effective grid |
+|---|---|---|---|---|
+| `mc2-usfs` | annual | 5 | `nat/default` | 0.5° clean |
+| `visit` | monthly | 5 | `2015soc/default` | 0.5° clean |
+| `classic` | monthly | 2 | `2015soc/default` | **1.0°** (kept deliberately) |
+
+Key points, all value-checked (see WORKFLOW-ISSUES.md 2026-07-28):
+- **Monthly members annualize by SUM, not mean** — burnt area *accumulates* over its reporting interval. Verified against `classic`, which publishes the same run daily *and* monthly: each monthly value equals the sum of that month's daily values (1e-6, r = 1.0). A mean would under-scale the layer **12×**. Years lacking all 12 months are dropped, not partially summed.
+- **Annual values legitimately exceed 100%** where a cell reburns (decadal means to ~107%), so the CI is floored at 0 and **unbounded above** — clamping to 100 would push `upper_ci` below the median.
+- All 3 models report **%** and agree within **1.6×** → **no normalization** (equal-weight "model democracy" in raw %); inter-member spread = CI. But note the declared unit is *not* sufficient grounds: 2b `clm45`/`orchidee` declare `%` on a 0–1 fraction scale, and `classic`'s `2015soc-from-histsoc` variant is fraction-scaled for one GCM and percent for the other — hence the `2015soc` pin here, **not** the `2015soc-from-histsoc` that `csoil` uses for the same model.
+- `elm-eca` is **excluded** (~4°×5°); `classic` at an effective 1.0° is retained. Emits `n_members`/`n_models` per cell — the 3 models do not share a land mask.
+- `trend` is a **baseline-anchored rate**: `(median[decade] − median[2020s]) / elapsed decades` (% decade⁻¹), so each panel is the trend *from the 2020s baseline to that decade* — spatially coherent (∝ the change map), unlike a within-decade annual slope (fire is too noisy year-to-year). No spatial smoothing (12-member ensemble is thick). ISIMIP3b starts 2015 → the layer begins at the 2020s baseline.
 
 ```bash
 python scripts/process_burntarea_fire.py
 ```
 
-**Input**: `s3://…/TCFD/raw/isimip/wildfire_burntarea_annual/*_2006_2099.nc4`
-**Output**: published layer `wildfire_burntarea_annual` — `burntarea_{rcp26,rcp60,rcp85}_processed.nc`
+**Input**: `s3://…/TCFD/raw/isimip/wildfire_burntarea_annual/*_burntarea-total_global_*_2015_2100.nc`
+**Output**: published layer `wildfire_burntarea_annual` — `burntarea_{ssp126,ssp370,ssp585}_processed.nc`
 
 ### process_csoil_soilcarbon.py
 
