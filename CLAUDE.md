@@ -84,7 +84,9 @@ python scripts/generate_qa_report.py {layer_id} [--version V] [--local-only]
 python scripts/generate_maps.py     {layer_id} [--version V] [--local-only]
 ```
 
-For manual review, grab **`maps/maps_bundle.zip`** (~8 MB) — one object holding the whole interlinked collection, since the S3 console downloads a single file at a time. Unzip, open `index.html`. `qa/qa_report.html` is a standalone page and needs no bundle.
+Review order: **`maps/contact_sheet.html`** first — one panel per ensemble member at full 0.5°, which is the only view that can show a spatial defect in an individual member (§11) — then the pooled maps. It is linked from the map index and included in the bundle.
+
+For manual review, grab **`maps/maps_bundle.zip`** (~9 MB) — one object holding the whole interlinked collection, since the S3 console downloads a single file at a time. Unzip, open `index.html`. `qa/qa_report.html` is a standalone page and needs no bundle.
 
 ## CLI Quick Reference (TCFD/CDP only)
 

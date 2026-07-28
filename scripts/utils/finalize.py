@@ -24,7 +24,7 @@ if str(_SCRIPTS) not in sys.path:
 
 
 def finalize_layer(layer_id, version=None, variable=None, local_only=False,
-                   qa=True, maps=True):
+                   qa=True, maps=True, extra_maps=None):
     """Generate the QA report and maps for a published layer version.
 
     Args:
@@ -34,6 +34,12 @@ def finalize_layer(layer_id, version=None, variable=None, local_only=False,
         local_only: Write to the local cache instead of uploading.
         qa: Generate the QA/QC report.
         maps: Generate the interactive map collection.
+        extra_maps: Extra HTML files to fold into the map collection and link from
+            its index -- e.g. the per-member contact sheet, which only the processor
+            can build because it alone still has each member separately. Passing them
+            through here (rather than writing them into the published prefix
+            independently) means they are bundled into maps_bundle.zip and survive the
+            stale-output clearing in generate_maps.run().
 
     Returns:
         ``{"qa": <report dict or None>, "maps": <location or None>,
@@ -55,7 +61,8 @@ def finalize_layer(layer_id, version=None, variable=None, local_only=False,
         try:
             import generate_maps
             out["maps"] = generate_maps.run(
-                layer_id, variable=variable, version=version, local_only=local_only)
+                layer_id, variable=variable, version=version, local_only=local_only,
+                extra_maps=[p for p in (extra_maps or []) if p])
         except Exception as e:                                  # noqa: BLE001
             out["errors"].append(("maps", f"{type(e).__name__}: {e}"))
             print(f"WARNING: map generation failed -- {type(e).__name__}: {e}", flush=True)

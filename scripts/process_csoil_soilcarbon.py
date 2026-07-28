@@ -97,6 +97,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" /
 from isimip_pipeline import storage  # noqa: E402
 from utils.layer_publish import publish_processed_layer  # noqa: E402
 from utils.finalize import finalize_layer  # noqa: E402
+from utils.contact_sheet import render_contact_sheet  # noqa: E402
 
 VAR = "csoil-total"
 LAYER_ID = "soilcarbon_csoil_annual"
@@ -372,6 +373,23 @@ def main():
             warnings.simplefilter("ignore")
             shared_2020.append(np.nanmean(np.stack(per_scen, 0), axis=0))
     shared_2020 = np.stack(shared_2020, 0).astype(np.float32)  # (member, lat, lon)
+
+    # ---- Per-member contact sheet (GUARDRAILS S11) -----------------------------
+    # Rendered here because this is the only point where every member's own field
+    # still exists separately; once pooled, an individual bad member is diluted and
+    # invisible. Costs nothing extra to read -- the arrays are already in memory.
+    sheet_path = None
+    try:
+        sheet_path = render_contact_sheet(
+            {m: shared_2020[i] for i, m in enumerate(all_members)},
+            stage / "contact_sheet.html", LAYER_ID, BASELINE_DECADE, units="kg C m-2",
+            note=(f"Ensemble as processed: {len(all_members)} members. "
+                  + (f"Excluded and NOT shown: "
+                     f"{', '.join(sorted(EXCLUDED_MODELS))}." if EXCLUDED_MODELS else "")))
+        log(f"  contact sheet: {sheet_path}  <-- REVIEW THIS before trusting the layer")
+    except Exception as e:                                      # noqa: BLE001
+        log(f"  WARNING: contact sheet failed ({type(e).__name__}: {e}); "
+            f"the per-member visual check of GUARDRAILS S11 has NOT been produced")
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -684,7 +702,7 @@ def main():
     # Never raises: the data is already published and gated, and these
     # artifacts are regenerable (see scripts/utils/finalize.py).
     log("\nGenerating QA/QC report and maps...")
-    finalize_layer(LAYER_ID, version=version)
+    finalize_layer(LAYER_ID, version=version, extra_maps=[sheet_path])
 
     log("\nDone.")
 

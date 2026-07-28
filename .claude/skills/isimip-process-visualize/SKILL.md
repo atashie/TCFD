@@ -46,8 +46,11 @@ Print the per-member table before writing any processing logic. Record the verif
 findings in `config/isimip_search_catalog.yaml` under `data_nature`, and carry them into
 the output's global attributes.
 
-**Then RENDER a per-member contact sheet and look at it (§11).** One small global panel
-per member, before choosing statistics. This is not optional polish: every statistic in
+**Then RENDER a per-member contact sheet and look at it (§11).** Use
+`utils/contact_sheet.py` → `render_contact_sheet({member: 2D array}, ...)` from inside the
+processor, where each member still exists separately, and hand the path to
+`finalize_layer(..., extra_maps=[sheet])` so it is linked from the map index and
+bundled. One small global panel per member, before choosing statistics. This is not optional polish: every statistic in
 the table above is *invariant under spatial rearrangement*, so the table cannot see a
 spatial defect. A `~4°×5°` member once passed the full table twice and 37 algebraic QA
 checks, and a user caught it by looking. Look for block structure, seams/banding, hard
@@ -130,6 +133,8 @@ the superseded version stays as history and `_VERSION.json` records the chain.
 - **`maps/maps_bundle.zip`** (~8 MB) is the whole map collection in one object. The S3
   console downloads one file at a time, so never ask the user to fetch ~20 interlinked
   HTML pages individually. Unzip, open `index.html` — links are relative.
+- **`maps/contact_sheet.html`** is the FIRST thing to review — per-member, full 0.5°.
+  The pooled maps cannot show a defect confined to one member.
 - **`qa/qa_report.html`** is standalone; no bundle needed.
 - Map values serialize at 5 significant figures (`_compact()` in `generate_maps.py`), which
   is display-only — full precision stays in the NetCDF. Do not "fix" this by writing full

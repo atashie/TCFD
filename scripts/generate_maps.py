@@ -300,10 +300,17 @@ def create_map_figure(
         zsmooth=False,                   # never interpolate: it would fake resolution
         hoverongaps=False,               # no hover box over ocean
         showscale=showscale,
+        # No colorbar TITLE. A title like "Soil organic carbon stock (total soil
+        # carbon pool) [kg m-2]" is laid out inside the colorbar's own region, so
+        # plotly widens that region to fit the text and takes the space out of the
+        # map itself. The label moves to a subtitle line under the figure title
+        # (below), leaving the colorbar only as wide as its tick labels so it
+        # nestles against the map edge.
         colorbar=dict(
-            title=colorbar_title,
             exponentformat="power",      # Use ×10⁻⁶ style instead of μ
-            showexponent="all"
+            showexponent="all",
+            thickness=12,
+            outlinewidth=0,
         ) if showscale else None,
         hovertemplate="Lon: %{x:.2f}<br>Lat: %{y:.2f}<br>Value: %{z:.3e}<extra></extra>",
     ))
@@ -324,14 +331,20 @@ def create_map_figure(
 
     axis = dict(showgrid=True, gridcolor='rgba(120,120,120,0.25)', gridwidth=0.5,
                 zeroline=False, constrain='domain')
+    # The quantity/units label lives here as a second title line rather than on the
+    # colorbar. `<br><sub>` is used instead of layout.title.subtitle because the
+    # pinned plotly.js (2.27.0) predates subtitle support, while <br><sub> renders
+    # on every version.
+    heading = (f"{title}<br><sub>{colorbar_title}</sub>"
+               if colorbar_title and showscale else title)
     fig.update_layout(
-        title=dict(text=title, x=0.5, font=dict(size=14)),
+        title=dict(text=heading, x=0.5, font=dict(size=14)),
         xaxis=dict(range=[-180, 180], dtick=60, title=None,
                    scaleanchor='y', scaleratio=1, **axis),
         yaxis=dict(range=[-90, 90], dtick=30, title=None, **axis),
         plot_bgcolor='rgb(250,250,250)',
-        margin=dict(l=40, r=0, t=40, b=30),
-        height=440,                      # >= 360 data rows, so no vertical under-sampling
+        margin=dict(l=40, r=0, t=58, b=30),   # t leaves room for the subtitle line
+        height=460,                      # >= 360 data rows, so no vertical under-sampling
         showlegend=bool(anomaly_mask is not None and np.any(anomaly_mask)),
     )
 
@@ -442,6 +455,10 @@ class MapCollectionGenerator:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.data: Dict[str, xr.Dataset] = {}
+        # Externally-produced pages adopted into this collection (see run()).
+        # The per-member contact sheet is built by the processor, which is the only
+        # place each member still exists separately, then linked from the index here.
+        self.extra_pages: List[str] = []
         self.baseline_stats: Dict[str, Tuple[float, float]] = {}  # (mean, std) per scenario
         self.variable_units: str = ""
         self.variable_long_name: str = ""
@@ -1030,6 +1047,26 @@ class MapCollectionGenerator:
             ("anomaly", "Anomaly Detection", f"Values >{ANOMALY_SIGMA}σ from 2020s mean"),
         ]
 
+        # Per-member contact sheet and any other adopted page. Placed ABOVE the
+        # metric table because it is the per-member visual check required before the
+        # pooled maps below can be trusted at all (GUARDRAILS S11) -- burying it under
+        # the ensemble views would invert the order a reviewer should work in.
+        extra_block = ""
+        sheets = [n for n in self.extra_pages if n.endswith(".html")]
+        if sheets:
+            links = "".join(
+                f'<a href="{n}" class="btn sheet">{n.replace("_", " ")[:-5].title()}</a>'
+                for n in sheets)
+            extra_block = f"""    <div class="prereview">
+        <h3>Review first: per-member views</h3>
+        <p>One panel per ensemble member at full 0.5&deg; resolution. Distribution
+        statistics cannot reveal a spatial defect (block structure, banding, a broken
+        land mask, a hemisphere flip), and the pooled maps below dilute any single bad
+        member. Check these before trusting the ensemble views.</p>
+        {links}
+    </div>
+"""
+
         # Build dynamic CSS for scenario button colors
         btn_css = ""
         for scenario in self.scenarios:
@@ -1081,6 +1118,13 @@ class MapCollectionGenerator:
                    box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
         .legend h3 {{ margin-top: 0; color: #2c3e50; }}
         .legend-item {{ display: inline-block; margin-right: 20px; }}
+        .prereview {{ background: #fff8e1; border-left: 4px solid #f39c12;
+                      padding: 12px 16px; margin: 0 0 20px; border-radius: 4px; }}
+        .prereview h3 {{ margin: 0 0 6px; }}
+        .prereview p {{ margin: 0 0 10px; font-size: 13px; color: #555;
+                        max-width: 70ch; }}
+        a.btn.sheet {{ background: #f39c12; }}
+        a.btn.sheet:hover {{ filter: brightness(0.85); }}
         .legend-color {{ display: inline-block; width: 20px; height: 20px; border-radius: 4px;
                          vertical-align: middle; margin-right: 5px; }}
     </style>
@@ -1095,6 +1139,7 @@ class MapCollectionGenerator:
         <h3>Scenario Legend ({self.data_source})</h3>
 {legend_items}    </div>
 
+{extra_block}
     <table>
         <tr>
             <th class="metric">Metric</th>
@@ -1159,7 +1204,7 @@ def main():
     return run(args.layer_id, args.variable, args.version, args.local_only)
 
 
-def run(layer_id, variable=None, version=None, local_only=False):
+def run(layer_id, variable=None, version=None, local_only=False, extra_maps=None):
     """Generate and publish a layer's map collection; returns the output location.
 
     Importable so processors can emit maps as part of a normal run
@@ -1226,7 +1271,23 @@ def run(layer_id, variable=None, version=None, local_only=False):
         if stale:
             log(f"  Cleared {len(stale)} file(s) from a previous run of this version")
 
+    # Adopt externally-produced pages (the per-member contact sheet) AFTER the
+    # clearing above and BEFORE the index is written, so they are linked, bundled and
+    # published alongside the generated maps.
+    adopted = []
+    for src in (extra_maps or []):
+        src = Path(src)
+        if src.is_file():
+            target.mkdir(parents=True, exist_ok=True)
+            dest = target / src.name
+            dest.write_bytes(src.read_bytes())
+            adopted.append(dest.name)
+            log(f"  Adopted external page: {dest.name}")
+        else:
+            log(f"  WARNING: extra map not found, not linked: {src}")
+
     generator = MapCollectionGenerator(processed_dir, output_dir)
+    generator.extra_pages = adopted
     generator.generate_all_collections(variable)
 
     bundle_map_collection(target)
