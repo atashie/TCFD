@@ -415,6 +415,70 @@ What finally worked was **rendering the field and looking at it**. Global-averag
 
 ---
 
+### 2026-07-28: River Flooding — Two Products That Misreport Themselves, and a Protection Level That Decides the Answer
+
+**What happened**: New research into severe/regional flooding, target metric "area impacted per year". Walked every round × product × sector on `files.isimip.org`, then downloaded and value-checked 10 files. Four things mattered, and three of them contradicted what the metadata or my own first reading said.
+
+**1. There is no inundation variable in the raw water sector at all.** Confirmed across all 17 ISIMIP2b and 9 ISIMIP3b `water_global` models: no `fldfrc`, no `flddph`, no `floodedarea`. Flooded area exists **only** as `DerivedOutputData`. `maxdis` — the obvious peak-flow proxy — is in **2 of 17** 2b models and **zero** 3b models. Daily `dis` is broad but ~929 MB per 10-year chunk per member (~1 TB+ for an ensemble) and would mean re-deriving the GEV fit and hydrodynamic routing that Zimmer2023 already publishes. So the whole question reduces to which *derived* product to use — which is exactly where the metadata is least trustworthy.
+
+**2. `floodedarea` declares an area share and is binary.** ISIMIP3b `Heinicke2026` sets `long_name="Exposed Area Share"`, `units="1"`, `definition="Flood fraction from cama flood"`. Values are strictly `{0,1}`. Verified on 6 of 15 members spanning all 3 models, 4 GCMs and all 3 SSPs. When the finding was challenged — reasonably, since `ler`, the ISIMIP2b analogue, *is* fractional — it was re-verified rather than re-asserted: byte-identical sha512 against the sidecar, `float32` with no `scale_factor`/`add_offset`, raw values read with `set_auto_maskandscale(False)` are exactly `{0.0, 1.0, 1e20}` (20,885,979 / 226,419 / 1,178,802), all 86 timesteps have exactly 2 unique values, and point series switch cleanly 0→1→0. Per cell it is an occurrence flag, so its decadal mean is flood **frequency**, not area.
+
+**3. Binarising at 0.5° overstates flooded area 17–28×, so the binary field cannot be rescued by spatial aggregation.** Measured directly instead of argued: took Zimmer2023 `fldfrc` (true sub-grid fraction), coarsened the *same* data two ways to 0.5°, area-weighted (h08/miroc5/rcp60, 2020s decadal mean) —
+
+| protection | true area km² yr⁻¹ | as a binary flag | inflation |
+|---|---|---|---|
+| none | 6,104,969 | 106,330,690 | **17.4×** |
+| 100yr | 260,894 | 6,951,831 | **26.6×** |
+| flopros | 743,970 | 20,693,916 | **27.8×** |
+
+A 0.5° cell is ~2,500 km²; flagging the whole cell when any part floods counts ~71% of global land as flooded under `none` against a true ~4%. Only a sub-grid fractional product answers "how much area flooded".
+
+**4. The protection level is the single biggest choice, and my first recommendation was wrong for the stated use case.** Same member, global flooded area, 2020s → 2090s: `none` 6.10M → 6.28M km² (**+2.9%**, saturating — it counts routine seasonal floodplain wetting that recurs every year in both decades); `100yr` 261k → 502k (**+92.4%**); `flopros` 744k → 1,130k (**+51.9%**). I initially recommended `flopros` as primary. Then the user framed the use case as *"impacts across large areas in unprotected regions"*, so I tested the tempting assumption that FLOPROS ≈ no protection where defenses are absent. **It is false**: flopros retains only 19–36% of the undefended signal even in the least-defended regions (Bangladesh 0.189, Niger/Nigeria 0.364, Mekong 0.348) and 0.8–4% in well-defended ones (Netherlands 0.008, Mississippi 0.015, Japan 0.043). FLOPROS *is* spatially real — less protective than a uniform 100yr in Niger/Bangladesh, more protective in the Mississippi/Netherlands where defenses exceed 1-in-100 — but it is not a proxy for "unprotected". Protectiveness runs `none < flopros < 100yr` globally. Recommendation changed to `none` + `100yr` as the pair, with `100yr` read as a **severity threshold** (severe events, no reliance on defense data) rather than as "protection". **All three are being built as parallel layers** at the user's request.
+
+**5. A correction of my own framing.** I described the `fldfrc` footprint as "~76% of the grid is structurally NaN, i.e. only ~24% of land" and raised zero-filling as a decision the user had to make. That compared a **land** variable against the **whole globe including ocean**. The domain is 62,066 cells = **128.8 million km² = 95.7% of global land excluding Antarctica**, against 67,420 land cells for Lange2020 `led` (61,546 shared); 79.6% of domain cells are ≥99% inside the CaMa-Flood domain and the median is 100%. It is a normal ISIMIP land mask. There was no sparse-coverage problem and nothing needed zero-filling. **Rule**: state a coverage fraction against the denominator that makes it meaningful — for a land variable that is land, never the globe.
+
+**Also corrected in the catalog**: Lange2020 is **twelve** variables, not six — every hazard has a `pe*` population-exposed twin (`ped/per/pew/pec/peh/pet`) that was never recorded; `lec` is published by `pepic` as well as `gepic`; `ler` is fractional (not "UNVERIFIED"); files are `.nc4` not `.nc`, which cost a false-negative listing; and the note "no ISIMIP3b/SSP version of this family exists" is true only of the *publication name* — `Heinicke2026` publishes `driedarea`, a correctly land-masked binary SSP sibling of `led`, so the drought layer **can** move to SSP. Searching a variable name across rounds misses this because the publication directory changes.
+
+**Verified equivalence**: `ler` ≈ the `100yr` protection level of `fldfrc`, pre-aggregated to 0.5°. Matched member, 2020s decadal mean, 61,483 shared cells: mean ratio **0.99**, Spearman 0.784 — against 25.04 for `none` and 2.54 for `flopros`. So `ler` is a fixed 1-in-100 assumption with no rcp85 and no way to vary the protection.
+
+**Layers**: `riverflood_fldfrc-{none,100yr,flopros}_annual` — ISIMIP2b `DerivedOutputData/Zimmer2023`, **rcp26/60/85**, **24 members/scenario** (6 GHMs × 4 GCMs; `clm50`/`mpi-hm`/`pcr-globwb` are historical-only). CaMa-Flood v3.6.2, GEV fit to picontrol, `discharge_threshold` 0.1 mm/d. Native **150 arcsec** coarsened area-preservingly to 0.5° at ingest (12×12 block sum, exact alignment to 1.4e-14°, area-conserving to <1e-9). Decadal **mean**, baseline-anchored trend (annual flooded area swings ~17× between adjacent decades), two-tier percentile, `higher_is_worse`, no normalization, no smoothing, CI clamped to [0,100] — safe here because flooded fraction is a bounded share, unlike burntarea's cumulative percentage.
+
+**Deliberate deviation, recorded so it is not "corrected"**: the raw prefix holds the **0.5° coarsened** fields, not the 150 arcsec originals. The full source set is ~54 GB against 19 GB of local scratch, and raw staging is transient by contract (`STORAGE.md` — `cleanup_raw` deletes it once `source_url` + checksum are recorded). Every ingested file records the `source_url`, the **sha512 of the original**, and the exact transform, in both its own global attrs and `layer.json`. `files.isimip.org` is not behind the Anubis anti-bot that guards the `data.isimip.org` API, so re-fetching an original is routine.
+
+**Impact**: no bad publish. One code defect caught in smoke-test (reading `t.units` after `ds.close()` → `AttributeError: NetCDF: Attribute not found`), which is why the 2-file smoke test exists before a 216-file run.
+
+**Rules created/updated**: GUARDRAILS §9 — a challenged value-check is re-verified at the byte/dtype level (checksum, packing attrs, unscaled read), not re-asserted; §12 — report a coverage fraction against a meaningful denominator; and a new note that a *derived* product's metadata is no more trustworthy than a model's, since both `floodedarea` (binary declared as a share) and `fldfrc` (no `units`, no `long_name` at all) came from the same publication family.
+
+---
+
+### 2026-07-28: Drought Moved to ISIMIP3b — A Product Hidden Behind a Publication Name, and a Zero-Inflation Trap That Was Really a Coverage Artefact
+
+**What happened**: Asked to review options for tree-relevant drought, an independent re-enumeration of the ISIMIP file server found that the catalog's standing claim — *"ISIMIP3b/SSP version of this family NOT found (0 hits)"* — was wrong, and shipped a new SSP-era drought layer (`drought_driedarea_annual`) that supersedes the ISIMIP2b `led` layer.
+
+**Issues found**:
+
+1. **A whole product class was invisible because the search was by variable name.** The Lange 2020 exposure concept WAS re-issued for ISIMIP3b — but split across two *publication directories* with hazard-word variable names: `DerivedOutputData/Heinicke2026` (`driedarea`, `floodedarea`) and `DerivedOutputData/Zantout2025` (`heatwave`, `wildfire`, `cropfailure`). Searching `led` across rounds returns nothing, which reads as "absent". **Resolution**: enumerate `{round}/DerivedOutputData/` itself — it is a short listing (2–4 entries per round) and it is the only way to see a republished product. Added to the `isimip-search-download` skill and GUARDRAILS §8.
+
+2. **Two other catalog assertions were also wrong.** The ISIMIP2b `forestry` sector has **10 models**, not 1 — though the conclusion survives, because every one is site-level (kroof, hyytiala, collelongo, …) and unusable globally; and the tree water-stress diagnostics (`trans`, `lai-{PFT}`, `fapar`, `pft-{tree}`, `npp-tree`) were missing from the drought variable list entirely. `trans` and `soilmoist` are **monthly-only in every model, both rounds** — there is no annual fallback.
+
+3. **The filename field offset differs from `led` — again.** `driedarea` files are `{model}_{gcm}_w5e5_{ssp}_…`, so model/GCM are fields **[0]/[1]**; `lange2020` prefixes the publication name and puts them at [1]/[2]. This is the third time this trap has appeared (it is why `process_qg.py` could not be reused for `led`). **Resolution**: a dedicated `parse_name` plus explicit membership assertions — duplicate-member detection, expected model/GCM vocabularies, and an exact per-scenario count — because the loading pattern `dec[s][member] = maps` silently *overwrites* a duplicate rather than failing.
+
+4. **Zero-inflation looked decisive and was measuring the wrong thing.** A single member's 2020s frequency map is **63% exact zeros**, which would trigger burntarea's automatic >2% two-tier percentile switch several times over. But on the 15-member × 3-SSP shared baseline the figure is **3.59% over the union land mask and 0.18% over fully-covered cells**. The zeros live almost entirely in the 17,431 cells (27% of the union) that not all three GHMs cover: a single-model cell rests on 30 samples against 450 for a fully covered one, so exact zeros are near-inevitable there. **The tier rule would have fired on a coverage artefact, collapsing every never-dry cell onto percentile 1 for the wrong reason.** Single-tier was applied by decision; the measured zero fraction is recorded in the output attrs. Visible consequence, left in deliberately for review: the percentile floor is 3.59 and ~3.6% of land ties there.
+
+5. **A high cross-scenario spread did NOT mean the shared baseline was smearing signal.** A review flagged the per-member cross-SSP spread in the 2020s as 1.83× the inter-member SD, against a suggested 0.10 retain-threshold. Measuring further showed the opposite reading: the spread (mean |max−min| **0.104**) sits *below* the pure-sampling-noise floor for a 10-year mean of a Bernoulli field (`1.693·√(p(1−p)/10)` = **0.139**) and near a within-scenario 5yr-vs-5yr split (**0.079**), while the scenario global means agree to 0.005. The SSPs have barely diverged in forcing by 2020–2029; what differs is *which years happened to be dry*. Averaging across SSPs therefore suppresses weather noise rather than destroying signal. **Lesson**: for a rare-event binary field, compare a spread against its sampling-noise floor before calling it divergence.
+
+6. **A latent mask defect found in two shipped processors.** `anchored_trend` returns `np.zeros(med_stack.shape[1:])` for the baseline decade (`process_burntarea_fire.py:236`, `process_csoil_soilcarbon.py:241`), which makes the **entire ocean a finite zero** in the baseline trend even where the median is NaN. QA does not catch it because it only checks that finite baseline trends equal zero, never that the trend and median finite-masks agree. `process_driedarea_drought.py` masks it to NaN off-land instead. **Not yet fixed in burntarea/csoil** — logged here and as a required check in GUARDRAILS §10.
+
+7. **The Codex review harness could not start.** `codex:rescue`'s companion hard-codes a bwrap sandbox (`read-only` / `workspace-write`) and bwrap cannot create a namespace in this container, so it failed before reading a single file. **Workaround**: call the Codex CLI directly with `--sandbox danger-full-access` against a *throwaway copy* of the repo in scratchpad, so an unsandboxed agent cannot touch the live tree. The review itself was accurate — every checkable claim verified against the source, with line numbers drifting by a few.
+
+**Impact**: none shipped wrong; all caught before or during the build. The drought layer would otherwise have been built on ISIMIP2b/RCP26+60 when an SSP product existed.
+
+**Fix applied**: `scripts/download_driedarea_drought.py` (45 members, sha512-verified against ISIMIP sidecars) and `scripts/process_driedarea_drought.py`; catalog `drought.exposure_heinicke2026` / `exposure_zantout2025` / `forest_cover_weight` / `vegetation_impacts.tree_water_stress`; GUARDRAILS §8 and §10; the `isimip-search-download` skill.
+
+**Rule created**: GUARDRAILS §8 (enumerate `DerivedOutputData/` publications, not just variable names across rounds) and §10 (the trend's finite mask must match the median's; an automatic tier/threshold rule must be checked against coverage before it is allowed to fire).
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

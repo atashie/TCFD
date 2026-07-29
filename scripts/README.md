@@ -47,7 +47,12 @@ python scripts/generate_qa_report.py cyclone_let_annual --local-only
 **Input**: a published layer in S3 (gate-verified before any check runs)
 **Output**: `…/layers/{layer_id}/{version}/qa/` (ungated/regenerable). Exit code is non-zero if any check fails.
 
-Checks: all value classes present and correctly shaped; `lower_ci ≤ median ≤ upper_ci`; zero-width CIs isolated to all-zero or single-model cells; percentile within [1,100]; percentile orientation matches the declared `percentile_direction`; `trend == 0` in the baseline decade; `trend × elapsed_decades == change map` (GUARDRAILS §10); shared baseline bit-identical across scenarios; `n_members`/`n_models` consistent with the finite data; land coverage non-empty. An unrecognized `trend_definition` is reported as a **skipped** check rather than silently dropped.
+Checks: all value classes present and correctly shaped; `lower_ci ≤ median ≤ upper_ci`; zero-width CIs isolated to all-zero or single-model cells; percentile within [1,100]; percentile orientation matches the declared `percentile_direction`; `trend == 0` in the baseline decade; `trend × elapsed_decades == change map` (GUARDRAILS §10); shared baseline bit-identical across scenarios; `n_members`/`n_models` consistent with the finite data; land coverage non-empty; effective spatial resolution (seam spacing + inside-vs-seam gradient ratio, GUARDRAILS §11). An unrecognized `trend_definition` is reported as a **skipped** check rather than silently dropped.
+
+Two details worth knowing:
+
+- **The percentile-orientation check uses Spearman, not Pearson.** `percentile` is a percentile-of-score — a monotone but deliberately **non-linear** rank transform of the value — so on a heavy-tailed, zero-inflated variable Pearson reads far below 1 even when the ordering is perfect. It scored `burntarea` at +0.53 and failed a correct layer; Spearman gives +1.0000 and still catches a genuinely inverted or scrambled percentile.
+- **A zonal profile (land-mean by latitude band) is reported for every layer**, in both JSON and HTML. An aggregate or area-weighted statistic is structurally blind to a defect confined to one latitude zone, because polar cells carry almost no area. A layer that declares `zonal_expectation: low_latitude_dominated` additionally **warns** when a polar band exceeds its tropical band — which is how `visit`'s inverted fire profile became visible (GUARDRAILS §9).
 
 ### process_qg.py
 
@@ -60,9 +65,35 @@ python scripts/process_qg.py
 **Input**: `data/raw/*.nc` (raw NetCDF files from ISIMIP)
 **Output**: `data/processed/qg_*.nc` (processed files by scenario)
 
+### download_driedarea_drought.py
+
+Ingests ISIMIP3b `driedarea` (Heinicke2026 drought exposure) into S3 raw. 45 files = 3 GHMs (`h08`, `jules-w2`, `watergap2-2e`) × 5 CMIP6 GCMs × ssp126/370/585, ~170 MB total. Each file is sha512-verified against its ISIMIP `.json` sidecar before upload, and the run is resumable — a cached copy matching the sidecar is reused, and members already in S3 are skipped. `historical` is deliberately not ingested (the 2020s baseline lives inside the future files).
+
+```bash
+python scripts/download_driedarea_drought.py [--dry-run] [--force]
+```
+
+**Output**: `s3://…/TCFD/raw/isimip/drought_driedarea_annual/`
+
+### process_driedarea_drought.py
+
+Processes `driedarea` into the TCFD 6-value-class format — **the current drought layer**, superseding `led` (newer round, SSP scenario family). Like `led` it is a **binary** per-cell annual flag, so the decadal statistic is the **mean** (drought frequency), never the median — and it is an *occurrence frequency*, not a within-cell area share.
+
+Three things differ from `process_led_drought.py` and must not be copied across:
+- **Filename fields `[0]`/`[1]`** hold model/GCM, not `[1]`/`[2]` — the `led` parser mis-keys every member. Membership is asserted (duplicates, vocabularies, exact per-scenario count) because the load pattern silently overwrites a duplicate.
+- **Union land mask, nothing filtered.** The three GHMs disagree (union 63,455 / intersection 46,024 cells); partially covered cells are kept, with per-cell `n_members`/`n_models` emitted.
+- **Single-tier percentile by decision, not auto-selected.** The baseline's exact-zero mass is 3.59% over the union but 0.18% over fully-covered cells, so burntarea's >2% two-tier trigger would fire on a coverage artefact. Baseline-anchored trend (masked to NaN off-land), no smoothing.
+
+```bash
+python scripts/process_driedarea_drought.py
+```
+
+**Input**: `s3://…/TCFD/raw/isimip/drought_driedarea_annual/*_driedarea_global_annual_2015_2100.nc`
+**Output**: published layer `drought_driedarea_annual` — `driedarea_{ssp126,ssp370,ssp585}_processed.nc`
+
 ### process_led_drought.py
 
-Processes `led` drought exposure (Lange 2020, ISIMIP2b) into the TCFD 6-value-class format. `led` is a **binary** per-cell annual flag, so the decadal statistic is the **mean** (drought frequency), not the median. Handles the `years since 1661` / `360_day` calendar, `(model, gcm)` ensemble members, shared 2020s baseline, and zero-inflation-aware percentile/CI. See WORKFLOW-ISSUES.md 2026-07-24.
+Superseded by `process_driedarea_drought.py` (ISIMIP3b/SSP); retained for the ISIMIP2b/RCP build. Processes `led` drought exposure (Lange 2020, ISIMIP2b) into the TCFD 6-value-class format. `led` is a **binary** per-cell annual flag, so the decadal statistic is the **mean** (drought frequency), not the median. Handles the `years since 1661` / `360_day` calendar, `(model, gcm)` ensemble members, shared 2020s baseline, and zero-inflation-aware percentile/CI. See WORKFLOW-ISSUES.md 2026-07-24.
 
 ```bash
 python scripts/process_led_drought.py
@@ -124,15 +155,46 @@ python scripts/process_csoil_soilcarbon.py
 **Input**: `s3://…/TCFD/raw/isimip/soilcarbon_csoil_annual/*_csoil-total_global_*_2015_2100.nc` (66 files staged, 7.47 GB, both `annual` and `monthly`; 51 used after excluding `elm-eca`)
 **Output**: published layer `soilcarbon_csoil_annual` — `csoil_{ssp126,ssp370,ssp585}_processed.nc`
 
-### generate_qa_report.py
+### download_fldfrc_flood.py
 
-Generates QA reports for processed data.
+Ingests ISIMIP2b `Zimmer2023` `fldfrc` (CaMa-Flood annual flooded-area fraction) — **216 files** = 6 GHMs × 4 GCMs × {rcp26, rcp60, rcp85} × {none, 100yr, flopros} — into **three** raw prefixes, one per protection level.
+
+**Coarsens at ingest, deliberately.** The source is 150 arcsec (4320 × 8640) and the full set is ~54 GB against 19 GB of local scratch, so each member is streamed: downloaded, sha512-verified against its ISIMIP sidecar, coarsened **12×12 to 0.5°**, then the original deleted. What lands in raw is the 0.5° field, ~36× smaller. That is a departure from "raw is byte-for-byte what ISIMIP served", so it is made auditable rather than silent — every file records the `source_url`, the **sha512 of the original**, and the exact transform, in both its own global attrs and `layer.json`. Raw staging is transient by contract anyway (STORAGE.md — `cleanup_raw` deletes it once `source_url` + checksum are recorded), and `files.isimip.org` is not behind the Anubis anti-bot that guards the API, so re-fetching an original is routine.
+
+- The aggregation is a **block sum, not interpolation**: 4320/12 = 360 and 8640/12 = 720 exactly, and each block centre coincides with the ISIMIP 0.5° centre to 1.4e-14°. Sub-cells are weighted by true spherical area (they differ across a block's 12 latitude rows), and the run **asserts area conservation** per file (observed rel. err ≤ 1e-15).
+- The denominator is the **full 0.5° cell area**, not the valid sub-cells. So `sum(value × cell_area)` over any region is exactly the flooded km² — the field is directly aggregatable. A valid-only denominator would report "fraction of the modelled floodplain that flooded" and inflate partly-covered cells.
+- Emits `floodplain_fraction` (area share of each cell inside the CaMa-Flood domain) so a partly-covered cell is auditable rather than merely looking low.
+- Resumable (skips members already in S3 raw) and parallel; `--protection`, `--workers`, `--limit`, `--dry-run`, `--force`.
 
 ```bash
-python scripts/generate_qa_report.py
+python scripts/download_fldfrc_flood.py                      # all 216
+python scripts/download_fldfrc_flood.py --protection flopros --workers 6
+python scripts/download_fldfrc_flood.py --protection 100yr --limit 2   # smoke test first
 ```
 
-**Output**: `reports/qg_qa_report.json`
+**Input**: `https://files.isimip.org/ISIMIP2b/DerivedOutputData/Zimmer2023/{MODEL}/{gcm}/future/`
+**Output**: `s3://…/TCFD/raw/isimip/riverflood_fldfrc-{none,100yr,flopros}_annual/` (~3.2 MB per member; ~700 MB total)
+
+### process_fldfrc_flood.py
+
+Processes `fldfrc` into the TCFD 6-value-class format as **three parallel layers, one per flood-protection level** — 24 members/scenario (6 GHMs × 4 GCMs), rcp26/60/85. This is the only ISIMIP flood product that is a genuine **area** share; see `config/isimip_search_catalog.yaml` → `search_results.flooding` for the options review that rejected the alternatives.
+
+**The protection level is the layer's biggest choice, not a parameter.** Same member, global flooded area, 2020s → 2090s: `none` 6.10M → 6.28M km² (**+2.9%** — it counts routine seasonal floodplain wetting that recurs every year, so the metric *saturates*), `100yr` 261k → 502k (**+92.4%**), `flopros` 744k → 1,130k (**+51.9%**). Protectiveness runs `none < flopros < 100yr`. **`flopros` is not a proxy for "unprotected"** — measured, not assumed: it retains only 19–36% of the undefended signal even in the least-defended regions (Bangladesh 0.189, Niger 0.364) and 0.8–4% in well-defended ones (Netherlands 0.008, Mississippi 0.015). It *is* spatially real, being less protective than a uniform 100yr in Niger/Bangladesh and more so in the Mississippi/Netherlands. Read `100yr` as a **severity threshold** that needs no defense database.
+
+- Decadal **mean**, never median — an exposed-area frequency measure (the Lange 2020 rule), and at 0.5° a single year is ~93% exact zeros, so a decadal median would be 0 nearly everywhere.
+- `trend` is **baseline-anchored** (% of cell area decade⁻¹): annual flooded area swings ~**17×** between adjacent decades (h08/miroc5/flopros: 2080 = 1,207,332 km² vs 2100 = 69,751 km²), so a within-decade annual slope is noise (GUARDRAILS §10).
+- Two-tier percentile (zero-inflated); `higher_is_worse`; **no normalization** (one hydrodynamic model, one unit — spread is genuine GHM+GCM uncertainty); **no spatial smoothing** (24 members is thick).
+- CI clamped to **[0, 100] %**. The upper clamp is safe *here* and is not the `burntarea` mistake: flooded fraction is a **bounded** share of cell area, so `median ≤ 100` and `min(median+sd, 100) ≥ median`. Burnt area is cumulative and legitimately exceeds 100%, which is why that layer leaves `upper_ci` unbounded.
+- Coverage **62,066 cells = 128.8 M km² = 95.7% of land excluding Antarctica** (Lange2020 `led`: 67,420; 61,546 shared). A normal ISIMIP land mask, not a sparse floodplain subset — 79.6% of domain cells are ≥99% inside the domain, median 100%. Cells outside stay NaN; nothing is zero-filled. Logs whether member domains differ and takes the union.
+
+```bash
+python scripts/process_fldfrc_flood.py                        # all three layers
+python scripts/process_fldfrc_flood.py --protection flopros
+python scripts/process_fldfrc_flood.py --protection none --no-publish
+```
+
+**Input**: `s3://…/TCFD/raw/isimip/riverflood_fldfrc-{protection}_annual/*_fldfrc_*_halfdeg_global_annual_*.nc`
+**Output**: published layers `riverflood_fldfrc-{none,100yr,flopros}_annual` — `fldfrc_{rcp26,rcp60,rcp85}_processed.nc`
 
 ## Dependencies
 

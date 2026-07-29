@@ -193,7 +193,7 @@ search_results:
   # blocks in the water sector from which SPI/SPEI/soil-moisture drought is computed.
   # Counts below are floor values: the CLI listing caps at 20 rows per query.
   drought:
-    last_searched: "2026-07-24"
+    last_searched: "2026-07-28"   # re-enumerated for tree-relevant drought; Heinicke2026/Zantout2025 found
 
     exposure_lange2020:
       description: "Pre-computed extreme-event exposure (Lange et al. 2020, Earth's Future). Drought = land fraction where monthly soil moisture falls below the 2.5th percentile of the preindustrial baseline."
@@ -273,6 +273,112 @@ search_results:
         For WILDFIRE the direct 'burntarea' fire output (NOT the lew exposure member)
         was chosen and processed 2026-07-24 -- see search_results.wildfire.
 
+    exposure_heinicke2026:
+      description: "ISIMIP3b/SSP drought exposure -- the SSP-era sibling of Lange2020 `led`, and the SHIPPED drought layer. Same hazard definition, same binary data nature, CMIP6 GCMs."
+      type: "DerivedOutputData (annual, ready to process)"
+      path: "ISIMIP3b/DerivedOutputData/Heinicke2026/{MODEL}/{gcm}/future/"
+      filename: "{model}_{gcm}_w5e5_{ssp}_2015soc_default_driedarea_global_annual_2015_2100.nc"
+      variables:
+        driedarea: "Drought exposure flag. long_name 'Exposed Area Share', units '1', cell_methods 'time: maximum'."
+        floodedarea: "River-flood exposure, same structure. SEPARATE layer -- see search_results.flooding for its mask defect."
+      coverage:
+        impact_models: ["h08", "jules-w2", "watergap2-2e"]   # 3 GHMs
+        climate_forcings: ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]
+        scenarios: ["ssp126", "ssp370", "ssp585"]   # + historical 1850-2014 (NOT ingested)
+        members_per_scenario: 15   # complete 3 x 5 matrix, verified by directory listing
+        soc_sens: "2015soc/default for all three models -- uniform, no divergence"
+        timestep: "annual"
+        period: "2015-2100"
+        grid: "global 0.5deg"
+        file_size: "~3.8 MB each; 45 files ~= 170 MB"
+      hazard_definition: |
+        Inherited from Lange et al. 2020 (Earth's Future): a cell is exposed in a month
+        when ROOT-ZONE soil moisture falls below the 2.5th percentile of the preindustrial
+        baseline for at least SEVEN CONSECUTIVE months. The annual value is the maximum of
+        the monthly flag ("exposed at any point this year"). Root-zone is why this member
+        is more tree-relevant than "generic land drought" suggests -- the paper argues it
+        is the variable relevant to plant growth. What it does NOT carry is where the trees
+        are; that is the forest weight below.
+      data_nature: |
+        BINARY {0,1} per cell per year -- VERIFIED across all 45 members 2026-07-28:
+        n_unique == 2, range [0,1], zero intermediate values, calendar
+        `proleptic_gregorian`, time units `days since 1601-01-01`. Decadal statistic is
+        therefore the MEAN (drought frequency), never the median.
+        This is an occurrence FREQUENCY, not a within-cell area share -- "area affected"
+        is a downstream derivation (cell area x frequency) that assumes the whole cell is
+        affected when flagged. State that assumption when reporting area.
+      land_masks: |
+        The three GHMs do NOT share a land mask, and the spread is large:
+          h08           53,713 cells
+          jules-w2      57,523
+          watergap2-2e  56,410
+          union         63,455    intersection  46,024
+        17,431 cells (27% of the union) are missing at least one model; 5,396 (8.5%) rest
+        on a single model. The shipped layer KEEPS the union and emits per-cell n_members /
+        n_models rather than masking. NOTE this drives the zero-inflation question below.
+      percentile_note: |
+        The 2020s baseline's exact-zero mass is 3.59% over the UNION but only 0.18% over
+        fully-covered cells. The zeros are an artefact of uneven coverage -- a single-model
+        cell rests on 30 samples (1 member x 10 yr x 3 ssp) against 450 for a fully covered
+        one -- NOT evidence that drought is rare. burntarea's automatic >2% two-tier switch
+        would therefore fire for the wrong reason and crush every never-dry cell onto
+        percentile 1. SINGLE-TIER was applied by explicit decision; the measured zero
+        fraction is recorded in the output attrs. Visible consequence: the percentile floor
+        is 3.59 and ~3.6% of land ties there.
+      baseline_note: |
+        Shared 2020s baseline averages each member across all three SSPs before pooling.
+        Measured 2026-07-28: the per-member cross-SSP spread in 2020-2029 (mean |max-min|
+        0.104) sits BELOW the pure-sampling-noise floor of a 10-year Bernoulli mean
+        (1.693*sqrt(p(1-p)/10) = 0.139) and below a within-scenario 5yr-vs-5yr split
+        (0.079), and the scenario global means agree to 0.005 (0.0756/0.0726/0.0708).
+        So the SSPs have not meaningfully diverged by then and the averaging suppresses
+        weather noise rather than smearing forced signal. Do NOT read a high per-cell
+        cross-scenario ratio as evidence of divergence for a rare-event binary field.
+      processed: |
+        2026-07-28 -> TCFD layer `drought_driedarea_annual` (v2026-07-28_62512ee-dirty).
+        scripts/download_driedarea_drought.py + scripts/process_driedarea_drought.py.
+        Union mask, nothing filtered; single-tier percentile; baseline-anchored trend;
+        no smoothing (15 members). QA 48/52 passed, 0 failed, 4 warnings.
+        Global-mean drought frequency 2020s 0.0707 -> 2090s 0.0954 / 0.1687 / 0.1920
+        (ssp126/370/585) = +35% / +139% / +171%. Clean monotonic scenario ordering.
+        SUPERSEDES `led` as the drought layer: newer round, SSP scenario family, and
+        consistent with the wildfire and soil-carbon layers.
+
+    exposure_zantout2025:
+      description: "The OTHER ISIMIP3b successor publication to Lange2020 -- non-hydrological hazards. Not yet processed."
+      path: "ISIMIP3b/DerivedOutputData/Zantout2025/{MODEL}/{gcm}/future/"
+      hazards:
+        heatwave: "model hwmid-none, 5 GCMs"
+        wildfire: "models classic, lpjml5-7-10-fire, visit"
+        cropfailure: "crop models crover, cygma1p74, epic-iiasa, isam, ldndc, lpjml, pepic, promet"
+      coverage: "annual, global 0.5deg, 2015-2100, ssp126/370/585 (+picontrol, historical)"
+      note: |
+        Variable names are HAZARD WORDS (`heatwave`, `wildfire`, `cropfailure`), not the
+        `le*` codes. Together with Heinicke2026 (driedarea/floodedarea) this is the full
+        ISIMIP3b re-issue of the Lange2020 exposure concept, split across two publications.
+        Data nature UNVERIFIED for all three -- value-check binary-vs-fractional first.
+
+    forest_cover_weight:
+      description: "Not a hazard -- the forest fraction needed to turn any all-land drought layer into a tree-relevant one at extraction time."
+      path: "ISIMIP3b/InputData/socioeconomic/landuse/{2015soc,ssp126soc,ssp370soc,ssp585soc}/"
+      file: "landuse-forests-and-natural-vegetation_{soc}_annual_{1850_2014,2015_2100}.nc"
+      variables:
+        primary_forests: "Primary vegetation on LUH2 potential forest land, fraction [0,1]."
+        secondary_forests: "Secondary vegetation on LUH2 potential forest land, fraction [0,1]."
+        secondary_mean_biomass: "Secondary mean biomass carbon density, kg m-2."
+      verified_2026_07_28: |
+        Grid-IDENTICAL to driedarea (lat/lon match exactly) -- no regridding needed.
+        67,721 land cells; mean primary 0.157 + secondary 0.107 => ~26% forest by area.
+        TWO METADATA TRAPS: `primary_forests` declares `units: years` (MISLABELLED -- the
+        values are fractions [0,1]); and the time axis is `years since 1901-1-1` on a
+        `365_day` calendar, which cftime REFUSES to decode ("units must be one of
+        microseconds..days"). Open with decode_times=False and add 1901 to the raw values.
+      decision: "Fixed 2015soc chosen (user, 2026-07-28) -- isolates the climate signal, consistent with how csoil and burntarea fix land use. Intersection deferred to extraction time; the drought layer itself ships all-land."
+      measured_effect: |
+        Forest-weighting is NOT cosmetic. Single member (h08/gfdl-esm4/ssp370), exposed
+        fraction 2020s->2090s: all land 0.0750 -> 0.1628, forest-area-weighted
+        0.0738 -> 0.1839. Forests come out DISPROPORTIONATELY exposed.
+
     hydrologic_building_blocks:
       description: "Raw water-sector variables for computing hydrological/agricultural drought. Most are ALREADY pulled/processed in the Water Risk Index."
       variables:
@@ -301,6 +407,41 @@ search_results:
         yield-noirr: "Rainfed crop yields ({crop}-noirr) - drought-sensitive."
         aet: "Actual ET (growing-season water use)."
         gsprcp: "Growing-season precipitation."
+      tree_water_stress:
+        description: |
+          TREE-SPECIFIC drought-stress diagnostics in the biomes sector, ADDED 2026-07-28
+          -- the list above omitted them. These are the physiologically direct signals for
+          forest drought, and all are PFT-resolved in at least one model.
+        variables:
+          trans: "Transpiration. 2b: caraib, clm45, jules-es-55, lpj-guess, lpjml, orchidee, orchidee-dgvm (7 models). 3b: classic/elm-eca/visit publish `trans-total`; JULES publishes PER-TREE-PFT (trans-ndlevg, trans-bdldcd, trans-bdlevgtemp/trop, ...). clm45 (2b) is also PFT-resolved."
+          lai: "Leaf area index, PFT-resolved in caraib/clm45/lpj-guess/orchidee (2b) and classic/jules (3b). mc2-usfs publishes `lai-tree` directly."
+          fapar: "Fraction of absorbed PAR -- canopy greenness deficit. JULES-ES-VN6P3 (3b) ONLY, incl. per-tree-PFT."
+          pft: "Fractional cover per PFT (`pft-{type}`). ANNUAL. 2b: caraib(44), lpjml(44), orchidee/orchidee-dgvm(17), lpj-guess(14). 3b: classic(9), jules(13+), mc2-usfs(30 biome types incl. named forest classes)."
+          npp-tree: "Tree-only NPP, published directly by mc2-usfs (2b and 3b), annual."
+        cadence_trap: |
+          `trans` and `soilmoist` are MONTHLY-ONLY in EVERY model, BOTH rounds -- there is
+          no annual version to fall back on. A tree-transpiration-deficit layer therefore
+          means a monthly ingest (order 40-60 GB for a thick 3b ensemble). `pft-*`,
+          `lai-tree` and `npp-tree` ARE annual and far cheaper.
+        why_not_chosen_2026_07_28: |
+          Considered and rejected as the drought layer, in favour of `driedarea`:
+          - trans deficit is the most physiological, but CO2-induced stomatal closure
+            LOWERS transpiration while the tree is doing fine -- the sign is ambiguous
+            without a demand reference (potevap, which is not in the biomes sector).
+          - npp/lai shortfall is annual and multi-model, but NPP change is a composite of
+            CO2 fertilization, warming and nutrient limitation; attributing it to drought
+            is not defensible. Better framed as a forest-PRODUCTIVITY companion layer.
+          - a self-computed index from 3b `soilmoist` (8 models x 5 GCMs, water_global,
+            ssp126/370/585) is the only route to CONTINUOUS severity rather than a binary
+            flag, and would let us control the baseline -- but it is a monthly ingest that
+            largely duplicates what Heinicke2026 already computed. Note `rootmoist` (the
+            tree-relevant depth) exists in only 2 of those 8 models; the rest publish
+            whole-column `soilmoist`.
+        forestry_sector_dead_end: |
+          ISIMIP2b `forestry` has TEN models (see cwood.forestry_sector), but every one is
+          SITE-LEVEL -- filenames carry kroof, hyytiala, bily-kriz, collelongo, peitz,
+          solling-beech (European experimental stands). Unusable for a global layer.
+          ISIMIP3b and 3a have NO forestry sector at all.
 
   # -------------------------
   # wildfire searches (fire sector + biomes burntarea + Lange2020 exposure)
@@ -425,6 +566,32 @@ search_results:
         thin-ensemble spatial-smoothing question. visit adds only 202 unique land cells,
         so this is about ensemble depth and grid quality, not coverage.
         Meanwhile: treat burnt-area values poleward of ~70N as unreliable.
+      coastal_low_burn_dilution: |
+        OPEN as of 2026-07-28 -- ACCEPTED, to be masked downstream (user: "there are
+        issues with low burn % along coastlines but we can mask these after the fact").
+        Coastal land cells carry implausibly LOW burnt-area %. Measured on the 2020s
+        baseline (coastal = a land cell 8-adjacent to non-land):
+                     cells    mean   median   zeros   <0.5%   mean n_models  1-model
+          coastal    8,337    4.428   0.029   33.2%   72.3%      1.54         67.5%
+          interior  59,029    3.278   0.520    7.9%   49.1%      2.90          3.7%
+        The coastal median is ~18x below the interior median.
+        Two compounding causes, both structural rather than a processing bug:
+          1. PARTIAL-LAND DILUTION. burntarea is a fraction of the WHOLE cell, so a cell
+             that is 10% land can report at most ~10% burnt even if all its land burns.
+             An asset sited on the land portion experiences the land's fire regime, not
+             the cell average -> the published value understates its exposure.
+          2. SINGLE-MODEL COVERAGE. 67.5% of coastal cells are backed by ONE model
+             (vs 3.7% inland), because the models' land masks differ (classic 66,684
+             cells, mc2-usfs 58,919, visit 58,714). The coastal ring is largely the
+             widest mask alone, so it gets neither ensemble averaging nor a meaningful CI.
+        Remedies, in preference order:
+          a. Mask the coastal ring downstream (agreed approach for now). n_models == 1
+             plus coastal adjacency identifies it without new data.
+          b. Normalize by land fraction (divide by each cell's land area share) to
+             recover the land-only burnt fraction. Needs a land-fraction field, which
+             ISIMIP does not ship with these outputs.
+        NOT a wildfire-specific problem: any per-cell FRACTION hazard (led, let, lew,
+        fldfrc) is diluted the same way at coastlines. Check before shipping any of them.
 
   # -------------------------
   # flooding searches (river / fluvial)

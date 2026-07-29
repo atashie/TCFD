@@ -57,7 +57,34 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 | Precipitation | mm/month | sum (for annual total) |
 | Temperature | °C | mean (for annual avg), max/min (for extremes) |
 | Fire events | count | sum |
+| Burnt area (`burntarea`) | % of cell per interval | **sum** — accumulates over the reporting interval |
+| Soil carbon (`csoil-total`) | kg C m⁻² | **mean** — a stock, not a flow |
 | Species richness | count | mean or max |
+
+**The units alone do not settle it — MEASURE the cadence semantics.** `burntarea` and
+`csoil-total` are both per-cell fields on the same grid at the same monthly cadence, yet one
+must be summed and the other averaged, because one is a quantity *accrued during* the
+interval and the other is a *state at* the interval. Getting it backwards mis-scales the
+whole layer by 12×, silently and uniformly, in a way no invariant check will catch.
+
+**Preferred technique — cross-check against a second cadence.** When a model publishes the
+same run at two cadences, the relationship between them is *observable* rather than
+arguable. ISIMIP3b `classic` publishes `burntarea-total` both daily and monthly: each
+published monthly value equals the **sum** of that month's daily values (agreement 1e-6,
+r = 1.00000000 in all 12 months), which settles it. Look for a dual-cadence member before
+reasoning from units or from a sibling variable's precedent.
+
+**Two implementation traps when summing:**
+- Sum with `skipna=False`. With `skipna=True` an all-NaN ocean cell sums to `0.0`, which is
+  *finite*, so the ocean is admitted as zero-valued land and drags every spatial statistic
+  down. (The same bug in analysis code produced a spurious constant ratio of
+  259200/66644 = 3.889 before it was caught.)
+- Drop years that lack a full 12 months rather than emitting a partial sum — a partial sum
+  is a silent under-count that looks like real data.
+
+**Do not clamp a summed quantity to its nominal per-interval ceiling.** Annual burnt area
+legitimately exceeds 100% where a cell reburns within the year; clamping `upper_ci` at 100
+drives it *below* the median there and breaks CI ordering.
 
 ---
 
@@ -182,7 +209,8 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 - `count=1001` is the **API maximum = truncated**; the result set is incomplete and must NOT be generalized from.
 
 **Required behavior**:
-- **Enumerate families, don't guess members.** The Lange 2020 extreme-event exposure family is exactly six: `led` (drought), `leh` (heatwave), `lew` (wildfire), `ler` (river flood), `lec` (crop failure), `let` (tropical cyclone) — all ISIMIP2b, annual (data nature varies by member: `led` binary, `let` fractional — value-check each, never assume from a sibling). Authoritative table in `config/isimip_search_catalog.yaml` → `search_results.drought.exposure_lange2020.family`. Consult it before searching TC/heatwave/flood/wildfire/crop-failure exposure.
+- **Enumerate families, don't guess members.** The Lange 2020 extreme-event exposure family is **twelve** variables (corrected 2026-07-28), not six: `le{d,r,w,c,h,t}` land-area exposed, paired with `pe{d,r,w,c,h,t}` population exposed — `d` drought, `r` river flood, `w` wildfire, `c` crop failure, `h` heatwave, `t` tropical cyclone. All ISIMIP2b, annual (data nature varies by member: `led` binary, `let` fractional — value-check each, never assume from a sibling). Authoritative table in `config/isimip_search_catalog.yaml` → `search_results.drought.exposure_lange2020.family`. Consult it before searching TC/heatwave/flood/wildfire/crop-failure exposure.
+- **Enumerate `DerivedOutputData/` publications, not just variable names across rounds.** A product can be **re-issued in a later round under a different publication directory with different variable names**, so searching the old variable name returns nothing and reads as "absent". The Lange 2020 exposure concept WAS re-issued for ISIMIP3b, split across two publications: `ISIMIP3b/DerivedOutputData/**Heinicke2026**` (`driedarea`, `floodedarea`) and `.../**Zantout2025**` (`heatwave`, `wildfire`, `cropfailure`) — hazard words, not `le*` codes. The catalog asserted "ISIMIP3b/SSP version of this family NOT found (0 hits)" for four days on that basis, and the drought layer would have been built on RCP2.6/6.0 when SSPs existed. **`curl -s https://files.isimip.org/{round}/DerivedOutputData/` is a 2–4 entry listing — always run it** before concluding a derived product has no newer-round equivalent. See WORKFLOW-ISSUES.md 2026-07-28.
 - **A variable can also have a non-exposure representation.** "Wildfire" is both the Lange 2020 `lew` *exposure* member AND the direct `burntarea` burnt-area-fraction fire output (ISIMIP2b `biomes`, in %); enumerate all products (see `search_results.wildfire`) and present the trade-offs rather than assuming the exposure family is the only option.
 - On `count=0` for a plausible variable: fall back to file-server enumeration (`https://files.isimip.org/{round}/...`) or query each candidate code before concluding non-existence.
 - On `count=1001`: narrow the query (by round/product/sector/model) until under the cap before drawing any conclusion about coverage.
@@ -213,6 +241,9 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 - **Do not assume which DIRECTION a fixed-CO₂ member biases the trend — measure it.** This guardrail previously asserted that a fixed-CO₂ model's stock trend is "muted (no CO₂ fertilization)". For `csoil` that is **backwards**, as measured 2026-07-27: `jules-es-vn6p3` (fixed 2015 CO₂) has the **strongest and most scenario-sensitive** trend of the five models (global-mean 2090s change +1.57% / −2.92% / −4.37% for ssp126/370/585), while the four transient-CO₂ models run flat-to-positive (+0.8% classic, ~0% mc2-usfs, +2.6% elm-eca, +7.1% visit at ssp585). Removing fertilization does not damp the signal; it removes the *offsetting gain*, so warming-driven decomposition dominates and the loss grows with forcing. Report a fixed-CO₂ member's per-model trend explicitly rather than describing it as muted.
 - **Never report spatial resolution from `ds.sizes` or coordinate spacing — measure it from the values.** A model that runs natively coarser and is replicated onto the ISIMIP grid still reports the full 360×720 at 0.5°. Dimensions describe the container, not the information content. For `csoil` (2026-07-28) `classic` is natively **1°×1°**, replicated 2×2 with a **one-cell longitude offset**, while its header is indistinguishable from the four genuine 0.5° members. Test the exact-tie fraction between adjacent cells **at both block offsets** (an origin-aligned test found only 3.3% and nearly cleared it), or the inside-vs-seam gradient ratio per candidate block width. A variance-loss-under-coarsening test does **not** discriminate blockiness from ordinary geophysical smoothness. `scripts/generate_qa_report.py` now checks this automatically. Also record which cells are carried by a single model, since they inherit that model's native resolution unchanged.
 - **A global or area-weighted statistic is blind to a defect confined to one latitude zone — check the zonal PROFILE, not just the total.** Polar cells carry almost no area, so a member can be badly wrong there and still produce the best-looking global number. For `burntarea` (2026-07-28) the 5 `visit` members report an **inverted** profile — 25.9 %/yr burnt above 75°N against 7.3% in the tropics, with visit-only Arctic islands near 100%/yr — while `visit`'s global area-weighted total (4.56 Mkm² yr⁻¹) is the **closest of the three models** to GFED4's ~3.5. Every aggregate check passed; only rendering the maps and then breaking the field down by latitude band exposed it. **Required**: report land-mean by latitude band for every layer (`generate_qa_report.py` now does, in JSON and HTML), and set `zonal_expectation` where a hazard has a known geography so a polar band exceeding the tropical band raises a warning.
+- **A DERIVED product's metadata is no more trustworthy than a model's — often less.** The temptation is to treat `DerivedOutputData` as curated and skip the value-check. Both failure modes appeared in one publication family (2026-07-28): ISIMIP3b `Heinicke2026` `floodedarea` declares `long_name="Exposed Area Share"`, `units="1"` and `definition="Flood fraction from cama flood"` while being strictly **binary {0,1}** — an occurrence flag, so its decadal mean is flood *frequency*, not area — and its mask covers **94.7% of the globe including ocean** (mid-Pacific and Antarctica read `0.0`, while Sahara and Greenland are `NaN`), so global statistics computed on it silently include the Pacific. Meanwhile ISIMIP2b `Zimmer2023` `fldfrc` carries **no `units` and no `long_name` at all**, only `_FillValue`. Note the mask defect was **per-variable**: `driedarea`, same product and same model, is correctly land-masked. Check the mask of every variable, not of the product.
+- **When a value-check is challenged, RE-VERIFY at the byte level — do not re-assert it.** A plausible counter-argument ("the sibling variable is fractional, so this one should be") deserves evidence, not repetition. The escalation that settles it: (1) confirm the download is byte-identical to the ISIMIP sidecar (`size` + `sha512`); (2) print the variable's `dtype` and check for `scale_factor` / `add_offset` packing that the reader may be applying silently; (3) re-read with `set_auto_maskandscale(False)` and print the **raw stored values**; (4) count unique values **per timestep across the whole record**, not pooled; (5) print a point time series at a known-active location. For `floodedarea` this gave raw `{0.0, 1.0, 1e20}`, `float32`, no packing, exactly 2 unique values in all 86 timesteps — binary beyond argument.
+- **A per-cell FRACTION metric is diluted at coastlines, and the coastal ring is usually the thinnest-covered part of the ensemble.** Any "fraction of the grid cell affected" hazard (`burntarea`, `led`, `let`, `lew`, `fldfrc`) reports against the **whole** cell, so a cell that is 10% land can report at most ~10% even if all its land is affected — an asset on the land portion is understated. It compounds with mask heterogeneity: for `burntarea` (2026-07-28) coastal cells are 12.4% of land, their median is **18× below** the interior median (0.029% vs 0.520%), and **67.5% are backed by a single model** (vs 3.7% inland) because the widest land mask covers the ring alone. Measure the coastal-vs-interior split before shipping such a layer, and either mask the ring downstream or normalize by land fraction — do not present the raw coastal values as exposure.
 - Record the verified data nature in the catalog (`data_nature`) and in the output metadata.
 - Never copy a sibling variable's processor attributes verbatim — re-derive the framing from the verified values.
 
@@ -235,6 +266,8 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
   `trend[decade] = (median[decade] − median[2020s]) / (elapsed decades)`, units *value* · decade⁻¹.
 - This makes each decade's trend the rate **from the 2020s baseline to that decade** (2090s panel = full baseline→2090s trend), built on decadal means so it is exactly the (decade − 2020s) change map ÷ elapsed decades → coherent by construction (corr = 1.0 with change at the last decade).
 - The baseline decade has no elapsed change → trend 0 (keeps the 2020s baseline bit-identical across scenarios).
+- **The trend's finite mask MUST match the median's.** `process_burntarea_fire.py:236` and `process_csoil_soilcarbon.py:241` return a bare `np.zeros(med_stack.shape[1:])` for the baseline decade, which makes the **entire ocean a finite zero** where the median is NaN. QA does not catch it: it checks only that *finite* baseline trends equal zero, never that the two masks agree. Emit `0.0` where the baseline median is finite and `NaN` elsewhere — see `process_driedarea_drought.py` (`anchored_trend`), which takes the baseline finite-mask as an argument. **Known-unfixed in burntarea and csoil** (WORKFLOW-ISSUES.md 2026-07-28).
+- **An automatic threshold rule must be checked against coverage before it is allowed to fire.** `make_pct_fn` in `process_burntarea_fire.py` auto-switches to the two-tier zero-inflated percentile above 2% exact zeros. For `driedarea` that rule would have fired on 3.59% zeros over the union land mask — but the figure is 0.18% over fully-covered cells, because the zeros live in cells that not all models cover (30 samples vs 450). The trigger would have measured **uneven model coverage, not a rare hazard**, and collapsed every never-dry cell onto percentile 1. When models disagree on the land mask, evaluate any such threshold on the fully-covered subset before trusting it, and record the measured value in the output attrs either way.
 - The generate_maps trend label is `[units decade⁻¹]`, so emit per-**decade** units, not per-year.
 - Reference: `scripts/process_burntarea_fire.py` (`anchored_trend`). Low-variance variables may keep the within-decade slope, but confirm the trend map is coherent against the change map before finalizing.
 
@@ -257,3 +290,20 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 - **Maps are a QA gate, not a deliverable.** Do not declare a layer good, report it as verified, or run `storage.cleanup_raw` until the maps have actually been viewed. `finalize_layer` generating them is not the same as someone reviewing them.
 - Say plainly whether you looked. If you have not viewed an image, report the layer as *unreviewed* rather than *verified*.
 - When a visual defect is found, add an automated check for its class to `scripts/generate_qa_report.py` so the next layer fails loudly instead of relying on someone noticing.
+
+---
+
+## 12. Report a Coverage or Resolution Fraction Against a Denominator That Makes It Meaningful
+
+**Rule**: When stating how much of the world a layer covers, divide by the domain the variable actually inhabits. For a **land** variable that is **land** — never the whole grid, which is ~71% ocean.
+
+**Why this matters**:
+- I described the `fldfrc` river-flood footprint as *"~76% of the grid is structurally NaN, i.e. only ~24% of land"* and escalated zero-filling to the user as a product decision (2026-07-28). Both halves were wrong: the second clause silently swapped denominators. The domain is 62,066 cells = **128.8 million km² = 95.7% of global land excluding Antarctica**, against 67,420 land cells for Lange2020 `led` (61,546 shared). 79.6% of domain cells lie ≥99% inside the model domain; the median is 100%. It is an ordinary ISIMIP land mask, and there was no coverage problem to decide about.
+- The error is easy to make because 259,200 (360×720) is the number in front of you, and a plausible-sounding fraction of it invites a plausible-sounding conclusion. It cost the user a spurious decision point.
+- The same trap in reverse hides a real defect: `floodedarea` looks *well* covered at 94.7% of the grid, but that number is high **because it includes ocean**. Only 13–15% of its "valid" cells ever flood. A coverage fraction against the wrong denominator can flatter a broken mask as easily as it can condemn a sound one.
+
+**Required behavior**:
+- Quote land coverage as **cells and km² against a reference land mask**, and name the reference. Compare against a known-good ISIMIP land variable (e.g. `led` at 67,420 cells) or `scripts/utils/land_mask.py`, not against `lat.size * lon.size`.
+- Cross-check the implied area: global land is ~148.9 M km², ~134.6 M km² excluding Antarctica. A land variable claiming far less warrants investigation; one claiming much more is including ocean.
+- Before escalating coverage to the user as a decision, verify the denominator. An unnecessary decision point costs credibility and the user's time.
+- Emit a per-cell coverage diagnostic (`n_members` / `n_models`, and a domain-fraction field such as `floodplain_fraction` where a cell can be partly inside the model domain) so a partly-covered cell is auditable instead of merely looking low.

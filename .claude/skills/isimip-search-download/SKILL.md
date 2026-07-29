@@ -54,12 +54,38 @@ a red flag, not a conclusion** (tropical-cyclone exposure is `let`, not the mnem
 `letc`). `count=1001` is the API maximum — the result set is truncated and must not be
 generalized from.
 
-- **Enumerate families, don't guess members.** The Lange 2020 exposure family is exactly
-  six: `led` drought, `leh` heatwave, `lew` wildfire, `ler` river flood, `lec` crop
-  failure, `let` tropical cyclone.
-- **A variable can have more than one representation.** "Wildfire" is both the `lew`
-  exposure member and the direct `burntarea` burnt-area fraction. Enumerate all products
-  and present the trade-offs.
+- **Enumerate families, don't guess members.** The Lange 2020 exposure family is **twelve,
+  not six** (corrected 2026-07-28): `le{d,r,w,c,h,t}` = **land-area** fraction exposed,
+  each paired with a `pe{d,r,w,c,h,t}` = **population** fraction exposed twin. Hazards are
+  `d` drought, `r` river flood, `w` wildfire, `c` crop failure, `h` heatwave, `t` tropical
+  cyclone. Documenting only the `le*` half and calling the family "six" stood uncorrected
+  for days. Also: `lew` has **no rcp85** (rcp26/rcp60 only).
+- **List `DerivedOutputData/` before concluding a product has no newer-round version.**
+  A product can be re-issued in a later round under a **different publication directory
+  with different variable names**, so searching the old variable name returns nothing and
+  reads as "absent". Lange 2020's exposure concept *was* re-issued for ISIMIP3b, split
+  across `Heinicke2026` (`driedarea`, `floodedarea`) and `Zantout2025` (`heatwave`,
+  `wildfire`, `cropfailure`) — hazard words, not `le*` codes. The catalog asserted
+  "ISIMIP3b/SSP version of this family NOT found (0 hits)" on that basis, and the drought
+  layer nearly shipped on rcp26/rcp60 when ssp126/370/585 existed. The listing is 2–4
+  entries and costs one call:
+
+  ```bash
+  curl -s https://files.isimip.org/ISIMIP3b/DerivedOutputData/ | grep -oE 'href="[^"]+/"'
+  ```
+- **A variable can have more than one representation.** "Wildfire" is the `lew` exposure
+  member, the `ffire` emissions flux, the ISIMIP3a-only `fire`-sector diagnostics
+  (`firesize`/`firenr`/`fireints`/…), *and* the direct `burntarea` burnt-area fraction.
+  Enumerate all products and present the trade-offs.
+- **If a catalog entry names a sector, verify that sector was actually walked.** The
+  wildfire section was titled "fire sector + biomes burntarea" but only `biomes` had ever
+  been enumerated. In ISIMIP3b that was harmless (the `fire` sector's burntarea files are a
+  strict subset of `biomes`), but ISIMIP3a's `fire` sector holds **10 models found nowhere
+  else**. A section heading is not evidence of coverage.
+- **File extensions differ by round: ISIMIP2b publishes `.nc4`, ISIMIP3a/3b publish `.nc`.**
+  A `*.nc` filter silently drops the **entire 2b round** and reads as "no data". This
+  produced a false negative twice in one session — once on a Lange2020 listing, once on a
+  `burntarea` inventory. Match both extensions.
 - **The same quantity can be named differently per round** — ISIMIP2b `csoil` vs ISIMIP3b
   `csoil-total`. Searching the 3b name in 2b returns nothing, which reads as "absent".
 - **Watch for cross-sector duplicates.** `elm-eca` publishes csoil-total under both
