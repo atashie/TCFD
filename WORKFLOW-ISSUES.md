@@ -451,6 +451,48 @@ A 0.5° cell is ~2,500 km²; flagging the whole cell when any part floods counts
 
 ---
 
+### 2026-07-29: Flood Layers Shipped — A 60°N DEM Seam Found by Looking, and a Detector That Took Four Attempts to Calibrate
+
+**What happened**: Built and published the three `fldfrc` protection-level layers (216 members ingested, 0 errors). QA passed and the numbers were coherent, but reviewing the contact sheet showed a faint horizontal discontinuity across northern Eurasia that no check had mentioned.
+
+**The defect**: the zonal-mean flooded fraction **halves across a single 0.5° row at exactly 60.0°N** — 11.06% just north, 5.93% just south (1.87×), the largest single-row jump anywhere between 45° and 80°N, and identical in all six GHMs. Confirmed in the **native 150 arcsec** data, where the sharpest row step lands on exactly `60.0208 → 59.9792` in all three protection levels, so it is inherited, not introduced by the coarsening. Cause: CaMa-Flood's floodplain topography changes DEM at the **SRTM/HydroSHEDS coverage limit** (SRTM spans 60°N–56°S).
+
+**Why nothing caught it**: the band-based zonal profile added the day before uses bands `45..60` and `60..70` — a step exactly on a band **edge** is invisible to it. Distribution statistics cannot see it either. It took a per-member image plus a row-by-row scan.
+
+**It is a level bias, not a trend bias** — and that distinction decides whether the layer is usable. Trend and change difference the same cells against their own 2020s baseline, so the static offset largely cancels: rcp85 `none` 2020s→2090s gives 60–70°N +2.2%, 50–60°N −0.8%, 30–50°N +0.4%, tropics +8.3%, S subtropics +6.4% — coherent across the seam. Trend/change across 60°N is usable; absolute levels across it are not. Recorded in each layer's `known_issues` and `known_latitude_seams='60.0'`.
+
+**The detector took four attempts, and each failure is worth keeping**:
+1. **MAD z-score** — the *same* seam scored z = 12.2 / 11.7 / 11.7 for rcp26/60/85, straddling a threshold of 12. MAD estimated from a few hundred rows is not stable enough for a fixed cut.
+2. **Ratio to the global median row-to-row change** — fired on all three *other* published layers, at −50.75°N (12–19 cells/row), 83.75°N (19–32) and 80.25°N (97–236). Fixed with a **≥150 finite cells/row** floor; the genuine seam sits on rows of 451–475.
+3. **Still fired on `driedarea`** at 8–11× for a level step of only 1.25–1.33×, because that field is near-zero at high latitude so the median row variation is tiny. Fixed by additionally requiring a **≥1.5-fold level step**.
+4. **Still flagged 70°N and the equator on the thresholded flood layers** as loudly as the real seam (19–49×). These are **not seams** — verified against the native data, their sharpest steps sit at 70.27° and 0.23°, i.e. the real Arctic river decline and the Congo–Amazon belt. Fixed by scoring against the **local** median (±10 rows) instead of the global one: a true seam is quiet on both sides so its ratio stays high, while a steep gradient's collapses. Final numbers: real seam **11.4–11.8×**, loudest non-seam across five other layers **6.9×**, threshold set at **9.0**.
+
+Negative control run: the first published version, which lacks the declaration, warns on all three scenarios; the declared version passes. The check does real work rather than passing vacuously.
+
+**A second gap I closed**: `layer.json` shipped with `inputs.files` **empty** — no `source_url`, no checksums. That is normally a nuisance; here it undercut the whole justification for coarsening at ingest, since the manifest is the *only* place the chain back to the 150 arcsec original is written down, and `cleanup_raw` refuses without it. The processor now lifts each raw file's `source_url`, original `sha512`, original byte count and transform string into the manifest (72 inputs per layer, all populated) and warns loudly if any is missing.
+
+**Results** (24 members/scenario, global flooded area, 2020s → 2090s):
+
+| protection | 2020s baseline | rcp26 | rcp60 | rcp85 |
+|---|---|---|---|---|
+| `none` | 6,157,552 km² yr⁻¹ | −0.1% | +2.2% | **+5.1%** |
+| `100yr` | 332,988 km² yr⁻¹ | +12.0% | +88.9% | **+225.5%** |
+| `flopros` | 872,279 km² yr⁻¹ | +1.6% | +43.7% | **+101.3%** |
+
+Monotonic in forcing for all three, and the protection level moves the rcp85 answer from +5% to +226%. The `none` change map is **mixed** — blue (drying) across the West Siberian lowlands and parts of Europe against red elsewhere — while `100yr` is almost uniformly red. That is the saturation result made visual: routine seasonal inundation can fall while *severe* flooding rises in the same place.
+
+**Impact**: no bad publish; three versions minted (`-dirty`, `-dirty-b`, `-dirty-c`) as the caveat and then the provenance chain were added, with the superseded ones retained as history. One processing bug caught in the 2-file smoke test before the 216-file run.
+
+**Rules created**: GUARDRAILS **§14** — a discontinuity on a round latitude is a data-source seam; confirm against native resolution, separate seam from gradient, declare it in `known_latitude_seams`, and establish whether it biases the *level* or the *trend* before condemning the layer.
+
+**Addendum — a proposed shortcut that was wrong, and the fourth layer it produced.** Asked whether a 1-in-100-year flood extent could be estimated as `none` + `100yr`, on the reasoning that `100yr` is the residual above the annual expectation. Tested rather than argued, and it does not hold: `100yr` is a **subset** of `none`, not its complement — `100yr > none` in **0.000%** of cells, and where `100yr > 0` it *equals* `none` in **84–88%** of them (mean ratio 0.90–0.93). The decisive check is dimensional rather than statistical: `none + 100yr` exceeds **100% of a cell** in 6,867–28,139 cells, which is impossible for a fraction of cell area. `100yr` is a *filtered copy* of `none`, kept only in years that overtopped a 1-in-100 defence; `none` is already the total undefended extent, i.e. the maximum of the three layers rather than a floor. The sum is also numerically unstable — 17% *below* the correctly measured footprint in the 2020s, drifting with scenario because the terms scale differently (+5% vs +226%). **Lesson**: when a proposed decomposition is additive, test for containment first, and prefer a *dimensional* impossibility check (a fraction exceeding 1) over a plausibility argument — the latter would have accepted it, since the sum lands within ~20% of the right answer today.
+
+The correct construction became the fourth layer, `riverflood_fldfrc-event100yr_annual`: per member and decade, frequency = years with `100yr > 0` ÷ valid years, footprint = mean of `none` over exactly those years. **Frequency is the primary value**, because the footprint is nearly static (**+1.8%** 2020s→2090s at rcp85 — topography fixes a given flood's extent) while frequency **more than doubles (+122%)**: the preindustrial 1-in-100 flood becomes a **1-in-5.7-year** flood. Making the footprint primary would have shipped a confidently flat layer. The two change maps side by side make it unmistakable — the frequency map is deep red across every major basin, the footprint map is blank. **This retro-explains the three protection layers**: `none` saturates (+5.1%) and `100yr` explodes (+225.5%) because all four are measuring a *frequency* change; only the fourth states it directly. Caveats carried in `known_issues`: "1-in-100" is **preindustrial** (GEV fit to `picontrol`/`1860soc`, so the 2020s already sit at ~1-in-15), and the conditional mean is **selection-biased upward** (cells never exceeding in a decade drop out) → the ratio is robust, the level indicative. Published `v2026-07-29_ba7bae4-dirty`, QA PASS 52/55, 144 raw inputs from two sibling prefixes with full provenance.
+
+**One process hazard worth not repeating**: several `until ! pgrep -f "process_fldfrc_flood"; do sleep 60; done` waiters **never terminated, because the waiter's own command line contains the pattern** — `pgrep -f` matched the waiting shell itself. Nine of them span for the rest of the session and, worse, made completed jobs look like running ones. Match on the interpreter (`pgrep -f "python.*process_x"`), use `pgrep -x`, or track the PID directly.
+
+---
+
 ### 2026-07-28: Drought Moved to ISIMIP3b — A Product Hidden Behind a Publication Name, and a Zero-Inflation Trap That Was Really a Coverage Artefact
 
 **What happened**: Asked to review options for tree-relevant drought, an independent re-enumeration of the ISIMIP file server found that the catalog's standing claim — *"ISIMIP3b/SSP version of this family NOT found (0 hits)"* — was wrong, and shipped a new SSP-era drought layer (`drought_driedarea_annual`) that supersedes the ISIMIP2b `led` layer.

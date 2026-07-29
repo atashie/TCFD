@@ -775,6 +775,24 @@ search_results:
         coverage: "8,143,012 of 37,324,800 cells at 150arcsec (21.8%); aggregates to 62,066 of 259,200 0.5deg cells (23.9%). This is the CaMa-Flood floodplain domain -- ~76% of the grid is structurally NaN, which is scientifically correct but is a PRODUCT decision to confront."
         provenance: "Global attrs are rich and self-documenting: created_with=github.com/swillner/flood-processing, citation=10.5281/zenodo.1241051, discharge_threshold=0.1mm/d, fit=gev, fit_scenario=picontrol, fit_soc=1860soc, cama_flood_version=3.6.2. Method = GEV fit to picontrol discharge -> return-period exceedance -> protection subtraction -> CaMa-Flood inundation -> 150arcsec downscale."
         metadata_warning: "The fldfrc variable carries ONLY _FillValue -- no units, no long_name. Value-checking is not optional here."
+        seam_at_60N: |
+          CONFIRMED SOURCE DEFECT (2026-07-29), declared in the layers as
+          known_latitude_seams='60.0'. The zonal-mean flooded fraction roughly HALVES
+          across a single 0.5 deg row at exactly 60.0 N -- 11.06% just north vs 5.93%
+          just south (1.87x). Present in the NATIVE 150 arcsec data, where the sharpest
+          row step falls on exactly 60.0208 -> 59.9792 in all three protection levels,
+          so it is NOT an artefact of the coarsening; and identical across all 6 GHMs.
+          Cause: CaMa-Flood's floodplain topography changes DEM at the SRTM/HydroSHEDS
+          coverage limit (SRTM spans 60 N-56 S). Consequence: absolute flooded area north
+          of 60 N is inflated ~1.9x and is NOT comparable across the boundary, so any
+          aggregate spanning it (Scandinavia, Russia, Canada, Alaska) mixes two
+          topographic datasets. It is a LEVEL bias, not a trend bias -- trend and change
+          difference the same cells against their own 2020s baseline, so the static offset
+          largely cancels and the change field is spatially coherent across the seam.
+          NOT seams, checked and rejected: the same detector also fires at 70 N and the
+          equator on the thresholded layers, but the sharpest NATIVE step there sits at
+          70.27 and 0.23 rather than on the round latitude -- those are the real Arctic
+          river decline and the Congo-Amazon equatorial belt. See GUARDRAILS §14.
         evaluation_counterpart: "ISIMIP2a/DerivedOutputData/Zimmer2023 -- 12 GHMs x 4 observational forcings (gswp3, princeton, watch, watch-wfdei), historical only. The validation reference, not a layer source."
       lange2020_ler_per:
         description: "Pre-aggregated 0.5deg river-flood exposure. The fast path; equals a fixed 100yr protection assumption."
@@ -813,6 +831,53 @@ search_results:
         description: "Building flood area from raw water_global discharge. Rejected -- see findings 1 and 6."
         maxdis_coverage: "ISIMIP2b clm45 + mpi-hm only (monthly); ISIMIP3b: none."
         dis_coverage: "Daily dis is broad (2b: 11 models incl. rcp85; 3b: 6 models) but ~929 MB per 10-year chunk per member."
+    derived_event100yr_layer:
+      description: >
+        A FOURTH layer derived from the ingested data with no new download --
+        riverflood_fldfrc-event100yr_annual, the 1-in-100-year flood EVENT rather than an
+        expected-annual-area. Primary value = exceedance FREQUENCY (% of years);
+        companion = undefended event FOOTPRINT (% of cell area).
+      why_not_none_plus_100yr: |
+        The intuitive construction -- add the undefended annual area to the 1-in-100
+        residual -- DOUBLE-COUNTS, because `100yr` is a SUBSET of `none`, not its
+        complement. Measured per cell per year at native 150 arcsec (h08/miroc5/rcp60):
+          100yr > none                      0.000% of cells, every year tested
+          where 100yr > 0, 100yr == none    84-88% of cells (mean ratio 0.90-0.93)
+          none + 100yr > 100% of a cell     6,867 -> 28,139 cells (impossible for a
+                                            fraction of cell area)
+        `100yr` is a FILTERED COPY of `none` -- the same inundation field kept only in
+        years that overtopped a 1-in-100 defence, with a partial-reduction component in
+        the other ~13% of active cells. `none` is therefore already the total undefended
+        extent: the MAXIMUM of the three protection layers, not a floor to add to. The sum
+        is also numerically unstable -- 17% BELOW the correctly measured footprint in the
+        2020s, and the error drifts with scenario because the terms scale differently
+        (none +5%, 100yr +226% at rcp85).
+      construction: |
+        Per member and decade, from the paired annual series of the none and 100yr layers:
+          exceedance_frequency = (years with fldfrc_100yr > 0) / (valid years)  -> % of years
+          event_footprint      = mean of fldfrc_none over exactly those years   -> % of cell
+        A year is valid only where BOTH fields are present. Then equal-weighted over the
+        24 GHM x GCM members. Frequency is the PRIMARY value.
+      headline_result: |
+        THE FOOTPRINT IS NEARLY STATIC; THE FREQUENCY IS WHAT CHANGES. rcp85,
+        2020s -> 2090s: footprint +1.8% (topography fixes a given flood's extent), while
+        frequency goes 6.59% -> 17.66% of years, i.e. 1-in-15.2 -> 1-in-5.7 years (+122%).
+        Scenario ordering is clean: 2090s frequency 7.58 / 11.62 / 17.66% of years for
+        rcp26/60/85 against a shared 6.59% baseline.
+        THIS EXPLAINS THE THREE PROTECTION LAYERS: `none` saturates (+5.1% at rcp85)
+        because it counts every flood and the extent barely moves, while `100yr` explodes
+        (+225.5%) because it counts only the rare tail and the rare tail is becoming
+        ordinary. All four layers are measuring a frequency change; only the fourth says so.
+      caveats: |
+        (1) "1-in-100" IS PREINDUSTRIAL -- the threshold is a GEV fit to picontrol
+        (fit_soc=1860soc), so the 2020s already sit at ~1-in-15 years, not 1-in-100.
+        (2) The conditional mean is SELECTION-BIASED UPWARD: cells that never exceed within
+        a decade drop out of it. Read the 2020s->2090s RATIO as robust, the level as
+        indicative. (3) event_footprint is undefined where a member never exceeds in a
+        decade, so its depth is thinner and more variable than the frequency's (median 13
+        of 24 members) -- qualify it with n_members_footprint, NOT n_members.
+      processed: "2026-07-29 -> riverflood_fldfrc-event100yr_annual, scripts/process_fldfrc_event100yr.py"
+
     quesada_chacon2026:
       description: "ISIMIP3a CaMa-Flood daily discharge at GRDC / no-basin gauge locations, obsclim + counterclim, 1901-2019, 9 GHMs. POINT/station data, historical only -- a routing-validation product, not a gridded flood layer."
       path: "ISIMIP3a/DerivedOutputData/Quesada-Chacon2026/CaMa-Flood/{grdc,noba}/{obsclim,counterclim}/"
@@ -955,8 +1020,36 @@ search_results:
   # severe wind
   # -------------------------
   severe_wind:
-    last_searched: "2026-07-28"
-    description: "Severe wind / area affected per year. NOT an OutputData sector -- there is no wind or storm sector in any round. Wind lives in InputData: (a) ISIMIP3b InputData/climate/tropical_cyclones/MIT = per-storm gridded TC wind footprints (the only credible SEVERE-wind source), (b) bias-adjusted atmospheric forcing sfcwind = daily MEAN 10m wind (not severe-capable), (c) the Lange2020 le t / pe t exposure twins = already-aggregated TC exposure (ISIMIP2b/RCP only)."
+    last_searched: "2026-07-29"
+    description: "Severe wind. NOT an OutputData sector -- there is no wind or storm sector in any round. Wind lives in InputData: (a) ISIMIP3b InputData/climate/tropical_cyclones/MIT = per-storm gridded TC wind footprints, (b) bias-adjusted atmospheric forcing sfcwind/sfcWind = daily MEAN 10m wind, (c) the Lange2020 le t / pe t exposure twins = already-aggregated TC exposure (ISIMIP2b/RCP only)."
+    OUTCOME_2026_07_29: |
+      windlifetimemax was SET ASIDE for the severe-wind use case, and the layer was built
+      instead from the internal CMIP6 ws_max archive (see internal_alternative).
+      REASON -- windlifetimemax answers a narrower question than "all intense wind gusts",
+      on two independent grounds, both of which are visible in its path and long_name:
+        1. TROPICAL CYCLONES ONLY. Every value is attached to a synthetic TC track. It is
+           identically zero for extratropical cyclones / European windstorms, derechos,
+           convective downbursts, thunderstorm gust fronts, downslope windstorms (Santa
+           Ana, Bora, Foehn), polar lows and tornadoes. The mid-latitude zeros in its maps
+           are its DEFINITION, not missing data.
+        2. SUSTAINED WIND, NOT GUST. long_name = "Lifetime maximum 1-minute sustained wind
+           speed". Gusts run ~1.3-1.7x sustained over land.
+      NOTE THE PROCESS FAILURE, not just the conclusion: both facts were available from the
+      first directory listing, were noted, and were then buried under a recommendation --
+      so a full ensemble / threshold / wind-profile analysis was run before anyone asked
+      whether the variable was the requested quantity. See GUARDRAILS §9 (hazard scope and
+      statistic type first).
+      ALSO CORRECTED: earlier revisions of this section carried unsanctioned verdicts
+      ("the only credible SEVERE-wind source", verdict:/severe_wind_verdict: keys,
+      "supersedes cyclone_let_annual"). Those were the assistant's judgements, not
+      decisions; the measurements below stand, the verdicts do not. windlifetimemax and
+      cyclone_let_annual are INDEPENDENT products.
+      STILL TRUE AND USEFUL: windlifetimemax remains the best available TROPICAL-CYCLONE
+      wind product (1/12 deg, own threshold, 4 GCMs x 2 profiles) if a TC-specific layer is
+      ever wanted. Its measured characteristics below were verified and are worth keeping.
+      OPEN LEAD: CMIP6 defines wsgmax = "Daily Maximum Near-Surface Wind Speed of Gust",
+      the only true gust variable. It is absent from ISIMIP (all rounds, full enumeration)
+      and from the internal archive. ESGF availability NOT yet enumerated.
     enumeration_2026_07_28: |
       Walked every round: OutputData sectors (2b: 12, 3b: 8) contain NO wind/storm sector.
       Wind exists only as InputData. Three distinct representations found -- do not conflate.
@@ -989,7 +1082,9 @@ search_results:
         2. Wind profile = TWO (specifier wind_model: er11-wind | h08-wind). These are two
            parametric renderings of the SAME synthetic tracks, so they are NOT independent
            members. Counting 4 GCMs x 2 profiles as "8 members" DOUBLE-COUNTS the tracks.
-           Use H08 as the member set and report ER11 as a sensitivity band.
+           USER DECISION 2026-07-29: use BOTH profiles. Note the earlier "H08 only"
+           argument was threshold-dependent and does not hold at 17.5 m/s, where BOTH
+           profiles carry exposure to ~84 deg (ER11 ~2x H08) and they disagree most (2.21x).
         3. GCMs = 4 usable for a full 2015-2100 series (5 in historical; 5 in ssp585 but
            gfdl-esm4 only from 2061).
         => 4 MEMBERS PER SCENARIO. Nominally as thin as let (4), but the EFFECTIVE sampling
@@ -1075,7 +1170,7 @@ search_results:
         Global max daily-mean wind anywhere in the decade: 40.78 m/s. Only 1.26% of cells
         ever reach 25 m/s and 0.069% ever reach 33 m/s in TEN YEARS.
         Hurricane-alley Florida records ZERO cell-days at or above 25 m/s in a decade.
-      verdict: "NOT severe-wind capable -- MEASURED, not assumed. Also strictly dominated on every axis by the internal CMIP6 ws_max archive: 0.25 deg vs 0.5 deg, daily MAX vs daily MEAN, 20-21 models vs 5, and ssp245 included. Keep only if an ISIMIP-only provenance chain is a hard requirement."
+      measured_ceiling: "Daily MEAN wind cannot reach severe thresholds -- MEASURED, not assumed (see value_check). Distinct from the internal CMIP6 ws_max archive, which is 0.25 deg / daily MAX / 20-21 models / includes ssp245. Both are near-surface wind speed, NOT gust; neither is TC-specific."
     lange2020_exposure:
       note: "The le t (land-area) / pe t (population) tropical-cyclone exposure twins; ISIMIP2b/CMIP5/RCP only, 1 impact model x 4 GCMs, 0.5 deg, fixed threshold not stated in the file metadata. Shipped as layer cyclone_let_annual. CORRECTED 2026-07-29 (user): windlifetimemax does NOT supersede cyclone_let_annual -- they are INDEPENDENT PRODUCTS and both stand. An earlier note here claimed it superseded on round/resolution/threshold-control/depth; that was an unsanctioned judgement. See drought.exposure_lange2020."
     no_extratropical_product: "NEITHER ISIMIP nor the internal archive credibly resolves EXTRATROPICAL severe wind (European windstorms, derechos, convective downbursts). ISIMIP has no windstorm sector; the internal bias-corrected CMIP6 ws_max tail is capped ~35 m/s by ERA5 quantile mapping. Any 'severe wind' layer built from what exists is a TROPICAL-CYCLONE wind layer and must be labelled as such."
@@ -1084,7 +1179,7 @@ search_results:
       contents: "pp_{MODEL}_r.zarr = ERA5-quantile-mapped daily MAX 10 m wind, 0.25 deg (721x1440), 2015-2100 daily; 21 models x historical/ssp126/ssp245 and 20 x ssp585 (gfdl-esm4 absent from ssp585). Also ws_max_daily_rechunked_all.zarr = the ERA5 observational reference, 0.25 deg daily max, 1979-01-01..2023-08-04. Raw CMIP6 sfcWind/sfcWindmax as netCDF under cmip6/nc/day/."
       UNITS_TRAP: "histogram_bins.json declares 'm/s' but the VALUES ARE km/h. Verified against known events: ERA5 global daily median 27.5 (= 7.6 m/s, correct for 10 m daily max); Irma Florida landfall 2017-09-10 box max 121.1 (= 33.6 m/s, the known ERA5 magnitude for a smoothed Cat 5); quiet Sahara day max 34.1 (= 9.5 m/s). Read as m/s these imply a permanent global gale and a perfectly resolved hurricane core; read as knots the Sahara blows 17.6 m/s. Divide by 3.6."
       TIME_AXIS_TRAP: "The pp_*_r.zarr time coordinate is MONTH-MAJOR, not chronological: all Januaries 2015..2100, then all Februaries, etc (11 backward jumps of -31045 days). Coverage is complete and duplicate-free (86 years, 365/366 days) -- it is a permutation, not a gap. xarray .sel(time=slice(...)) RAISES on it; call .sortby('time') first. ukesm1-0-ll is 2 days short (2049 and 2100 have 364)."
-      severe_wind_verdict: |
+      measured_severe_wind_ceiling: |
         Cannot support a SEVERE-wind metric. Mean exceedance days/yr, ssp585, 4 models,
         2015-2024 -> 2091-2100:
           NW Europe >=60 km/h (16.7 m/s): 5.0-9.0 d/yr, change -13% to +27% -- sign disagreement

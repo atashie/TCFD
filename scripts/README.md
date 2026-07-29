@@ -52,6 +52,7 @@ Checks: all value classes present and correctly shaped; `lower_ci ≤ median ≤
 Two details worth knowing:
 
 - **The percentile-orientation check uses Spearman, not Pearson.** `percentile` is a percentile-of-score — a monotone but deliberately **non-linear** rank transform of the value — so on a heavy-tailed, zero-inflated variable Pearson reads far below 1 even when the ordering is perfect. It scored `burntarea` at +0.53 and failed a correct layer; Spearman gives +1.0000 and still catches a genuinely inverted or scrambled percentile.
+- **An undeclared sharp latitude seam raises a warning.** A band profile cannot see a step that falls on a band *edge* — the 60.0°N discontinuity in `fldfrc` sits exactly between the `45..60` and `60..70` bands and was invisible to it. The check scans **row-to-row** jumps in the zonal mean and flags the largest when it is ≥9× the **local** median change (±10 rows) *and* a ≥1.5-fold level step, ignoring rows with <150 finite cells. Declare a confirmed seam in `known_latitude_seams` and it passes with the evidence still printed. Calibrated against five other layers: real seam 11.4–11.8×, loudest non-seam 6.9×. Three earlier formulations were rejected — a MAD z-score straddled a fixed cut between scenarios (12.2/11.7/11.7 for the *same* seam), a global-median denominator flagged steep gradients as loudly as seams, and without the row-count floor it fired on 12–32-cell polar rows of three existing layers. See GUARDRAILS §14.
 - **A zonal profile (land-mean by latitude band) is reported for every layer**, in both JSON and HTML. An aggregate or area-weighted statistic is structurally blind to a defect confined to one latitude zone, because polar cells carry almost no area. A layer that declares `zonal_expectation: low_latitude_dominated` additionally **warns** when a polar band exceeds its tropical band — which is how `visit`'s inverted fire profile became visible (GUARDRAILS §9).
 
 ### process_qg.py
@@ -215,6 +216,28 @@ python scripts/process_fldfrc_flood.py --protection none --no-publish
 
 **Input**: `s3://…/TCFD/raw/isimip/riverflood_fldfrc-{protection}_annual/*_fldfrc_*_halfdeg_global_annual_*.nc`
 **Output**: published layers `riverflood_fldfrc-{none,100yr,flopros}_annual` — `fldfrc_{rcp26,rcp60,rcp85}_processed.nc`
+
+### process_fldfrc_event100yr.py
+
+The **fourth** flood layer, and the only one that is not an expected-annual-area. The three protection layers answer "how much area floods in an average year, given protection P"; this one answers the two questions a 1-in-100-year flood product needs: **how often** is the (preindustrial) 1-in-100 flood exceeded, and **how much area** does it cover when it is.
+
+**It is not `none` + `100yr`.** That sum double-counts: `100yr` is a **subset** of `none`, not its complement. Measured per cell per year at native 150 arcsec — `100yr > none` in **0.000%** of cells; where `100yr > 0` it **equals** `none` in **84–88%** (mean ratio 0.90–0.93); and `none + 100yr` would exceed **100% of a cell** in 6,867–28,139 cells, impossible for an area fraction. `100yr` is a *filtered copy* of `none`, kept only in years that overtopped a 1-in-100 defence. The sum is numerically unstable too — 17% *below* the measured footprint in the 2020s, drifting with scenario because the terms scale differently (`none` +5%, `100yr` +226%).
+
+Correct construction, per member and decade, from the paired annual series:
+`exceedance_frequency = (years with 100yr > 0) / valid years` and `event_footprint = mean of none over exactly those years`. A year counts as valid only where both fields are present, so numerator and denominator share one year set.
+
+- **`median` carries the FREQUENCY (% of years), not the footprint.** The footprint grows only **+1.8%** from the 2020s to the 2090s at rcp85 — topography fixes the extent of a given-magnitude flood — while the frequency **more than doubles (+122%)**: the preindustrial 1-in-100 flood becomes a **1-in-5.7-year** flood. Making the footprint primary would ship a confidently flat layer, the trap the `none` level falls into. The footprint rides along as `event_footprint` with its own CI.
+- This also explains the three siblings: `none` saturates (+5.1%) and `100yr` explodes (+225.5%) because **all four are measuring a frequency change**; only this layer states it directly.
+- **Two caveats in `known_issues`**: "1-in-100" is **preindustrial** (GEV fit to `picontrol`, `fit_soc=1860soc`), so the 2020s already sit at ~1-in-15 years; and the conditional mean is **selection-biased upward** because cells that never exceed within a decade drop out — read the 2020s→2090s *ratio* as robust and the level as indicative.
+- `event_footprint` is undefined where a member never exceeds in a decade, so its ensemble depth is thinner and more variable than the frequency's (median 13 of 24 members). Qualify it with **`n_members_footprint`**, not `n_members`.
+- Inputs come from **two sibling raw prefixes**; this layer's own raw prefix stays empty by design, and `raw_entries` records all 144 inputs so `layer.json` still carries the chain back to the 150 arcsec originals.
+
+```bash
+python scripts/process_fldfrc_event100yr.py [--no-publish]
+```
+
+**Input**: `s3://…/TCFD/raw/isimip/riverflood_fldfrc-{none,100yr}_annual/*_halfdeg_global_annual_*.nc` (matched on model × GCM × scenario)
+**Output**: published layer `riverflood_fldfrc-event100yr_annual` — `fldfrc_{rcp26,rcp60,rcp85}_processed.nc`
 
 ## Dependencies
 

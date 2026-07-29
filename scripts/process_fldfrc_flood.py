@@ -311,7 +311,22 @@ def process_protection(protection, publish=True):
 
     # floodplain_fraction is static per member; they agree, so take the max as the
     # domain (a cell in ANY member's domain is in the layer's domain).
-    fpf_layer = np.nanmax(np.stack(fpf_stack, 0), axis=0).astype(np.float32)
+    # The CaMa-Flood river network is model-independent, so every member SHOULD carry
+    # the same domain -- but that is an assumption, and an assumption about a land mask
+    # is exactly the kind that has bitten this project before (csoil: 58,714-67,647
+    # cells across 5 models). Measure it and say so; take the union as the layer domain
+    # and let n_members carry per-cell depth.
+    fpf_arr = np.stack(fpf_stack, 0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")          # cells NaN in every member -> all-NaN slice
+        fpf_layer = np.nanmax(fpf_arr, axis=0).astype(np.float32)
+    per_member_cells = np.isfinite(fpf_arr).sum(axis=(1, 2))
+    if per_member_cells.min() != per_member_cells.max():
+        log(f"  NOTE: member domains DIFFER: {per_member_cells.min():,}-"
+            f"{per_member_cells.max():,} cells; union = {int(np.isfinite(fpf_layer).sum()):,}")
+    else:
+        log(f"  member domains identical across all {len(fpf_stack)} files: "
+            f"{per_member_cells[0]:,} cells")
 
     # ---- Shared 2020s baseline, identical across scenarios ---------------------
     b_idx = DECADES.index(BASELINE_DECADE)
@@ -491,6 +506,26 @@ def process_protection(protection, publish=True):
                     "positives to [2,100])."),
                 "percentile_zero_fraction": round(frac_zero, 5),
                 "percentile_direction": "higher_is_worse",
+                "known_latitude_seams": "60.0",
+                "known_issues": (
+                    "SHARP LEVEL DISCONTINUITY AT 60.0 N, INHERITED FROM THE SOURCE. The "
+                    "zonal-mean flooded fraction roughly HALVES across a single 0.5 deg row "
+                    "boundary at exactly 60.0 N -- 11.06% just north vs 5.93% just south "
+                    "(1.87x) in the NATIVE 150 arcsec data, so it is not an artefact of the "
+                    "coarsening; it is the largest single-row jump anywhere between 45 and "
+                    "80 N and it appears identically in every GHM. The cause is CaMa-Flood's "
+                    "floodplain topography changing DEM at the SRTM/HydroSHEDS coverage "
+                    "limit (SRTM spans 60 N-56 S), so absolute flooded area north of 60 N is "
+                    "inflated by roughly 1.9x relative to south of it and is NOT comparable "
+                    "across the boundary. Any zonal or regional aggregate straddling 60 N "
+                    "(Scandinavia, Russia, Canada, Alaska) mixes two topographic datasets. "
+                    "IMPORTANT -- this is a LEVEL bias, not a trend bias: because the trend "
+                    "and change maps difference the same cells against their own 2020s "
+                    "baseline, the static offset largely cancels, and the change field is "
+                    "spatially coherent across the seam (rcp85 none, 2020s->2090s: 60-70 N "
+                    "+2.2%, 50-60 N -0.8%, 30-50 N +0.4%, tropics +8.3%, S subtropics "
+                    "+6.4%). Use trend/change across 60 N with confidence; compare absolute "
+                    "levels across it only with this caveat in hand."),
                 "baseline_decade": BASELINE_DECADE,
                 "baseline_source": "shared_across_all_scenarios",
                 "window_years": WINDOW_YEARS,
@@ -534,9 +569,44 @@ def process_protection(protection, publish=True):
         log(f"\n--no-publish: staged only at {stage}")
         return dict(layer_id=lid, version=None, stage=str(stage))
 
+    # ---- Provenance chain back to the 150 arcsec originals ---------------------
+    # STORAGE.md: inputs.files[].source_url + checksum in layer.json is what makes
+    # storage.cleanup_raw safe. It matters more than usual here, because the raw prefix
+    # holds the COARSENED 0.5 deg fields rather than what ISIMIP served -- so the
+    # manifest is the only place the chain back to the original is written down. Each
+    # ingested file carries its own source_url and the sha512 OF THE ORIGINAL in its
+    # global attrs; lift them into the manifest.
+    raw_entries = []
+    for f in files:
+        p = Path(f)
+        with xr.open_dataset(p) as rds:
+            ra = rds.attrs
+        raw_entries.append({
+            "name": p.name,
+            "bytes": p.stat().st_size,
+            "sha256": storage.sha256_file(p),
+            "source_url": ra.get("source_url", ""),
+            "source_sha512": ra.get("source_sha512", ""),
+            "source_bytes": ra.get("source_size_bytes", ""),
+            "transform": ra.get("transform", ""),
+        })
+    missing = [e["name"] for e in raw_entries if not e["source_url"]]
+    if missing:
+        log(f"  WARNING: {len(missing)} raw file(s) carry no source_url -- "
+            f"cleanup_raw will refuse to delete this prefix, which is the correct "
+            f"behaviour but means re-ingest cannot be verified: {missing[:3]}")
+    else:
+        log(f"  provenance: {len(raw_entries)} raw inputs, all with source_url + "
+            f"original sha512 recorded")
+
     log("\nPublishing to S3...")
     version = publish_processed_layer(
         lid, stage,
+        raw_entries=raw_entries,
+        # Reprocessing on an unchanged tree resolves to the same version id, so let it
+        # BUMP rather than error: the superseded version stays as history and
+        # _VERSION.json records the chain (STORAGE.md; isimip-process-visualize skill).
+        on_exists="bump",
         created_by="scripts/process_fldfrc_flood.py",
         notes=(f"ISIMIP2b Zimmer2023 fldfrc, protection={protection}, rcp26/60/85; "
                f"24 members/scenario (6 GHMs x 4 GCMs); CaMa-Flood 150arcsec coarsened "

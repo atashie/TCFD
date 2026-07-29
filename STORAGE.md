@@ -61,6 +61,25 @@ Both are intentional decisions, recorded so they aren't "corrected" later:
 1. **Raw ISIMIP members are staged in this bucket, not the datasets bucket.** House convention (`operational/parcels/CLAUDE.md:55-57`) reserves `climate-ai-data-science-shiny-app-data` for light dashboard-facing products and sends heavy data to `climate-ai-data-science-datasets`. Keeping everything under one `TCFD/` prefix was chosen deliberately (2026-07-27) for a single mental model and one place to look.
    - Related: `s3://climate-ai-data-science-datasets/arrakis-data/ISIMIP_data/` already holds ISIMIP source data (13,168 objects, 2.2 GiB, June 2024, zarr, laid out `{variable}/{Historical|Future}/{Biomes}/{annual|monthly}/`) — currently `csoil/` and `npp/`. **`csoil` overlaps `soilcarbon_csoil_annual`; check it before re-downloading.**
 2. **Gridded outputs stay NetCDF, not zarr.** House convention is zarr for gridded data. `{variable}_{scenario}_processed.nc` is the documented TCFD product contract in `CLAUDE.md`, and every processor, `generate_maps.py`, and the extraction utilities assume it. Changing format is a separate project from the storage migration.
+3. **The `riverflood_fldfrc-*` raw prefixes hold a COARSENED field, not what ISIMIP served** (2026-07-29). Their source is 150 arcsec (4320 × 8640) and the full 216-file set is ~54 GB against 19 GB of local scratch, so `download_fldfrc_flood.py` streams each member: download → sha512-verify against the ISIMIP sidecar → area-preserving 12×12 aggregation to 0.5° → **delete the original**. What lands in raw is the 0.5° annual field, ~36× smaller (~700 MB total instead of 54 GB).
+   - This is the one place in the bucket where "raw" is not byte-for-byte upstream, so it is made **auditable rather than silent**: every ingested file records `source_url`, the **sha512 of the 150 arcsec original**, its byte count and the exact transform, in both its own NetCDF global attrs *and* `layer.json`'s `inputs.files[]`. Verified populated: 72/72 per protection layer, 144/144 for the derived event layer.
+   - Justified by the fact that **raw staging is transient by contract anyway** (see *Raw staging* below — `cleanup_raw` deletes it once `source_url` + checksum are recorded), so uploading 54 GB only to delete it later is pure churn. And `files.isimip.org` is **not** behind the Anubis anti-bot that guards the `data.isimip.org` API, so re-fetching an original is routine rather than precarious.
+   - **Do not "fix" this by re-ingesting the 150 arcsec files.** If a native-resolution product is ever wanted, that is a different layer with a different id, and it is a rewrite rather than a re-ingest: the current processor's member × decade stack would need **86 GB of RAM** at native resolution, and `generate_maps.py` cannot serialize 8.1 M cells per panel. See `CLAUDE.md` and the cost table in the session notes.
+
+### Layers created after the migration
+
+The table above is a **migration** record (pre-S3 layout → canonical id); layers created since were born canonical, so they are listed here instead rather than given a meaningless "migration fix" column:
+
+| `layer_id` | notes |
+|---|---|
+| `drought_driedarea_annual` | ISIMIP3b/SSP; supersedes `drought_led_annual` |
+| `timber_cveg-tempnle_annual`, `timber_npp-tempnle_annual` | ISIMIP2b PFT-resolved conifer pair |
+| `riverflood_fldfrc-none_annual` | flood, no protection assumed |
+| `riverflood_fldfrc-100yr_annual` | flood, uniform 1-in-100 severity threshold |
+| `riverflood_fldfrc-flopros_annual` | flood, actual FLOPROS defence standards |
+| `riverflood_fldfrc-event100yr_annual` | derived from the two above it; **its own raw prefix stays empty by design** — inputs come from the `-none` and `-100yr` prefixes, and `raw_entries` records all 144 |
+
+Note the last row is the first layer whose raw prefix is legitimately empty. `stage_raw` on it returns nothing, which is correct and not a fault; `layer.json` still carries the full provenance chain.
 
 ## Layer IDs
 
