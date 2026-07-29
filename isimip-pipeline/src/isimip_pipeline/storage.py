@@ -113,6 +113,39 @@ def _p(uri: str) -> str:
     return uri.replace("s3://", "").lstrip("/")
 
 
+def _guard_write_key(key: str) -> str:
+    """Reject any write destination outside ``{ROOT}/``.
+
+    Writes are confined to ``s3://{BUCKET}/{ROOT}/`` by policy: every other prefix
+    in this bucket, and every other bucket, belongs to a different live product and
+    is read-only. ``BUCKET`` is already pinned as a module constant, but the ``key``
+    passed to :func:`push` / :func:`push_dir` / :func:`write_json` is
+    caller-supplied, so a malformed key could otherwise land in a sibling prefix.
+
+    Args:
+        key: Bucket-relative destination key.
+
+    Returns:
+        The key, stripped of any leading slash.
+
+    Raises:
+        ValueError: If the key does not sit under ``{ROOT}/``, or escapes it via
+            ``..`` path traversal.
+    """
+    clean = str(key).lstrip("/")
+    if not clean:
+        raise ValueError("refusing to write to an empty key")
+    if ".." in Path(clean).parts:
+        raise ValueError(f"refusing to write to a key containing '..': {key!r}")
+    if clean != ROOT and not clean.startswith(f"{ROOT}/"):
+        raise ValueError(
+            f"refusing to write outside s3://{BUCKET}/{ROOT}/ — got {key!r}. "
+            "Build every key through this module (data_key, raw_prefix, "
+            "raw_inhouse_prefix, reference_key, …); never hand-assemble one."
+        )
+    return clean
+
+
 def uri(key: str) -> str:
     """Return the full ``s3://`` URI for a bucket-relative key."""
     return f"s3://{BUCKET}/{key.lstrip('/')}"
@@ -255,6 +288,20 @@ def raw_prefix(layer_id: str) -> str:
     return f"{ROOT}/raw/isimip/{layer_id}"
 
 
+def raw_inhouse_prefix(dataset_id: str) -> str:
+    """Staging prefix for a raw member set built in-house rather than pulled from ISIMIP.
+
+    Sits alongside ``raw/isimip/`` so the provenance is visible in the key itself:
+    these members are derived from internal archives (e.g. the bias-corrected CMIP6
+    ``ws_max`` store), not downloaded from the ISIMIP file server, so they are not
+    re-fetchable by URL and ``cleanup_raw``'s source-URL safety check does not apply.
+
+    Args:
+        dataset_id: Canonical dataset id, e.g. ``windydays_wsmax17p5_annual``.
+    """
+    return f"{ROOT}/raw/in-house/{dataset_id}"
+
+
 def export_prefix(customer: str, run_date: str) -> str:
     """Prefix for one customer's Export-Key CSV delivery."""
     return f"{ROOT}/exports/{customer}/{run_date}"
@@ -384,6 +431,7 @@ def push(local: Path, key: str, atomic: bool = True) -> Dict[str, Any]:
         ``{"key", "bytes", "sha256"}`` — ready to drop into a manifest.
     """
     local = Path(local)
+    key = _guard_write_key(key)
     fs = s3_filesystem()
     dest = _p(f"{BUCKET}/{key}")
 
@@ -406,6 +454,7 @@ def push_dir(local_dir: Path, prefix: str, atomic: bool = True) -> List[Dict[str
     :func:`write_complete_marker` expects.
     """
     local_dir = Path(local_dir)
+    _guard_write_key(prefix)  # fail fast, even when the tree is empty
     entries: List[Dict[str, Any]] = []
     for path in sorted(p for p in local_dir.rglob("*") if p.is_file()):
         rel = path.relative_to(local_dir).as_posix()
@@ -519,6 +568,7 @@ def read_json(key: str) -> Dict[str, Any]:
 
 def write_json(obj: Dict[str, Any], key: str) -> str:
     """Write a dict to S3 as indented JSON. Returns the key."""
+    key = _guard_write_key(key)
     fs = s3_filesystem()
     body = json.dumps(obj, indent=2, default=str).encode("utf-8")
     dest = _p(f"{BUCKET}/{key}")
