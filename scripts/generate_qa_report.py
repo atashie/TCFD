@@ -22,6 +22,7 @@ Usage:
 import argparse
 import html
 import json
+import re
 import sys
 import warnings
 from datetime import datetime, timezone
@@ -57,6 +58,27 @@ class Check:
         mark = "PASS" if passed else ("WARN" if severity == "warning" else "FAIL")
         log(f"  {mark:4s}  [{scope}] {name}" + (f"  -> {detail}" if detail else ""))
         return bool(passed)
+
+
+def _composition_of(attrs, scenario):
+    """Return the declared ensemble composition signature for one scenario, or "".
+
+    Reads the layer's own `members_by_scenario` attribute, written as
+    ``"rcp26=[member,member,...]; rcp60=[...]"`` -- member IDENTITY, not a count. Two
+    scenarios can hold the same NUMBER of members without holding the same ones (clm45
+    contributes different GCM pairs to different RCPs), and a count-based signature would
+    then demand bit-identity between baseline panels that legitimately differ.
+
+    Layers that do not declare the attribute (every layer with a uniform ensemble) get ""
+    for every scenario, so all scenarios fall into a single group and the strict
+    cross-scenario baseline identity check behaves exactly as before.
+    """
+    spec = str(attrs.get("members_by_scenario", ""))
+    for part in spec.split(";"):
+        name, _, sig = part.strip().partition("=")
+        if name.strip() == scenario and sig:
+            return sig.strip()
+    return ""
 
 
 def _finite(a):
@@ -322,13 +344,120 @@ def check_layer(ds_by_scen, layer_id, version):
                 f"-- layer declares zonal_expectation={attrs.get('zonal_expectation')!r}",
                 severity="warning")
 
+        # --- latitude-seam detection -----------------------------------------
+        # A band profile is too coarse to see a discontinuity that falls INSIDE a band,
+        # and a smooth geophysical field should not jump sharply between two adjacent
+        # 0.5 deg rows. A sharp step usually means the INPUT changed source there --
+        # `fldfrc` halves across exactly 60.0N (11.06% -> 5.93%, 1.87x) because
+        # CaMa-Flood's floodplain topography switches DEM at the SRTM/HydroSHEDS
+        # coverage limit. That is a property of the source, not of the processing, but
+        # it silently biases every zonal or regional aggregate that straddles it.
+        # Scored as an outlier against the field's own row-to-row variability so the
+        # check is scale-free and needs no per-layer threshold.
+        # Only compare rows whose zonal mean rests on enough cells to be stable. Without
+        # this the check is dominated by the poles and the far south, where a row holds a
+        # dozen cells and its mean swings wildly for reasons that are not seams: it
+        # false-fired at -50.75 (12-19 cells), 83.75 N (19-32) and 80.25 N (97-236) on
+        # three existing layers. The genuine `fldfrc` seam sits on rows of 451-475 cells.
+        MIN_ROW_CELLS = 150
+        counts = np.array([int(_finite(a[i]).size) for i in range(a.shape[0])])
+        zrow = np.array([
+            (lambda f: float(f.mean()) if f.size else np.nan)(_finite(a[i]))
+            for i in range(a.shape[0])])
+        well_sampled = counts >= MIN_ROW_CELLS
+        ok_rows = (np.isfinite(zrow[:-1]) & np.isfinite(zrow[1:])
+                   & well_sampled[:-1] & well_sampled[1:])
+        jumps = np.abs(np.diff(zrow))
+        if ok_rows.sum() >= 20:
+            worst_i = int(np.nanargmax(np.where(ok_rows, jumps, np.nan)))
+            # Scored against the LOCAL median row-to-row change (a +/-10-row window,
+            # excluding the candidate), not the global one. This is what separates a SEAM
+            # from a steep GRADIENT, and the distinction is not academic: on `fldfrc` the
+            # global-median form flagged 70 N and the equator as loudly as the real 60 N
+            # seam. Checked against the native 150 arcsec data, only 60 N is a
+            # discontinuity -- its sharpest native step lands on exactly
+            # 60.0208 -> 59.9792 in all three protection levels -- whereas near 70 N and
+            # the equator the sharpest native step sits at 70.27 and 0.23, i.e. the
+            # profile is simply declining/rising steeply over many rows (fewer Arctic
+            # rivers; the Congo-Amazon equatorial belt). A true seam is QUIET on both
+            # sides, so a local denominator keeps its ratio huge and collapses a
+            # gradient's. A MAD z-score was tried first and rejected: it moved enough
+            # between scenarios to put the SAME seam on both sides of a fixed cut
+            # (z = 12.2 / 11.7 / 11.7 for rcp26/60/85).
+            lo_w, hi_w = max(worst_i - 10, 0), min(worst_i + 11, len(jumps))
+            neigh = np.array([jumps[k] for k in range(lo_w, hi_w)
+                              if k != worst_i and ok_rows[k]])
+            med = float(np.median(neigh)) if neigh.size >= 5 else float(
+                np.median(jumps[ok_rows]))
+            worst_ratio = jumps[worst_i] / med if med > 0 else float("inf")
+            lat_hi, lat_lo = float(lat[worst_i]), float(lat[worst_i + 1])
+            step = (zrow[worst_i + 1] / zrow[worst_i]
+                    if zrow[worst_i] else float("nan"))
+            # Require the step to be MATERIAL as well as anomalous. On a field that is
+            # near-zero in the band concerned, the median row-to-row change is tiny and
+            # the ratio alone inflates: `driedarea` scored 8-11x on a level change of only
+            # 1.25-1.33x, which is not a seam. A real source discontinuity moves the level
+            # by a large factor -- `fldfrc` halves (0.52x = 1.92-fold).
+            fold = max(step, 1.0 / step) if step and np.isfinite(step) and step > 0 \
+                else float("inf")
+            declared = str(attrs.get("known_latitude_seams", ""))
+            expected = any(
+                abs(lat_hi - float(tok)) < 1.0
+                for tok in re.findall(r"-?\d+(?:\.\d+)?", declared))
+            chk(s, "no undeclared sharp latitude seam in the zonal profile",
+                not (worst_ratio >= 9.0 and fold >= 1.5) or expected,
+                f"largest single-row jump {lat_hi:.2f}N->{lat_lo:.2f}N: "
+                f"{zrow[worst_i]:.4f}->{zrow[worst_i+1]:.4f} ({step:.2f}x level), "
+                f"{worst_ratio:.1f}x the LOCAL median row-to-row change ({med:.4f}), "
+                f"{fold:.2f}-fold level step"
+                + (f"; DECLARED in known_latitude_seams={declared!r}" if expected
+                   else "; not declared -- investigate whether the INPUT changes "
+                        "source at this latitude, then record it in "
+                        "known_latitude_seams"),
+                severity="warning")
+
     if shared_baseline and len(scenarios) > 1:
-        log("\n--- shared baseline (must be identical across scenarios) ---")
-        for k in VALUE_CLASSES:
-            ref = ds_by_scen[scenarios[0]][k].values[b_idx]
-            same = all(np.allclose(ref, ds_by_scen[s][k].values[b_idx], equal_nan=True)
-                       for s in scenarios[1:])
-            chk("cross-scenario", f"{baseline}s {k} identical across scenarios", same)
+        # The baseline panel must be identical across scenarios that share the same
+        # ENSEMBLE COMPOSITION -- which is every scenario whenever the ensemble is uniform,
+        # the case for every layer before timber_*-tempnle. Where a member is missing from
+        # some scenario (orchidee-dgvm publishes no rcp85), the baseline must be pooled over
+        # that scenario's own members, or differencing baseline against decades manufactures
+        # trend (WORKFLOW-ISSUES 2026-07-28; GUARDRAILS S13). Requiring bit-identity there
+        # would demand the very defect it is meant to prevent, so scenarios are grouped by
+        # the composition the layer declares and identity is asserted WITHIN each group.
+        groups = {}
+        for s in scenarios:
+            groups.setdefault(_composition_of(attrs, s), []).append(s)
+        if len(groups) > 1:
+            log(f"\n--- shared baseline, grouped by ensemble composition: "
+                + "; ".join(f"{sig or 'unspecified'} -> {grp}" for sig, grp in groups.items()))
+            log("    (composition varies by scenario, so the baseline panel is pooled per "
+                "scenario; identity is required only within a group)")
+        else:
+            log("\n--- shared baseline (must be identical across scenarios) ---")
+        if all(len(grp) < 2 for grp in groups.values()):
+            # Every scenario has a distinct member set, so this invariant cannot be tested
+            # at all. Say so as a WARNING rather than letting the section pass in silence --
+            # a check that quietly tests nothing is worse than one that fails.
+            chk("cross-scenario",
+                f"{baseline}s baseline identity is testable across scenarios", False,
+                f"NOT TESTED: every scenario has a distinct ensemble composition "
+                f"({'; '.join(f'{s}->{_composition_of(attrs, s)}' for s in scenarios)}), so "
+                f"no two baseline panels are required to match. The per-member baseline is "
+                f"still scenario-independent by construction, but that is not visible in the "
+                f"published artifact.", severity="warning")
+        for sig, grp in groups.items():
+            if len(grp) < 2:
+                log(f"  [cross-scenario] {grp[0]} is the only scenario with composition "
+                    f"{sig or 'unspecified'}; nothing to compare it against")
+                continue
+            label = "" if len(groups) == 1 else f" within {sig}"
+            for k in VALUE_CLASSES:
+                ref = ds_by_scen[grp[0]][k].values[b_idx]
+                same = all(np.allclose(ref, ds_by_scen[s][k].values[b_idx], equal_nan=True)
+                           for s in grp[1:])
+                chk("cross-scenario", f"{baseline}s {k} identical across scenarios{label}",
+                    same, f"scenarios compared: {grp}")
 
     log("\n--- land coverage ---")
     for s in scenarios:

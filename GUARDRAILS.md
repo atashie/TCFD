@@ -307,3 +307,23 @@ drives it *below* the median there and breaks CI ordering.
 - Cross-check the implied area: global land is ~148.9 M km², ~134.6 M km² excluding Antarctica. A land variable claiming far less warrants investigation; one claiming much more is including ocean.
 - Before escalating coverage to the user as a decision, verify the denominator. An unnecessary decision point costs credibility and the user's time.
 - Emit a per-cell coverage diagnostic (`n_members` / `n_models`, and a domain-fraction field such as `floodplain_fraction` where a cell can be partly inside the model domain) so a partly-covered cell is auditable instead of merely looking low.
+
+## 13. Establish a PFT Field's Value Convention Before Pooling It, and Match Baseline Composition Per Scenario
+
+**Rule**: A PFT-resolved field carries a **per-model** reporting convention, and pooling two conventions averages two different physical quantities. Establish each member's convention from the values, never from the metadata. Separately: the shared 2020s baseline is only valid when ensemble composition is uniform across scenarios — otherwise the trend is partly manufactured.
+
+**Why this matters** (all measured 2026-07-28 building `timber_cveg-tempnle_annual` / `timber_npp-tempnle_annual`):
+- Two conventions exist. **Per-tile density** reports the value on the PFT's own tile area, so `sum_i(frac_i * value_i)` recovers the cell total. **Per-gridcell** is already cover-scaled. orchidee / orchidee-dgvm / clm45 are per-tile; lpjml / caraib are per-gridcell. Pooled raw, the apparent cross-model spread read **10.5× (cveg) and 177× (npp)**; harmonized and compared on a common mask the same models agree to **2.35× and 1.83×**. The first pair of numbers would have justified a normalization the data does not need.
+- **`pft-` unit labels are wrong often enough to be useless.** CLASSIC and ORCHIDEE declare `%` but store 0–1 fractions; JULES, LPJmL and CARAIB store true percent. Decide from the values: a fraction cannot exceed 1.
+- **A PFT's carbon can be undefined where the PFT is absent, and masks differ wildly** — clm45 writes ~9.7k cells (its tile extent) against orchidee's ~37k. Pooling the union mixes multi-model consensus with single-model marginal habitat sitting **12×** lower, which prints mask edges into the maps and distorts the percentile (a periphery cell ranks low for having fewer contributing models, not for low value).
+- **Non-uniform composition fakes a trend.** rcp85 read **−0.72 kg m⁻²/dec** at the 2030s with a plausible "recovery" purely because orchidee-dgvm sits in the all-member baseline, is absent from rcp85, and is *higher* than orchidee on the retained cells.
+- **Two sound decisions can compose into a third nobody chose.** "Require ≥2 models" plus "count orchidee + orchidee-dgvm as one family" silently became "require all models" for cveg, which has only two families — cutting coverage from 17,217 cells to 9,698 and UK cells from 275 to 134.
+
+**Required behavior**:
+- Decide the convention with the two-file test: a per-tile field **exceeds** the all-PFT total (clm45 does in 94.4% of cells, ratio p50 2.28); a per-gridcell field never does and collapses toward 0 as cover → 0. Confirm with the closure `sum(frac * value) / total == 1`.
+- Harmonize onto one convention **before** measuring inter-model spread or deciding normalization, and compare models **on a common mask** — own-mask medians compare different cell populations.
+- Converting per-gridcell → per-tile means dividing by cover, so **apply a cover floor** and drop floored cells from `n_members` rather than emitting an amplified value (below 1% cover the amplification exceeds 100×). Check the floor's cost in the regions the product is actually for, not just globally.
+- Prefer per-tile when any member publishes **no** cover fraction (clm45), since that member can never be converted the other way.
+- State the mask rule in terms of **distinct model families**, and check what the rule degenerates to at the actual family count before quoting coverage.
+- **Verify baseline composition per scenario.** If any member is missing from any scenario, pool each scenario's baseline panel over that scenario's members. Accept that the baseline panel is then not bit-identical across scenarios; keep the percentile *reference* distribution global so percentiles stay comparable.
+- Assert `isfinite(trend) == isfinite(median)` per decade before publishing — a bare `np.zeros()` for the baseline decade makes the whole ocean a finite zero (§10), and it propagates by copy-paste between processors.

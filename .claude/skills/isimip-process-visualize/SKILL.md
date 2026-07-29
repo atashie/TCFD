@@ -74,6 +74,12 @@ Watch for these, all of which have actually occurred:
 | **soc/sens variant sound for one variable, broken for another** | `classic`/`2015soc-from-histsoc` is fine for `csoil`, mixed-scale for `burntarea`. Never inherit a variant — re-value-check it |
 | **Monthly cadence semantics assumed** | `burntarea` **accumulates** → annual = **SUM**; `csoil` is a stock → annual = **mean**. Copying the csoil precedent under-scales fire 12×. If a model publishes two cadences (classic: daily + monthly), use them as ground truth |
 | **Clamping a cumulative quantity at its nominal ceiling** | annual burnt area exceeds 100% where a cell reburns; clamping `upper_ci` to 100 drives it below the median |
+| **PFT field reported per-tile vs per-gridcell** | `timber_*-tempnle`: `orchidee`/`clm45` report on the PFT's own tile area, `lpjml`/`caraib` are already cover-scaled. Pooling raw made the spread read **10.5×/177×**; harmonized on a common mask it is **2.35×/1.83×** |
+| **`pft-` cover-fraction units lie** | `classic` and `orchidee` declare `%` but store **0–1**; `jules`/`lpjml`/`caraib` store true percent |
+| **`long_name` copied from an unrelated variable** | `orchidee` `cveg-tendev` reads "crop biomass yield" (an `ncrename` artifact in the file's own `history`); its `npp` claims "positive" yet holds negatives; `caraib` has **no `long_name` at all** |
+| **PFT class name contradicts its geography** | `caraib` `ndevtecdt` has "te" in the code but peaks at 55–70°N — it is **boreal**. With no `long_name`, classes must be identified by cover-weighted latitude profile |
+| **A "temperate"/"boreal" class is not a sub-mixture** | `evgndltr`/`ndlevg` are each ONE PFT with one global parameter set; only cover fraction and climate forcing vary per cell. JULES splits broadleaf evergreen into `bdlevgtemp`/`bdlevgtrop` but publishes a single `ndlevg` — proof the conifer class is not internally climate-split |
+| **Zero-inflation faking a coarse grid** | these PFT fields are 50–72% exact zeros, so an all-zero 2×2 block counts as "constant": the resolution test read 49–66% for native-0.5° models. Run it on **strictly positive** blocks only |
 
 **Checking `ds.sizes` proves nothing about resolution.** A natively coarse model
 replicated onto the ISIMIP grid reports the same 360×720 as a native 0.5° model. Test the
@@ -104,12 +110,44 @@ into `layer.json` so the manifest cannot drift from the data:
   stored carbon, where the risk is *loss* and the percentile is **inverted**).
 - `trend_definition` + `trend_units` — see §10.
 - `baseline_decade`, `baseline_source` — the shared 2020s baseline must be **identical
-  across scenarios**, computed from all scenarios with overlapping 2020s data.
+  across scenarios**, computed from all scenarios with overlapping 2020s data — **but only
+  when ensemble composition is uniform across scenarios.** Check first. If any member is
+  missing from any scenario, pool each scenario's baseline panel over **that scenario's**
+  members, or the change map differences two different ensembles and manufactures trend:
+  `timber_cveg-tempnle` read **−0.72 kg m⁻² dec⁻¹** at rcp85 2030s with a plausible later
+  "recovery", purely because `orchidee-dgvm` sat in the baseline, is absent from rcp85, and
+  is *higher* than `orchidee` on the retained cells. The 2020s panel is then no longer
+  bit-identical across scenarios — declare `members_by_scenario` (member **identity**, not
+  a count) so the QA check groups by composition instead of failing. Keep the percentile
+  *reference* distribution global so percentiles stay comparable.
 - Zero-inflated hazards → two-tier percentile (zeros → 1; non-zeros ranked against the
   non-zero baseline → [2,100]).
 
 Emit `n_members` / `n_models` per cell whenever the ensemble's land masks differ, so the
 CI is auditable. Do not silently mask thin cells — that is a product decision for the user.
+
+**Before differencing anything, assert `isfinite(trend) == isfinite(median)` per decade.**
+A bare `np.zeros()` for the baseline decade makes the entire **ocean** a finite zero, and
+QA does not catch it (it only checks that finite baseline trends *equal* zero, never that
+the masks agree). This defect is live in `process_burntarea_fire.py` and
+`process_csoil_soilcarbon.py` and **propagates by copy-paste** to anything templated on
+them.
+
+**When members are two configurations of one model, pool by FAMILY, not by member.**
+`orchidee` and `orchidee-dgvm` are the same code with/without dynamic vegetation (the
+non-DGVM file's own attrs read `ORCHIDEE-MICT(w/tDGVM)` with a `nodgvm` path), so a flat
+member mean gave one model 6 of 8 votes. Mean within family, then across families; let
+`n_models` count families. **Then re-derive any mask rule** — "≥2 models" plus family
+counting silently became "≥2 *families*", which for a 2-family track is "all models", and
+coverage fell from a quoted 17,217 cells to 9,698. Two sound decisions can compose into a
+third nobody chose; recompute the numbers after both are applied and re-quote them.
+
+**A level step between multi-model and single-model cells is not model disagreement.**
+Where model masks barely overlap, the pooled mean was 6.29 vs 0.52 kg m⁻² on all-model vs
+one-model cells (**12×**) because each model's periphery is marginal habitat. Pooling the
+union prints hard mask edges into the maps *and* distorts the percentile — a periphery cell
+ranks low for having fewer contributing models, not for a low value. Decide a minimum-model
+rule with the user and state coverage in cells for the regions the product is actually for.
 
 ### 4. Publish, then finalize — one call, not three
 
@@ -160,6 +198,25 @@ Read the warnings, don't just check the verdict. And if a check reports itself
 **skipped**, treat that as a failure to investigate — a silently skipped invariant is
 worse than a failed one.
 
+**When a check fails because it encodes an assumption your layer legitimately breaks, fix
+the CHECK — never the data, and never by loosening the check for every layer.** The
+cross-scenario baseline-identity check assumed a uniform ensemble, which held for every
+layer before `timber_*-tempnle`. It now groups scenarios by the `members_by_scenario`
+identity each file declares and asserts bit-identity *within* a group, so uniform layers
+behave exactly as before. Two things that made this safe rather than a weakening:
+
+- Group on member **identity**, not count. rcp26 and rcp60 both had 8 members but not the
+  *same* 8 (`clm45` contributes different GCM pairs per RCP), and a count-based signature
+  demanded bit-identity between panels that legitimately differ.
+- If the regrouping leaves **no** group with two scenarios, the check now emits an explicit
+  `NOT TESTED` warning. A check that quietly tests nothing is worse than one that fails.
+
+Same principle at the publish gate: `utils/layer_publish.py` rejects scenario files that
+disagree on any non-scenario-specific attribute, and it correctly fired on a per-scenario
+`n_members`. The fix was to record a `members_by_scenario` breakdown that is byte-identical
+in every file — strictly *more* information — not to add `n_members` to
+`_SCENARIO_SPECIFIC` and weaken the guard for every existing layer.
+
 **A green verdict is not verification.** These are algebraic self-consistency checks; a
 field can satisfy all of them and still be geophysically wrong. **View the maps** and
 confirm the geography is plausible — mountain ranges, biome boundaries and coastlines
@@ -186,6 +243,9 @@ be re-downloadable. Never delete raw before the user has reviewed the maps.
 `process_csoil_soilcarbon.py` (mixed cadence, 17 members, `EXCLUDED_MODELS`, coverage diagnostics),
 `process_burntarea_fire.py` (thick ensemble, baseline-anchored trend),
 `process_let_cyclone.py` (thin ensemble → spatial smoothing, zero-inflated → two-tier
-percentile), `process_led_drought.py` (binary exposure flag).
+percentile), `process_led_drought.py` (binary exposure flag),
+`process_timber_tempnle.py` (**two tracks from one parameterized script**; mixed per-tile /
+per-gridcell PFT conventions harmonized with a cover floor; model-**family** pooling;
+minimum-family mask; per-scenario baseline composition).
 
 Scripts other than these four still use pre-S3 local paths — check before copying one.

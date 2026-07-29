@@ -155,6 +155,26 @@ python scripts/process_csoil_soilcarbon.py
 **Input**: `s3://…/TCFD/raw/isimip/soilcarbon_csoil_annual/*_csoil-total_global_*_2015_2100.nc` (66 files staged, 7.47 GB, both `annual` and `monthly`; 51 used after excluding `elm-eca`)
 **Output**: published layer `soilcarbon_csoil_annual` — `csoil_{ssp126,ssp370,ssp585}_processed.nc`
 
+### process_timber_tempnle.py
+
+Processes the ISIMIP2b **temperate needleleaf evergreen** conifer PFT into two TCFD layers from **one parameterized script** — `timber_cveg-tempnle_annual` (**kg m⁻²**) and `timber_npp-tempnle_annual` (**kg m⁻² yr⁻¹**, converted from `kg m-2 s-1` on the members' own 365-day calendar). The timber-growth-productivity signal for maritime/temperate conifers (the Sitka-spruce use case). Fully value-checked 2026-07-28 (see WORKFLOW-ISSUES.md and GUARDRAILS §13):
+- **Why 2b, not 3b**: there is **no PFT-resolved `cwood` anywhere in ISIMIP2b** (all 11 `biomes` models *and* `permafrost` checked), and **no climate-zone-resolved conifer PFT carries `cwood` in any round**. 3b has `cwood` only for the all-climate classes (`classic` `evgndltr` 2 GCMs, `jules-es-vn6p3` `ndlevg` 5), which pool boreal with temperate conifers — **34.6% / 29.3%** of their global PFT wood sits at 55–70°N. Climate specificity was chosen over the wood-only pool; wood is p50 **77–90%** of conifer `cveg`, so `cveg` is a damped wood surrogate, not a different signal.
+- **Ensemble** = `orchidee` `tendev` (4 GCMs) + `orchidee-dgvm` `tendev` (2, no rcp85) + `clm45` `needleleaf-evergreen-tree-temperate` (ragged: 2/1+1 fixed-CO₂/2) + `lpjml` `temperate-needleleaved-evergreen-tree` (4, **npp track only** — no per-PFT `cveg`) → **cveg 8/8/6, npp 12/12/10** at rcp26/60/85. rcp85 is thinner by construction.
+- **`caraib` `ndevteclt` is excluded** (~1–2° effective grid, per-gridcell convention, no rcp85) but stays ingested as a sensitivity panel. Its codes carry **no `long_name`** and were identified by cover-weighted biogeography — `ndevteclt` is temperate; **`ndevtecdt` is boreal despite "te"** in the code.
+- **Two value conventions harmonized to per-tile density**: `orchidee`/`orchidee-dgvm`/`clm45` report on the PFT's own tile area, `lpjml`/`caraib` are already cover-scaled and are divided by cover with a **1% floor** (floored cells drop out of `n_members`). Per-tile was required because `clm45` publishes **no cover fraction at all**. Harmonizing collapsed the apparent spread from **10.5×/177×** to **2.35×/1.83×** on a common mask → **no normalization**.
+- **Pooled by model FAMILY, not member** (`orchidee` + `orchidee-dgvm` are one model in two configurations), with the CI as ±1 SD **across family means** — a deliberate departure from the flat inter-member SD used by led/let/burntarea/csoil, since `orchidee` supplies 6 of 8 cveg members.
+- **Mask rule: ≥2 model families.** The pooled level differs **12×** between multi-model and single-model cells (marginal habitat), so the union would print hard mask edges and distort the percentile. Note this degenerates to "all models" for cveg, which has only 2 families.
+- **Baseline composition is per scenario.** Composition varies by scenario, so an all-member shared baseline manufactured a **−0.72 kg m⁻² dec⁻¹** rcp85 loss with a fake recovery. The 2020s panel is therefore *not* bit-identical across scenarios; `members_by_scenario` (member **identity**) is declared so the QA check groups by composition.
+- **Direction is `higher_is_better`** (risk = declining growth potential); baseline-anchored trend; npp CI **not floored** (npp is legitimately negative — net carbon loss). Also emits `pft_cover` as a context field (incomplete: `clm45` publishes none).
+
+```bash
+python scripts/process_timber_tempnle.py cveg
+python scripts/process_timber_tempnle.py npp
+```
+
+**Input**: `s3://…/TCFD/raw/isimip/timber_{cveg,npp}-tempnle_annual/` (54 + 78 objects, 1.22 GB incl. `pft-` cover fractions)
+**Output**: published layers `timber_cveg-tempnle_annual` / `timber_npp-tempnle_annual` — `{cveg,npp}-tempnle_{rcp26,rcp60,rcp85}_processed.nc`
+
 ### download_fldfrc_flood.py
 
 Ingests ISIMIP2b `Zimmer2023` `fldfrc` (CaMa-Flood annual flooded-area fraction) — **216 files** = 6 GHMs × 4 GCMs × {rcp26, rcp60, rcp85} × {none, 100yr, flopros} — into **three** raw prefixes, one per protection level.

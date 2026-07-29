@@ -47,6 +47,16 @@ Filename grammar (parse from the END; model/GCM names contain hyphens, never und
                                                      [-5]     [-4]     [-3]   [-2] [-1]
 ```
 
+**Parsing from the END is not optional for PFT-qualified variables.** The variable field
+itself contains hyphens (`cveg-needleleaf-evergreen-tree-temperate`), so any fixed forward
+index breaks on exactly the datasets that need it most.
+
+**Anchor the extension in harvest regexes: `\.nc4?$`.** An unanchored `[\w.-]+\.nc` matches
+the `.nc` *inside* `.nc4` and truncates every ISIMIP2b filename by one character, so every
+URL built from the harvest 404s — which reads as "no data" rather than as a parsing bug.
+(See also the round/extension note under §8.) 2b files do carry `.json` sidecars with
+`size` + `sha512`; 3b `biomes` largely does not, so verify 3b by HTTP status instead.
+
 ## GUARDRAILS §8 — never guess specifier codes
 
 Specifiers are a controlled vocabulary. **`count=0` for something that plausibly exists is
@@ -92,6 +102,56 @@ generalized from.
   `biomes` and `permafrost`, byte-identical (same sha512). Ingesting both double-weights
   the model. Compare checksums.
 - When processing one member of a family, record the **whole** family in the catalog then.
+
+## Vegetation / PFT searches — treat variable × PFT × round as one lookup
+
+A PFT-resolved variable exists per **(round, model, variable, PFT)**, and the combination
+that a product needs frequently does not exist at all. Establish the intersection before
+promising anything (all verified 2026-07-28):
+
+- **PFT-resolved `cwood` exists ONLY in ISIMIP3b, from two models** — `classic` `evgndltr`
+  (2 GCMs) and `jules-es-vn6p3` `ndlevg` (5 GCMs). There is **no PFT-resolved `cwood`
+  anywhere in ISIMIP2b** — not in `biomes` (11 models) and not in `permafrost`. 2b PFT
+  output is `cveg` / `npp` / `gpp` / `pft` only.
+- **No climate-zone-resolved conifer PFT carries `cwood` in ANY round.** The climate-zone
+  classes (`clm45` `needleleaf-evergreen-tree-temperate`, `lpjml`
+  `temperate-needleleaved-evergreen-tree`, `orchidee` `tendev`, `caraib` `ndev*`) are 2b, so
+  wanting *both* climate specificity and the wood-only pool is unsatisfiable. Surface that
+  trade-off explicitly rather than picking one silently. Substituting `cveg` costs the
+  root+leaf fraction: wood is p50 **77–90%** of conifer `cveg`.
+- **`cveg` is not universal either** — `lpjml` publishes PFT-resolved `npp`/`gpp`/`pft` but
+  **no** per-PFT `cveg`, so a cveg track and an npp track have different member counts.
+- **Check the model's own PFT scheme before mapping a species onto it.** `jules` splits
+  broadleaf evergreen into `bdlevgtemp`/`bdlevgtrop` but publishes a single `ndlevg`; the
+  only 3b `cwood` token containing "temp" is `cwood-bdlevgtemp`, which is a temperate
+  **hardwood**, not a conifer. Reading the code as "temperate evergreen ⇒ what I want" is
+  how a broadleaf class gets proposed for a spruce question.
+- **A generic class is one PFT with one global parameter set**, not an internally weighted
+  mixture of climate-specific sub-types. Its cost is a shared parameterisation, and the
+  climate-zone mixing bites at the **percentile ranking** step (cells ranked against a
+  global distribution spanning boreal to subtropical), not in the raw per-cell values.
+- **Climate-zone specificity is not automatically better — it depends on the species.** It
+  helped loblolly (one zone). For a hyper-oceanic species spanning zones (Sitka spruce) it
+  *fragments* the range: `lpjml` temperate-NLE covers UK/Ireland (774/774 cells) but only
+  609/2451 in PNW-BC-SEAK, while `lpj-guess` boreal-NLE covers PNW (1866) and just **6** UK
+  cells. Check the candidate PFT's coverage **in the regions the product is for**.
+- **Species-level ISIMIP is 8–9 European stand sites, and there is no Sitka spruce.** The
+  forestry sector (2b: 10 models; 2a: 15) is the only place individual species and the real
+  forestry metrics (`mai` mean annual increment, `vol`, `harv`) appear, but it is not
+  griddable. Species vocabulary is exactly
+  `{acpl, bepe, fasy, lade, piab, pipi, pisy, psme, quro}`.
+- **`pft-{code}` cover fractions are published alongside** by most models and are how you
+  answer "does this model actually place this plant here". `clm45` publishes none.
+
+**The catalog's PFT guidance is written as recommendations, and an untested suggestion reads
+exactly like a measured fact.** Its top recommendation for temperate conifers pointed at
+MC2-USFS biome classes for years; MC2 publishes **no carbon or NPP resolved by biome type**
+(only `-total`/`-tree`/`-grass`), its 47 biome names are **one-hot 0/100 presence flags**,
+and `pft-maritimeevergreenneedleleafforest` is **identically zero in every run** (3b
+ssp370/gfdl, 3b ssp126/ukesm, 3a obsclim — 7,008,981 finite values, all 0). Before relaying
+a catalog recommendation, confirm the variable it names actually exists at the resolution it
+claims — and when a recommendation turns out to be unusable, **withdraw it in the catalog**
+rather than leaving it to be found again.
 
 ## Choosing what to download
 

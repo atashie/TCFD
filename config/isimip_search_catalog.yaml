@@ -974,6 +974,39 @@ search_results:
         historical: 5 GCMs 1850-2014 (mri-esm2-0 1950-2014 only)
         picontrol:  4 GCMs (no gfdl-esm4)
         NO ssp245 (consistent with the rest of ISIMIP3b).
+        File counts EQUAL the year spans exactly (86 = 2015-2100, 40 = 2061-2100,
+        165 = 1850-2014), so there are NO gaps within any span.
+        gfdl-esm4's absence is CONFIRMED BY HTTP 404 (not an empty-listing rate-limit
+        artifact) for picontrol / ssp126 / ssp370; it returns 200 only for historical
+        (165 files) and ssp585 (40 files, 2061-2100).
+      ensemble_structure: |
+        THREE nested axes, only ONE of which is a real impact model. Verified 2026-07-29.
+        1. TC/hazard model = EXACTLY ONE. tropical_cyclones/ holds a single model dir, MIT
+           (Emanuel statistical-dynamical downscaling); metadata specifier tc_model: "mit".
+           There is NO second TC model in ISIMIP3b or 3a. Unlike burntarea (3 fire models)
+           or csoil (4 land models), MODEL DEMOCRACY IS NOT AVAILABLE for this hazard --
+           all structural spread must come from GCMs and wind profiles.
+        2. Wind profile = TWO (specifier wind_model: er11-wind | h08-wind). These are two
+           parametric renderings of the SAME synthetic tracks, so they are NOT independent
+           members. Counting 4 GCMs x 2 profiles as "8 members" DOUBLE-COUNTS the tracks.
+           Use H08 as the member set and report ER11 as a sensitivity band.
+        3. GCMs = 4 usable for a full 2015-2100 series (5 in historical; 5 in ssp585 but
+           gfdl-esm4 only from 2061).
+        => 4 MEMBERS PER SCENARIO. Nominally as thin as let (4), but the EFFECTIVE sampling
+        is far larger: ~13x storm oversampling gives ~130 storm-years behind each
+        cell-decade (vs let's 10), and 144 sub-cells (6x6 at 1/12 deg) are pooled into each
+        0.5 deg cell. The sub-grid aggregation IS the strength-borrowing, so let's 5x5
+        spatial smoothing is probably unnecessary here -- decide from the maps, not a priori.
+      storm_count_is_universal: |
+        VERIFIED 2026-07-29: n_storm == 1500 and grid == 2160x4320 in ALL 102 readable
+        combinations of scenario {ssp126,ssp370,ssp585,historical} x profile {ER11,H08} x
+        GCM {gfdl-esm4,ipsl-cm6a-lr,mpi-esm1-2-hr,mri-esm2-0,ukesm1-0-ll} x 3 probe years
+        each (the 18 misses are gfdl-esm4's genuine 404s and pre-2061 ssp585/ssp126 years).
+        This matters: the 1500 -> annual-rate normalization is therefore a SINGLE GLOBAL
+        CONSTANT, not a per-member factor. Trend, percentile, change maps and CIs are
+        exactly invariant to it; only the absolute "% area affected per year" label moves.
+        Had the count varied by GCM, every member would have needed its own divisor and a
+        naive pooled mean would have silently weighted the GCMs unequally.
       oversampling_TRAP: |
         Every 3b year-file holds EXACTLY 1500 storms with SEQUENTIAL INTEGER ids, while the
         ISIMIP3a obsclim counterpart (same grid/format, IBTrACS-driven) holds the REAL
@@ -1044,7 +1077,7 @@ search_results:
         Hurricane-alley Florida records ZERO cell-days at or above 25 m/s in a decade.
       verdict: "NOT severe-wind capable -- MEASURED, not assumed. Also strictly dominated on every axis by the internal CMIP6 ws_max archive: 0.25 deg vs 0.5 deg, daily MAX vs daily MEAN, 20-21 models vs 5, and ssp245 included. Keep only if an ISIMIP-only provenance chain is a hard requirement."
     lange2020_exposure:
-      note: "The le t (land-area) / pe t (population) tropical-cyclone exposure twins are the pre-aggregated alternative; ISIMIP2b/CMIP5/RCP only, 1 impact model x 4 GCMs, 0.5 deg, fixed undocumented threshold. Already shipped as layer cyclone_let_annual. The 3b windlifetimemax route supersedes it on round, scenario family, resolution, threshold control and ensemble depth. See drought.exposure_lange2020."
+      note: "The le t (land-area) / pe t (population) tropical-cyclone exposure twins; ISIMIP2b/CMIP5/RCP only, 1 impact model x 4 GCMs, 0.5 deg, fixed threshold not stated in the file metadata. Shipped as layer cyclone_let_annual. CORRECTED 2026-07-29 (user): windlifetimemax does NOT supersede cyclone_let_annual -- they are INDEPENDENT PRODUCTS and both stand. An earlier note here claimed it superseded on round/resolution/threshold-control/depth; that was an unsanctioned judgement. See drought.exposure_lange2020."
     no_extratropical_product: "NEITHER ISIMIP nor the internal archive credibly resolves EXTRATROPICAL severe wind (European windstorms, derechos, convective downbursts). ISIMIP has no windstorm sector; the internal bias-corrected CMIP6 ws_max tail is capped ~35 m/s by ERA5 quantile mapping. Any 'severe wind' layer built from what exists is a TROPICAL-CYCLONE wind layer and must be labelled as such."
     internal_alternative:
       location: "s3://climate-ai-data-science-datasets/cmip6/zarr/day/ws_max/ (NOT ISIMIP -- internal debiasing pipeline)"
