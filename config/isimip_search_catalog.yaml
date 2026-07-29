@@ -496,6 +496,34 @@ search_results:
       lew_exposure:
         note: "Lange 2020 land-area-exposed-to-unprecedented-wildfire. See drought.exposure_lange2020.family (lew). Exposure framing; NOT processed."
         verified_2026_07_28: "5 models (caraib, lpj-guess, lpjml, orchidee at 4 GCMs; visit at only 3) -> 19 members per scenario. Scenarios rcp26 + rcp60 ONLY -- there is NO rcp85. The earlier 'rcp26=31' was a DATASET count including soc/sens variants, not members. Lives in ISIMIP2b/DerivedOutputData/Lange2020/ (filenames carry a 'lange2020_' prefix, which shifts field offsets by one vs OutputData)."
+      zantout2025_wildfire:
+        long_name: "SSP-era wildfire EXPOSURE (the ISIMIP3b successor to Lange2020 `lew`)"
+        note: |
+          MISSED by the 2026-07-28 wildfire enumeration, added 2026-07-29. That pass walked
+          OutputData thoroughly but never listed ISIMIP3b/DerivedOutputData/, so it asserted
+          the exposure framing was rcp26/rcp60-only. It is not: the concept was re-issued for
+          ISIMIP3b under a different publication name and a HAZARD-WORD variable
+          (`wildfire`), not an `le*` code, so searching `lew` in 3b returns nothing and reads
+          as "absent". Same class of error as the Lange2020 -> Heinicke2026 miss.
+        location: "ISIMIP3b/DerivedOutputData/Zantout2025/{MODEL}/{gcm}/future/ ; filenames prefixed 'zantout2025_'"
+        verified_2026_07_29: |
+          Variable `wildfire`, ANNUAL, ssp126/370/585, 2015-2100, 2015soc/default.
+          3 fire-capable models -> 12 members/scenario:
+            classic            2 GCMs (gfdl-esm4, ukesm1-0-ll)   6 ssp files
+            lpjml5-7-10-fire   5 GCMs                           15 ssp files
+            visit              5 GCMs                           15 ssp files
+          (The publication also carries `cropfailure` from 8 crop models and `heatwave` from
+          hwmid-none; those are separate hazards, not wildfire.)
+        why_not_chosen: |
+          NOT the requested metric. The user asked for AREA BURNED PER YEAR; this is an
+          EXPOSURE framing (fraction exposed to unprecedented wildfire), the same conceptual
+          family as `lew`, so it answers a different question than `burntarea`.
+          Worth knowing it exists, and it is an attractive fallback if the burntarea
+          layer's open issues prove fatal: it is ISIMIP3b/SSP, annual (no monthly
+          SUM step), 12 members/scenario, and it includes `lpjml5-7-10-fire`, a DEDICATED
+          fire model absent from the burntarea ensemble. Data nature UNVERIFIED (the
+          sibling Heinicke2026 `floodedarea` turned out to be strictly binary despite
+          declaring "Exposed Area Share" -- value-check before assuming a fraction).
       burntarea:
         long_name: "Burnt area fraction (percent of grid cell burned per reporting interval)"
         note: "DIRECT biophysical fire output -- the chosen representation. API count for bare 'burntarea' = 1001 (TRUNCATED) -> enumerated per round from the file server."
@@ -922,6 +950,121 @@ search_results:
       Annualizing monthly members is immaterial: within-year CV 0.012% (elm-eca) / 0.108%
       (visit); |Dec - annual mean|/mean 0.014% / 0.103% -- ~3 orders below the model spread.
     processed: "2026-07-28 -> TCFD layer, 17 members (current: v2026-07-28_b203c3a-dirty; supersedes the 22-member 2026-07-27 run and the 12-member 2026-07-25 run, whose version prefixes were pruned from S3 on 2026-07-28 to reclaim 853 MB -- see _VERSION.json pruned_versions). Global-mean csoil 2020s baseline 9.3142 kg m-2; by 2090s +2.81% ssp126 / +1.18% ssp370 / +0.72% ssp585. QA 48/52 passed, 0 failed, 4 warnings -- all effective-resolution checks now PASS (no dominant seam spacing detected). Trade-off of dropping elm-eca: single-model cells rose 5.91% -> 9.23% of land and zero-width-CI cells 0.52% -> 3.6%, since fewer models cover the thin margins. EARLIER (superseded) 22-member run: scripts/process_csoil_soilcarbon.py -> S3 layer soilcarbon_csoil_annual. Verified 37/37 QA checks: CI ordering 0 violations, 2020s baseline bit-identical across scenarios, trend*span == change to 2.4e-07, percentile inverted (corr median<->pct = -0.956), scenario ordering monotonic. Global-mean csoil by 2090s: +2.50% ssp126 / +1.57% ssp370 / +1.24% ssp585. NOTE the SIGN FLIPPED vs the 12-member run (+1.1/-1.4/-2.2%): recomputing the old 3-model ensemble from the same files reproduces it to within 0.05pp, so the change is ensemble MEMBERSHIP, not processing. Per-model 2090s change is contested: visit +7.1%, elm-eca +2.6%, classic +0.8%, mc2-usfs ~0%, jules -4.4% (ssp585). See WORKFLOW-ISSUES.md 2026-07-27, GUARDRAILS §8-§9."
+
+  # -------------------------
+  # severe wind
+  # -------------------------
+  severe_wind:
+    last_searched: "2026-07-28"
+    description: "Severe wind / area affected per year. NOT an OutputData sector -- there is no wind or storm sector in any round. Wind lives in InputData: (a) ISIMIP3b InputData/climate/tropical_cyclones/MIT = per-storm gridded TC wind footprints (the only credible SEVERE-wind source), (b) bias-adjusted atmospheric forcing sfcwind = daily MEAN 10m wind (not severe-capable), (c) the Lange2020 le t / pe t exposure twins = already-aggregated TC exposure (ISIMIP2b/RCP only)."
+    enumeration_2026_07_28: |
+      Walked every round: OutputData sectors (2b: 12, 3b: 8) contain NO wind/storm sector.
+      Wind exists only as InputData. Three distinct representations found -- do not conflate.
+    tropical_cyclone_wind_fields:
+      path: "ISIMIP3b/InputData/climate/tropical_cyclones/MIT/global/storm/{scenario}/{ER11-wind|H08-wind}/{GCM}/"
+      variables: ["windlifetimemax (m s-1, 'Lifetime maximum 1-minute sustained wind speed')", "maxrain"]
+      reference: "10.48364/ISIMIP.779038; Quesada-Chacon, Novak, Hamester & Otto 2025; dataset described in Frieler et al. 2025 (10.5194/egusphere-2025-2103)"
+      grid: "2160 x 4320 = 1/12 deg (300 arc-sec) global -- VERIFIED from coordinate steps (0.08333), ~13x finer than the 0.5 deg TCFD grid"
+      structure: "dims (storm=1500, lat=2160, lon=4320) float32, one file PER YEAR, ~200-310 MB each (56 GB logical; compresses ~180x because most cells are exactly 0)"
+      wind_profiles: "TWO parametric profiles = a genuine second ensemble axis: ER11 (Emanuel & Rotunno 2011) and H08 (Holland 2008). The bare ER11/ H08 dirs (API datasets named 'yearlymaxwind') are EMPTY on the file server in every scenario x GCM probed -- only the '-wind' variants hold data."
+      availability: |
+        ssp370:  4 GCMs (ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll) x 2 profiles, 2015-2100 (86 yr) COMPLETE
+        ssp585:  same 4 GCMs 2015-2100 COMPLETE, plus gfdl-esm4 2061-2100 only (40 yr)
+        ssp126:  4 GCMs x 2 profiles but ONLY 2061-2100 (40 yr) -- NO 2020s baseline, no 2020s-2050s decades
+        historical: 5 GCMs 1850-2014 (mri-esm2-0 1950-2014 only)
+        picontrol:  4 GCMs (no gfdl-esm4)
+        NO ssp245 (consistent with the rest of ISIMIP3b).
+      oversampling_TRAP: |
+        Every 3b year-file holds EXACTLY 1500 storms with SEQUENTIAL INTEGER ids, while the
+        ISIMIP3a obsclim counterpart (same grid/format, IBTrACS-driven) holds the REAL
+        annual count -- 107 (1980), 114 (2000), 115 (2005), 120 (2020) -- with genuine
+        IBTrACS SIDs like '2000003S13082'. So 3b is SYNTHETIC and oversampled ~13x.
+        Consequences:
+        1. The `storm` coord's long_name "IBTrACS Serial ID" is MISLABELED in 3b
+           (template inherited from 3a). Do not treat 3b ids as real storms.
+        2. You CANNOT take a per-year max over the 1500 storms and call it an annual max --
+           that is a ~13-17 year envelope. Compute a per-cell exceedance COUNT and scale to
+           a Poisson rate: rate = count * (N_obs_per_yr / 1500), then P(>=1 event) =
+           1 - exp(-rate). The MIT event set is calibrated to 85 TC yr-1 globally over
+           1979-2023 (Emanuel 2025), vs ~114 yr-1 for IBTrACS all-systems -- so the
+           denominator is a documented CHOICE, best pinned by matching the 3a obsclim
+           area-affected over the overlap period.
+        3. The scaling constant is IDENTICAL for every year/GCM/scenario, so trend,
+           percentile, change maps and CIs are completely INSENSITIVE to it. Only the
+           absolute "% area affected per year" label depends on it.
+      value_check_2026_07_28: |
+        Read 3 full files (mri-esm2-0: ER11 historical 2000, ER11 ssp370 2050, H08 ssp370 2050),
+        1500 storms each, ~333 s/file single-threaded (decompression-bound).
+        Storm peak wind (m/s) ER11 ssp370 2050: min 2.1, p50 31.1, p90 54.5, max 112.3.
+        H08 same year: p50 25.7, max 92.6.  ER11's 112 m/s EXCEEDS the observed 1-min
+        sustained record (~95 m/s, Patricia) -- an ER11 tail artifact.
+        Area affected per year (global, 0.5 deg aggregate, ER11, hist2000 -> ssp370 2050):
+          >=17.5 m/s 1.806 -> 1.963% of grid  (+8.7%)
+          >=25.0     0.679 -> 0.757%          (+11.5%)
+          >=33.0     0.200 -> 0.234%          (+16.8%)   Cat 1
+          >=43.0     0.061 -> 0.075%          (+22.5%)   Cat 2
+          >=50.0     0.028 -> 0.038%          (+36.9%)   Cat 3
+          >=58.0     0.012 -> 0.019%          (+59.1%)   Cat 4
+          >=70.0    0.0024 -> 0.0051%         (+110.7%)  Cat 5
+        Clean log-linear threshold decay and MONOTONE amplification of the warming signal
+        with threshold -- the theoretically expected signature. Aggregated to 0.5 deg at
+        >=33 m/s: 2.85% of cells have >0 exposure; among those p50 = 5.4%, p99 = 44%,
+        max 67% of cell area -- a well-behaved CONTINUOUS sub-grid area fraction, far
+        richer than a binary flag. Zero-inflation is severe (97% of 0.5 deg cells are
+        exactly 0) -> use the two-tier percentile from process_let_cyclone.py.
+      ER11_POLEWARD_ARTIFACT: |
+        FOUND ONLY BY LOOKING AT A MAP (GUARDRAILS §11) -- invisible in every distribution
+        statistic above. At >=33 m/s, ER11 puts 5.4% of global area-affected POLEWARD OF 45 deg
+        and 1.9% poleward of 60 deg, reaching 79.2 N -- Cat-1 sustained winds over Hudson Bay,
+        Scandinavia and Siberia, which is not physical. H08 at the same threshold is EXACTLY
+        0.000% poleward of 45 deg, max |lat| 45.2. The ER11 profile is formulated for the TC
+        inner core and misbehaves for the large-radius / weak post-tropical systems that
+        tracks become at high latitude.
+        Confined to the <=33 m/s tiers: at >=43 m/s ER11 falls back to max |lat| 48-53.
+        At >=17.5 m/s BOTH profiles leak to 83-84 deg (ER11 ~2x more than H08).
+        => H08 is the trustworthy primary; ER11 belongs as a documented upper-bound
+        sensitivity member, NOT a co-equal ensemble member (that would inflate the CI with
+        a known artifact).
+      cost: "4 GCMs x 3 ssp x 86 yr x ~250 MB ~= 260 GB per wind profile (no historical needed -- the 2020s baseline is inside the ssp370/585 files). Streamable: download -> count exceedances -> discard, leaving 1 MB per year at 0.5 deg. Compute ~333 s/file single-threaded; 8 cores + subsampling 5 of every 10 years brings a single-profile 3-scenario run to a few hours."
+    sfcwind_forcing:
+      path: "ISIMIP3b/InputData/climate/atmosphere/bias-adjusted/global/daily/{scenario}/{GCM}/  (2b: InputData/GCM_atmosphere/biascorrected/global/{scenario}/{GCM}/)"
+      name_differs_by_round: "ISIMIP3b lowercase 'sfcwind'; ISIMIP2b camelCase 'sfcWind'. 2b files are .nc4, 3b .nc."
+      coverage: "3b: 5 GCMs (gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll) x ssp126/370/585 + historical + picontrol, daily 0.5 deg, 2015-2100 in 9 chunks. 2b: 4 CMIP5 GCMs x rcp26/60/85 + historical + piControl (also carries psl, which 3b does not)."
+      variable_nature: "DAILY MEAN 10 m wind speed -- there is NO sfcwindmax / gust / daily-max variable anywhere in ISIMIP. 11 forcing variables per GCM in 3b (hurs huss pr prsn ps rlds rsds sfcwind tas tasmax tasmin); 12 in 2b (adds psl, no tasrange)."
+      cost: "2.84 GB per GCM per scenario per decade -> ~380 GB for the full 3b sfcwind set."
+      value_check_2026_07_28: |
+        Read one full file (mri-esm2-0 ssp370 2051-2060, 2.84 GB, dims 3653 x 360 x 720,
+        units m s-1, grid 0.5 deg). Distribution (m/s) and cell-days exceeding a threshold
+        over the whole DECADE:
+          Florida:   p50 4.34  p99 11.95  p99.99 16.49  max 20.35 | >=15: 0.067%  >=25: 0.000%
+          NW Europe: p50 5.07  p99 14.23  p99.99 19.35  max 20.98 | >=15: 0.627%  >=25: 0.000%
+          Bay Bengal:p50 2.99  p99 10.63  p99.99 15.04  max 17.21 | >=15: 0.010%  >=25: 0.000%
+        Global max daily-mean wind anywhere in the decade: 40.78 m/s. Only 1.26% of cells
+        ever reach 25 m/s and 0.069% ever reach 33 m/s in TEN YEARS.
+        Hurricane-alley Florida records ZERO cell-days at or above 25 m/s in a decade.
+      verdict: "NOT severe-wind capable -- MEASURED, not assumed. Also strictly dominated on every axis by the internal CMIP6 ws_max archive: 0.25 deg vs 0.5 deg, daily MAX vs daily MEAN, 20-21 models vs 5, and ssp245 included. Keep only if an ISIMIP-only provenance chain is a hard requirement."
+    lange2020_exposure:
+      note: "The le t (land-area) / pe t (population) tropical-cyclone exposure twins are the pre-aggregated alternative; ISIMIP2b/CMIP5/RCP only, 1 impact model x 4 GCMs, 0.5 deg, fixed undocumented threshold. Already shipped as layer cyclone_let_annual. The 3b windlifetimemax route supersedes it on round, scenario family, resolution, threshold control and ensemble depth. See drought.exposure_lange2020."
+    no_extratropical_product: "NEITHER ISIMIP nor the internal archive credibly resolves EXTRATROPICAL severe wind (European windstorms, derechos, convective downbursts). ISIMIP has no windstorm sector; the internal bias-corrected CMIP6 ws_max tail is capped ~35 m/s by ERA5 quantile mapping. Any 'severe wind' layer built from what exists is a TROPICAL-CYCLONE wind layer and must be labelled as such."
+    internal_alternative:
+      location: "s3://climate-ai-data-science-datasets/cmip6/zarr/day/ws_max/ (NOT ISIMIP -- internal debiasing pipeline)"
+      contents: "pp_{MODEL}_r.zarr = ERA5-quantile-mapped daily MAX 10 m wind, 0.25 deg (721x1440), 2015-2100 daily; 21 models x historical/ssp126/ssp245 and 20 x ssp585 (gfdl-esm4 absent from ssp585). Also ws_max_daily_rechunked_all.zarr = the ERA5 observational reference, 0.25 deg daily max, 1979-01-01..2023-08-04. Raw CMIP6 sfcWind/sfcWindmax as netCDF under cmip6/nc/day/."
+      UNITS_TRAP: "histogram_bins.json declares 'm/s' but the VALUES ARE km/h. Verified against known events: ERA5 global daily median 27.5 (= 7.6 m/s, correct for 10 m daily max); Irma Florida landfall 2017-09-10 box max 121.1 (= 33.6 m/s, the known ERA5 magnitude for a smoothed Cat 5); quiet Sahara day max 34.1 (= 9.5 m/s). Read as m/s these imply a permanent global gale and a perfectly resolved hurricane core; read as knots the Sahara blows 17.6 m/s. Divide by 3.6."
+      TIME_AXIS_TRAP: "The pp_*_r.zarr time coordinate is MONTH-MAJOR, not chronological: all Januaries 2015..2100, then all Februaries, etc (11 backward jumps of -31045 days). Coverage is complete and duplicate-free (86 years, 365/366 days) -- it is a permutation, not a gap. xarray .sel(time=slice(...)) RAISES on it; call .sortby('time') first. ukesm1-0-ll is 2 days short (2049 and 2100 have 364)."
+      severe_wind_verdict: |
+        Cannot support a SEVERE-wind metric. Mean exceedance days/yr, ssp585, 4 models,
+        2015-2024 -> 2091-2100:
+          NW Europe >=60 km/h (16.7 m/s): 5.0-9.0 d/yr, change -13% to +27% -- sign disagreement
+          NW Europe >=75 km/h (20.8 m/s): 0.27-0.73 d/yr, +22/+42/+28/+61% -- all 4 agree
+          NW Europe >=90 km/h (25.0 m/s): 0.01-0.06 d/yr (1 day per 17-100 yr), -37% to +130%
+          NW Europe >=105 km/h: ~0.00 everywhere;  >=120 km/h (33 m/s): EXACTLY ZERO
+          Florida   >=90 km/h: 0.01-0.11 d/yr, -92% to +404%; >=105 one model reads "+9200%"
+                    off a single event
+        Above ~90 km/h the sample is 0-0.1 days/yr per cell and inter-model sign agreement
+        collapses -- the ERA5 quantile-mapping ceiling plus 100-250 km GCM grid boxes that
+        contain no severe gusts. USABLE for a "gale-day frequency" layer at 60-75 km/h
+        (where 20-21 models and ssp245 are real advantages over ISIMIP); NOT usable for
+        severe wind, and it is not an area-affected-per-year hazard metric.
 
   # -------------------------
   # biodiversity searches (BioScen1.5)

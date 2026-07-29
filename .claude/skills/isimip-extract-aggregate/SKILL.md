@@ -50,6 +50,9 @@ these wrong silently inverts a client's risk reading:
 - **`n_members` / `n_models`** where present — cells backed by one model have a CI that
   reflects GCM spread only. Flag or filter these for a client rather than presenting them
   at equal confidence.
+- **`known_issues`** where present — an OPEN, unresolved caveat the layer ships with. Read it
+  before quoting any number. `wildfire_burntarea_annual` carries one: values poleward of
+  ~70°N are unreliable (one model projects up to ~100%/yr burnt on Arctic islands).
 
 ## Extraction
 
@@ -57,6 +60,13 @@ these wrong silently inverts a client's risk reading:
   lat −89.75…89.75, lon −179.75…179.75). Report the actual cell centre used alongside the
   requested coordinate, and flag any point landing on a NaN (ocean / outside the model's
   land mask) rather than emitting a silent blank.
+- **Coastal points need a caveat.** For any per-cell **fraction** metric (`burntarea`, `led`,
+  `let`, `lew`, `fldfrc`) the value is a fraction of the *whole* cell, so a mostly-water
+  coastal cell reads low no matter how exposed its land is — and the coastal ring is also the
+  thinnest-covered part of the ensemble. Measured on `wildfire_burntarea_annual`: coastal
+  cells are 12.4% of land, their median is **18× below** the interior median, and **67.5%**
+  rest on a single model (vs 3.7% inland). Most client sites are coastal, so flag a coastal
+  hit explicitly rather than reporting it as a low-risk finding.
 - **Regions**: area-weight by `cos(lat)` — unweighted means over a lat/lon grid
   over-weight high latitudes. Use `scripts/extract_region_polygons.py` as the reference.
 - **Aggregating across cells**: use `np.nanmean`/`np.nanmedian`, and report the count of
