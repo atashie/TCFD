@@ -56,6 +56,19 @@ so `trend` and `trend_pvalue` are deliberately fitted on different series — si
 cells still return exactly 0, so `generate_qa_report.py` warns when a zero slope coincides
 with a significant p-value (0.03–1.1%, down from 25.1%).
 
+**Verified end-to-end 2026-07-31**: `process_driedarea_drought.py` was run in full with
+`publish_processed_layer`/`finalize_layer` stubbed (and `storage.push` hard-failed, so a
+mismatch could not overwrite the published layer), and its staged output diffed against S3.
+**Bit-identical on all 10 variables x 3 scenarios — 30/30, worst relative deviation
+0.000e+00**, identical finite masks, no attr diffs. That matters because the processor and
+`backfill_trend_significance.py` reach `trend`/`trend_pvalue`/`trend_tau` by different
+routes — the processor accumulates the annual ensemble mean member-by-member while
+streaming, the backfill rebuilds it in a separate pass. They agree to the last bit only
+because both add members in **sorted filename order**; float addition is not associative, so
+a different order would show up as small non-zero deviations rather than exact equality. Do
+not "simplify" either path's iteration order. The other five processors share this wiring
+but have not had their own end-to-end run.
+
 **Lessons worth keeping**:
 
 - **A statistic that is right on continuous data can be catastrophically wrong on
