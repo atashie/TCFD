@@ -162,10 +162,10 @@ drives it *below* the median there and breaks CI ordering.
 
 ## 6. Water Index Is a Separate Workflow From Standard TCFD
 
-**Rule**: The water risk index (`waterIndexUnderlyingData_*.nc`, 20 value types) is a **completely independent data product** from the standard TCFD annualized pipeline (6 value classes). **NEVER apply standard TCFD pipeline concepts** (kernel smoothing, Theil-Sen trends, percentile-of-score ranking, shared 2020s baseline) to the water index workflow.
+**Rule**: The water risk index (`waterIndexUnderlyingData_*.nc`, 20 value types) is a **completely independent data product** from the standard TCFD annualized pipeline (8 value classes). **NEVER apply standard TCFD pipeline concepts** (kernel smoothing, Theil-Sen trends, percentile-of-score ranking, shared 2020s baseline) to the water index workflow.
 
 **Why this matters**:
-- The standard TCFD pipeline produces 6 value classes: smoothed median, percentile score, trend, significance, lower/upper CI bounds
+- The standard TCFD pipeline produces 8 value classes: median, percentile score, trend, trend_pvalue, trend_tau, trend_n_obs, lower/upper CI bounds
 - The water index produces 20 value types: 12 monthly ensemble means + annual mean + 7 annual quantile breakpoints (Q05-Q95)
 - These are fundamentally different statistical approaches — confusing them produces incorrect output
 - The R code that generated the original water index files was NOT found in `_deprecated/` — it was a separate codebase
@@ -255,23 +255,42 @@ drives it *below* the median there and breaks CI ordering.
 
 ---
 
-## 10. Trend Must Be a Decadal Signal, Not a Within-Decade Annual Slope for Noisy Variables
+## 10. Trend Is a Theil-Sen Slope of the DECADAL Median Series — Never Annual, Never Within-Decade, Never a Two-Point Rate
 
-**Rule**: For a variable with high interannual variability (fire, precipitation extremes, floods), do **not** report the trend as the OLS slope of the *annual* series within a single decade. Use a **baseline-anchored across-decade rate** so the trend is spatially coherent and consistent with the change map.
+**Rule**: `trend[decade]` is the **Theil-Sen slope of the DECADAL MEDIAN series** over an **expanding window** from the baseline decade to the target decade, in **value per decade**. Compute it with `scripts/utils/trend_significance.py:theilsen_decadal()` — never hand-roll it, never fit within a single decade, never fit per member, and **never fit on the annual series** (see the zero-inflation trap below).
 
-**Why this matters**:
-- The legacy processors (`process_qg.py`, `process_led_drought.py`, `process_let_cyclone.py`) compute `trend[decade]` as the slope of the annual values *inside* that decade (10 points). For a noisy variable this slope is dominated by interannual noise → a spatially **spotty, sign-flipping** field, while the change map (a difference of two 10-year decadal means) is smooth. A user flagged exactly this for `burntarea` (2026-07-24).
-- A "trend" that contradicts the change map is misleading — they should tell the same story.
+**History — three superseded definitions, and why each was dropped**:
 
-**Required behavior** (for high-variance variables):
-- Compute the trend from the **decadal-median series**, anchored at the baseline decade:
-  `trend[decade] = (median[decade] − median[2020s]) / (elapsed decades)`, units *value* · decade⁻¹.
-- This makes each decade's trend the rate **from the 2020s baseline to that decade** (2090s panel = full baseline→2090s trend), built on decadal means so it is exactly the (decade − 2020s) change map ÷ elapsed decades → coherent by construction (corr = 1.0 with change at the last decade).
-- The baseline decade has no elapsed change → trend 0 (keeps the 2020s baseline bit-identical across scenarios).
-- **The trend's finite mask MUST match the median's.** `process_burntarea_fire.py:236` and `process_csoil_soilcarbon.py:241` return a bare `np.zeros(med_stack.shape[1:])` for the baseline decade, which makes the **entire ocean a finite zero** where the median is NaN. QA does not catch it: it checks only that *finite* baseline trends equal zero, never that the two masks agree. Emit `0.0` where the baseline median is finite and `NaN` elsewhere — see `process_driedarea_drought.py` (`anchored_trend`), which takes the baseline finite-mask as an argument. **Known-unfixed in burntarea and csoil** (WORKFLOW-ISSUES.md 2026-07-28).
-- **An automatic threshold rule must be checked against coverage before it is allowed to fire.** `make_pct_fn` in `process_burntarea_fire.py` auto-switches to the two-tier zero-inflated percentile above 2% exact zeros. For `driedarea` that rule would have fired on 3.59% zeros over the union land mask — but the figure is 0.18% over fully-covered cells, because the zeros live in cells that not all models cover (30 samples vs 450). The trigger would have measured **uneven model coverage, not a rare hazard**, and collapsed every never-dry cell onto percentile 1. When models disagree on the land mask, evaluate any such threshold on the fully-covered subset before trusting it, and record the measured value in the output attrs either way.
-- The generate_maps trend label is `[units decade⁻¹]`, so emit per-**decade** units, not per-year.
-- Reference: `scripts/process_burntarea_fire.py` (`anchored_trend`). Low-variance variables may keep the within-decade slope, but confirm the trend map is coherent against the change map before finalizing.
+1. **A within-decade annual slope (original defect).** The legacy processors (`process_qg.py`, `process_led_drought.py`, `process_let_cyclone.py`) fitted `trend[decade]` to the 10 annual values *inside* that decade. For a noisy variable that slope is dominated by interannual variability → a spatially **spotty, sign-flipping** field while the change map is smooth. A user flagged exactly this for `burntarea` (2026-07-24). **This objection still stands** and is the reason the window must span the whole record rather than one decade.
+2. **The baseline-anchored two-point rate** `(median[decade] − median[2020s]) / elapsed decades` (in force 2026-07-24 → 2026-07-30). It fixed the noise problem but threw away every interior decade: it is a function of exactly two numbers, so it has **no residual and no degrees of freedom, and therefore admits no p-value**. That is what left all nine layers unable to fill `Decadal_Trend_Significance` (§15).
+3. **Theil-Sen on the ensemble-mean ANNUAL series** (attempted and rejected the same day, 2026-07-30). Fitting the annual series looked strictly better — it uses every year and puts `trend`, `trend_tau` and `trend_pvalue` on one series — but it is **catastrophically wrong on zero-inflated hazards**. See the trap below; it was caught by a user question before it shipped past three layers.
+
+**Why the current definition is not a return to defect 1**: it fits across **decades**, never within one. Each panel fits the decadal medians from the baseline to that decade — 2 points at the first post-baseline panel rising to 8 at the last — and each of those medians is itself an average over 10 years × every member, so interannual noise is already suppressed before the fit. The estimator is **Theil-Sen**, the median of pairwise slopes, not OLS, so a single anomalous decade cannot drag it.
+
+**THE ZERO-INFLATION TRAP — why the annual series is forbidden**: Theil-Sen is a **median** of pairwise slopes, so wherever **more than half of all pairs are tied** the slope is **exactly 0**, no matter how much the quantity actually moved. On an annual hazard series most year-pairs are 0→0. Measured share of cells with an exactly-zero slope at the 2090s:
+
+| layer | annual series | **decadal series** | (old anchored rate) |
+|---|---|---|---|
+| `driedarea` ssp126 | **91.3%** | 13.7% | 4.5% |
+| `driedarea` ssp585 | 56.2% | 10.3% | 3.6% |
+| `burntarea` ssp585 | 14.4% | 10.8% | 9.8% |
+| `csoil` ssp585 | 3.7% | 3.7% | 0.4% |
+
+On the annual series **25.1% of `driedarea` ssp585 cells reported `p < 0.05` — a significant trend — beside a slope of exactly zero**, and 81.0% of ssp126 cells reported zero while the value had materially changed. Continuous layers (`csoil`, `timber`) are unaffected either way, so **the zero-inflated hazards decide this for every layer** — do not re-litigate it per layer.
+
+**The decadal series is a REDUCTION, not a cure.** ~10–14% of hazard cells still return exactly 0, because 8 quantized panels still admit ties. `generate_qa_report.py` therefore reports the residual and **warns when an exactly-zero trend coincides with a significant p-value**, which is the signature of the tie pathology rather than a real flat trend. Never describe this as solved.
+
+**Required behavior**:
+- **Units are per DECADE and need NO rescaling.** `theilsen_decadal()` fits against the decade index, so the slope is already per decade. Multiplying by `window_years` — as the annual-series variant correctly does — would inflate every published trend **tenfold**. That is precisely why `theilsen_decadal()` exists as a separate entry point rather than calling `theilsen_expanding()` with a decade axis.
+- **The first post-baseline panel is a 2-point fit**, i.e. the single pairwise slope, which equals the superseded anchored rate there. `TREND_MIN_OBS = 2`; requiring 3 would blank that panel for no gain.
+- **The baseline decade's panel is NaN**, not 0. A fitted slope needs an elapsed period. This differs from the superseded rate, which was identically zero there, so a consumer expecting `0` gets a blank — that is intended and is declared in the variable's `note`.
+- **Mask `trend` to the layer's own `median` coverage** for every non-baseline decade. Never emit a slope on a cell whose median is NaN. (The old §13 wording "assert `isfinite(trend) == isfinite(median)` per decade" now applies **per non-baseline decade**.)
+- **Declare `trend_method: theil_sen_on_decadal_median_series`** (`trend_significance.TREND_METHOD`) plus the prose `trend_definition` from `trend_definition_decadal()`. `generate_qa_report.py` selects which invariants to apply from that declaration, so an undeclared method silently gets the wrong checks.
+- **`trend` and `trend_pvalue` are fitted on DIFFERENT series, deliberately.** The slope uses the decadal medians (to dodge the tie pathology); the p-value and tau use the annual series (far better powered — n=20…80 rather than 2…8). Measured directional agreement is **87–97%**, not 100%, and that is expected. Do not "fix" the discrepancy by moving one onto the other's series without re-measuring the zero-slope share.
+
+**The identity that no longer holds, and its replacement**: `trend × elapsed_decades == median[decade] − median[baseline]` was exact under the anchored rate and is **gone**. Do not reinstate a check for it and do not "fix" a layer that fails it. The replacement invariant is **directional agreement between `sign(trend)` and `sign(trend_tau)`** — but scored on the **SIGNIFICANT subset only**, where `generate_qa_report.py` gates it. Over all cells the figure is dominated by non-trending cells whose near-zero slope has an arbitrary sign: at the weakest forcing it reads 74–77% while the significant subset of the same layers reads 85–99%. Gating the all-cell figure failed three correct layers, so it is reported as context and not gated.
+
+**Applies to all future layers.** A new processor must emit the Theil-Sen trend natively — it already holds the decadal median stack, so this is `theilsen_decadal(med_stack, DECADES, ...)` and needs no extra data. Do not rely on `scripts/backfill_trend_significance.py` being re-run afterwards, or a layer can be published and consumed carrying the wrong definition. `utils/layer_publish.py` warns on any layer whose `trend_method` is not Theil-Sen. Changed 2026-07-30 by user decision.
 
 
 ---
@@ -330,7 +349,7 @@ drives it *below* the median there and breaks CI ordering.
 - Prefer per-tile when any member publishes **no** cover fraction (clm45), since that member can never be converted the other way.
 - State the mask rule in terms of **distinct model families**, and check what the rule degenerates to at the actual family count before quoting coverage.
 - **Verify baseline composition per scenario.** If any member is missing from any scenario, pool each scenario's baseline panel over that scenario's members. Accept that the baseline panel is then not bit-identical across scenarios; keep the percentile *reference* distribution global so percentiles stay comparable.
-- Assert `isfinite(trend) == isfinite(median)` per decade before publishing — a bare `np.zeros()` for the baseline decade makes the whole ocean a finite zero (§10), and it propagates by copy-paste between processors.
+- Assert `isfinite(trend) == isfinite(median)` for every **non-baseline** decade before publishing. The baseline panel is now legitimately NaN (a fitted slope has no elapsed period, §10), so the old all-decade form would fail a correct layer; conversely a bare `np.zeros()` there would make the whole ocean a finite zero, and that bug propagates by copy-paste between processors.
 
 ---
 
@@ -348,3 +367,37 @@ drives it *below* the median there and breaks CI ordering.
 - Declare confirmed seams in `known_latitude_seams` (comma-separated latitudes) and describe the consequence in `known_issues`. `generate_qa_report.py` warns on an **undeclared** seam and passes a declared one, so the caveat travels with the data instead of living in a chat log.
 - The automated check (`generate_qa_report.py`, "no undeclared sharp latitude seam") scores the largest single-row jump against the **local** median row-to-row change (±10 rows), requires a **≥1.5-fold level step**, and ignores rows with **<150 finite cells**. Each of those three conditions was added because the naive version false-fired: a global-median denominator flagged steep gradients as loudly as the seam (19–49× vs 11×); without the fold condition a 1.3× step on a near-zero field scored 8–11×; and without the row-count floor the check was dominated by 12–32-cell rows at the poles and far south, firing on three existing layers. Calibrated so the real seam scores 11.4–11.8× and the loudest non-seam across five other layers scores 6.9×.
 - A **MAD z-score is the wrong statistic** for this: estimated from a few hundred rows it moved enough between scenarios to put the *same* seam on both sides of a fixed cut (z = 12.2 / 11.7 / 11.7 for rcp26/60/85). Use a ratio to a local median.
+
+---
+
+## 15. Trend Significance Is Computed on the Ensemble MEAN Annual Series, Never on Stacked Members
+
+**Rule**: Every TCFD/CDP layer must publish `trend_pvalue` / `trend_tau` / `trend_n_obs`, computed by `scripts/utils/trend_significance.py` — a two-sided, tie-corrected **Mann-Kendall** test on the **ensemble-mean annual series**, over an expanding window anchored at the baseline decade. Members are averaged **within each year** before the test. Never stack member-years as independent observations, never test per member, and never hand-roll the statistic in a processor.
+
+**Why this matters**:
+- **The `trend` in force until 2026-07-30 carried no p-value and could not.** It was a baseline-anchored rate built from two decadal numbers — no residual, no degrees of freedom. (`trend` is now a Theil-Sen fit, §10, but the p-value is still computed separately and on the ANNUAL series, so this section stands on its own.) Meanwhile `scripts/utils/export_formatter.py` reads a `trend_pvalue` variable and the legacy 28-column schema has `Decadal_Trend_Significance` and `Long_Term_Trend_Significance`. Until 2026-07-30 **no layer emitted one**, so it resolved to NaN, `calculate_trend_aggregated()` returned `0.0`, and every customer row read as *"trend not significant"* — a silent, uniform, wrong answer.
+- **Stacking members destroys the signal on continuous layers.** It looks more powerful (n = years × members) but the sample is then dominated by between-model **level offsets** rather than by time. On `csoil-total` ssp585 the between-member level SD is **68.7×** the within-member interannual SD. Share of land reaching p<0.05 over 2020–2039: stacked raw members (n=240) **14.4%**, de-meaned members (n=240) 78.4%, ensemble-mean annual (n=20) **83.0%**. On a variable whose members share one scale (`driedarea`, binary; level ratio 0.56×) all three agree within a few points — so the error hides on exactly the layers where it does no damage and bites on the ones where it does.
+- **Only the ensemble mean is guaranteed consistent with the layer beside it.** `median` and `trend` are ensemble means, so testing the same quantity makes it impossible for `sign(trend_tau)` to contradict `sign(trend)` for any reason other than a genuinely non-monotonic trajectory. Any other pooling breaks that guarantee silently.
+- **Ties are not negligible and must be corrected.** 65.5% of `driedarea` cells and 43.8% of `burntarea` cells have a tied series. An exact tie-aware null is enumerable only for tiny n (it depends solely on the tie pattern, so n≤8 needs 65 tables); at n=20–80 it is impossible and unnecessary, because the tie-corrected normal approximation is well calibrated from about n≥10. Do not reach for `scipy.stats.kendalltau`'s default at small n: with ties it falls back to the asymptotic normal, which at n=8 gave 0.127 where the exact value is 0.250 — **2× too significant**.
+- **Spearman is degenerate at these sample sizes.** A perfectly monotonic 8-point series yields `spearmanr` p = **exactly 0.0** (infinite t-statistic). Use Kendall.
+
+**Required behavior**:
+- Emit all three variables on `(decade, lat, lon)`, masked to the **layer's own** `median` coverage — never a cell where `median` is NaN, always every cell where it is not.
+- The **baseline decade is NaN** (no elapsed period). The 2030s panel tests years 2020–2039 (n=20), rising to n=80 at the 2090s. Because the window expands, `trend_pvalue[2090]` **is** the long-term p-value, which is what `export_formatter.py` already reads — one variable fills both legacy columns.
+- A **perfectly constant series gives p = 1.0, not NaN.** NaN silently fails every `p < 0.05` comparison without ever being visible; 1.0 is defined, renders, and aggregates.
+- Record `significance_method`, `significance_definition` and `significance_pooling` as global attrs so the method travels with the data. `utils/layer_publish.py` projects them into `layer.json`.
+- **State plainly that the p-value is not a consensus measure.** It tests monotonicity of the ensemble MEAN. `csoil` reaches p<0.05 on ~80% of land at ssp585 while its sign is *contested across models*. Model agreement lives in `lower_ci`/`upper_ci` and `n_models`. A report that conflates the two overclaims consensus — the exact failure mode the report skill exists to prevent.
+- **Risk direction is not in `trend_tau`.** `tau` gives the direction of the VALUE; combine `sign(trend_tau)` with the layer's `percentile_direction`. Four of nine layers are `higher_is_better`, so hardcoding "rising = worse" inverts them.
+- **On a smooth stock variable the p-value SATURATES and stops discriminating — do not quote it as a confidence measure.** Because the test runs on an ensemble *mean*, a slowly-drifting stock produces a very smooth series, and at n=20–80 almost any drift clears p<0.05. Measured share of finite cell-decades at p<0.05:
+
+  | layer | low | medium | high | at the 2030s (n=20), high |
+  |---|---|---|---|---|
+  | `csoil-total` (smooth stock) | 89.3% | 89.3% | **89.8%** | 84.9% |
+  | `driedarea` (binary hazard) | 22.4% | 38.9% | 44.9% | 16.1% |
+  | `burntarea-total` (noisy hazard) | 15.9% | 32.7% | 38.6% | 10.8% |
+
+  `csoil`'s significant share is **identical across scenarios and already saturated by the 2030s**, while over the same span its `tau>0` share falls from 65.1% to 53.1% — the *direction* responds to forcing and the *significance* does not. So "92% of this portfolio shows a statistically significant trend" is true at every scenario and conveys nothing about severity. Severity lives in the trend magnitude and the sign of tau; agreement lives in the CI and `n_models`. A report that leads with the significant fraction on a stock variable is technically true and materially misleading — precisely the failure the report step must avoid.
+- **Regional aggregation must recompute, not average.** A polygon's p-value comes from `mk_pvalue()` on its area-weighted **annual** series. Averaging per-cell p-values is meaningless.
+- **Backfilling an existing layer**: `scripts/backfill_trend_significance.py {layer_id}` — run `--check-only` first. It reuses each processor's own `parse_name`/`load_member` rather than restating member construction, **gates on reproducing the published `median`**, and asserts every pre-existing variable is bit-identical before publishing. That gate is not ceremonial: it caught a missing fraction→percent scale on all three `fldfrc` layers (wrong on every cell by 100×) on the first run. Gate on the *share* of cell-decades over tolerance, not the max — `csoil` and `burntarea` legitimately differ on a handful of cells whose member count varies **within** a decade, where mean-over-years-of-mean-over-members is not the same as mean-over-members-of-mean-over-years.
+- **Cross-check `sign(trend_tau)` against `sign(trend)` on the SIGNIFICANT subset, not on all cells.** The two are built from the same ensemble means, so a persistent sign split would mean a real defect — but over *all* cells the comparison is dominated by cells with no trend, where the sign of a near-zero rate is arbitrary noise. Measured at the 2090s: `fldfrc-100yr` rcp26 disagrees on **32.0%** of all cells but only **9.6%** of significant ones; rcp85 13.5% → **1.8%**; `driedarea` ssp126 20.8% → **2.5%**; `npp-tempnle` rcp26 25.3% → **9.3%**. Gating on the all-cell rate fires loudest on the weakest scenarios for a harmless reason, which is exactly how a genuine disagreement would get lost in the noise. `generate_qa_report.py` scores the significant subset and reports the all-cell figure alongside it for context.
+- **Review the significance maps, not just the p-value map** (§11). A p-value field looks plausible almost regardless of content — smooth, bounded, mostly mid-range. `generate_maps.py` therefore also renders `trend_significant` (the trend blanked where p ≥ 0.05); a wrong mask shows up there because the surviving pattern either follows physical geography or it does not.

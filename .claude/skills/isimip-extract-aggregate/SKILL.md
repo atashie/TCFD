@@ -41,9 +41,26 @@ these wrong silently inverts a client's risk reading:
 - **`percentile_direction`** — `higher_is_worse` (hazards) vs `higher_is_better` (assets
   like stored soil carbon). For `higher_is_better` the percentile is already **inverted**,
   so a *high* percentile means low stock / high risk. Do not re-invert it.
-- **`trend_definition`** — for a baseline-anchored rate, `trend[decade]` is the rate **from
-  the baseline decade to that decade**, not a within-decade slope. `trend[baseline] ≡ 0`,
-  so never report a baseline-decade trend as a finding.
+- **`trend_definition` / `trend_method`** — since 2026-07-30 `trend[decade]` is a
+  **Theil-Sen slope of the DECADAL MEDIAN series** from the baseline decade to that decade
+  (`theil_sen_on_decadal_median_series`), in value per decade. Never a within-decade slope.
+  **`trend[baseline]` is NaN**, not 0 — a fitted slope has no elapsed period — so never
+  report a baseline-decade trend, and do not read the blank as "no change".
+  **`trend × elapsed_decades` no longer equals the change map**; if a client needs the
+  change, compute `median[decade] − median[baseline]` directly.
+  **An exactly-zero trend is not always "flat"**: Theil-Sen is a median of pairwise slopes,
+  so on zero-inflated hazards 10–14% of cells return exactly 0 (0.03–3.7% on continuous
+  layers). Where a zero slope sits beside a significant `trend_pvalue`, that is the tie
+  residual, not evidence of stability — read `trend_tau` for direction.
+- **`trend_pvalue` / `trend_tau` / `trend_n_obs`** — Mann-Kendall on the ensemble-mean
+  **ANNUAL** series (n = 20…80 **years**, members averaged within each year), so the test
+  and the slope are fitted on **different series** by design. `trend_pvalue[last decade]`
+  **is** the long-term p-value because the window expands. A constant series gives
+  **p=1.0, not NaN**. It measures monotonicity of the ensemble MEAN, **not** inter-model
+  agreement — on a smooth stock like `csoil` it saturates near 89% at *every* scenario and
+  carries no severity information. **A polygon's p-value must be RECOMPUTED** from its
+  area-weighted annual series via `trend_significance.mk_pvalue()`; averaging per-cell
+  p-values is meaningless.
 - **`units`** and **`trend_units`** — these differ (e.g. `kg m-2` vs `kg m-2 decade-1`).
 - **`baseline_decade` / `baseline_source`** — the 2020s baseline is shared across scenarios
   by design; identical 2020s values across scenarios are correct, not a bug.

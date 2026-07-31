@@ -8,6 +8,211 @@ See [GUARDRAILS.md](GUARDRAILS.md) for the rules derived from these incidents.
 
 ## Incident Log
 
+### 2026-07-30: `trend` Replaced by a Theil-Sen Slope — and the First Attempt Was Broken by Zero-Inflation — RESOLVED
+
+**What happened**: after the p-value backfill (below), the user asked to *"serve sen slopes
+on all 9 layers instead of trends"*, standard for all future layers. Two premises in the
+request were factually off and were corrected before acting:
+
+- *"instead of trends derived from linear regression"* — the trend was never a regression.
+  It was the baseline-anchored **two-point rate** `(median[decade] − median[2020s]) /
+  elapsed decades`.
+- An earlier message assumed Sen slopes were **already** being served and offered to delete
+  `theilsen()` as dead code *"if we run sen slope using a different function"*. Verified
+  against S3 first: all nine layers declared the anchored rate, all six processors called
+  `anchored_trend()`, and `theilsen()` was the **only** Sen implementation for these layers.
+  Deleting it would have removed the sole Sen capability. **Check the premise of a cleanup
+  request before executing it** — the conditional was false.
+
+**The first implementation was wrong, and a user question caught it after three layers had
+already been published.** Fitting Theil-Sen to the ensemble-mean **ANNUAL** series looked
+strictly better: it uses every year and puts `trend`, `trend_tau` and `trend_pvalue` on one
+series (sign agreement hit 100.000%). The user then asked whether a hazard that is
+historically mostly zero could report a zero trend despite the frequency doubling, "because
+most year-to-year changes are still 0 to 0". It can, and it did:
+
+**Theil-Sen is a MEDIAN of pairwise slopes, so once more than half of all pairs are tied the
+slope is EXACTLY 0** regardless of the real change. Measured share of cells with an
+exactly-zero slope at the 2090s:
+
+| layer | annual series | **decadal series** | (old anchored rate) |
+|---|---|---|---|
+| `driedarea` ssp126 | **91.3%** | 13.7% | 4.5% |
+| `driedarea` ssp585 | 56.2% | 10.3% | 3.6% |
+| `burntarea` ssp585 | 14.4% | 10.8% | 9.8% |
+| `csoil` ssp585 | 3.7% | 3.7% | 0.4% |
+
+On the annual series **25.1% of `driedarea` ssp585 cells reported `p < 0.05` beside a slope
+of exactly zero**, and 81.0% of ssp126 cells reported zero while the value had materially
+changed. The flood layers (~93% exact zeros in any single year) would have been worst of
+all; the rollout was stopped before reaching them.
+
+**Resolution**: `trend` is `trend_significance.theilsen_decadal()` — Theil-Sen on the
+**DECADAL median** series over an expanding window from the baseline decade, in value per
+decade. All nine layers republished; all six processors emit it natively. The p-value stays
+on the **annual** series (rank-based, so ties cost it nothing, and n=20…80 rather than 2…8),
+so `trend` and `trend_pvalue` are deliberately fitted on different series — sign agreement
+85–99% on significant cells rather than 100%. **A reduction, not a cure**: 10–14% of hazard
+cells still return exactly 0, so `generate_qa_report.py` warns when a zero slope coincides
+with a significant p-value (0.03–1.1%, down from 25.1%).
+
+**Lessons worth keeping**:
+
+- **A statistic that is right on continuous data can be catastrophically wrong on
+  zero-inflated data, and the aggregate diagnostics will not say so.** Sign agreement went
+  UP to 100% under the broken version — the defect made `trend` and `tau` agree because both
+  were near zero. The detector that works is "exactly-zero slope beside a significant test".
+- **Never infer a method from prose that also names the alternatives.**
+  `trend_definition_theilsen()` ends with *"…not the GUARDRAILS S10 baseline-anchored
+  two-point rate…"*, and `generate_qa_report.py` detected the method with
+  `"baseline_anchored" in trend_definition`. The disclaimer matched, and a correct
+  Theil-Sen layer **failed the retired change-map identity in all three scenarios**. Detect
+  from the structured `trend_method` attr, and let it win over any prose test.
+- **Score an agreement metric on the SIGNIFICANT subset.** This was got wrong twice in one
+  session. Over all cells, non-trending cells contribute an arbitrary sign: the check read
+  74–77% at the weakest forcing and failed three *correct* layers, while their significant
+  subsets read 85–99%.
+- **A "replacement" needs its own gate.** `verify_append_only` demands bit-identity for
+  every pre-existing variable, so `trend` had to be exempted — and a bare exemption would
+  let a silent no-op pass as a successful replacement. It now *requires* `trend` to have
+  changed whenever the file still declares the anchored method, while still allowing an
+  idempotent re-run of an already-converted layer.
+- **Units: `theilsen_decadal()` fits against the decade INDEX**, so the slope is already per
+  decade. The annual variant correctly multiplies by `window_years`; doing that here would
+  inflate every published trend tenfold. That is why the decadal entry point exists
+  separately rather than reusing `theilsen_expanding()` with a decade axis.
+
+---
+
+### 2026-07-30: No Layer Carried a Trend p-value, and the First Two Methods Chosen Were Both Wrong — RESOLVED
+
+**What happened**: Preparing the customer-delivery extractor, `scripts/utils/export_formatter.py`
+was found to read a `trend_pvalue` variable (mapped to the legacy `Decadal_Trend_Significance`
+column) that **no layer emitted**. It resolved to NaN, `calculate_trend_aggregated()` returned
+`0.0`, and every delivered row would have read *"trend not significant"* — a silent, uniform,
+wrong answer across all 9 layers. `CLAUDE.md` had advertised a "significance" value class since
+the beginning; it had never existed in the new processors.
+
+The published `trend` cannot supply one: it is a baseline-anchored rate built from two decadal
+numbers (GUARDRAILS §10), so it has no residual and no degrees of freedom.
+
+**Three method errors, each caught by measurement rather than reasoning**:
+
+1. **Spearman was proposed, and is degenerate at these sample sizes.** A perfectly monotonic
+   8-point series gives `scipy.stats.spearmanr` p = **exactly 0.0** (infinite t-statistic);
+   at n=5 it gives 1.4e-24. Kendall's exact p at n=8 is 4.96e-5. Switched to Kendall.
+2. **An earlier claim that MK's smallest two-sided p at n=8 was ≈0.011 was wrong by ~200×** —
+   it is ≈5e-5. That error had made a pooled-decadal test look underpowered when it was not.
+3. **The chosen pooling — stacking every member-year as an independent observation — destroys
+   the signal on continuous layers.** It looks more powerful (n = years × members) but the
+   sample is then dominated by between-model **level offsets** rather than by time. Measured on
+   `csoil-total` ssp585, the between-member level SD is **68.7×** the within-member interannual
+   SD. Share of land reaching p<0.05 over 2020–2039:
+
+   | pooling | n | land p<0.05 |
+   |---|---|---|
+   | stack raw member values | 240 | **14.4%** |
+   | de-mean each member, then stack | 240 | 78.4% |
+   | ensemble-mean annual series | 20 | **83.0%** |
+
+   On `driedarea` (binary; level ratio 0.56×) all three agree within a few points — so the
+   error **hides on the layers where it is harmless and bites on the ones where it is not.**
+   Inter-member rank correlation of the annual series is only +0.10, so pseudo-replication —
+   the concern that had been raised — was the *lesser* problem.
+
+**Resolution**: `scripts/utils/trend_significance.py` — two-sided tie-corrected Mann-Kendall
+on the **ensemble-mean annual series**, expanding window anchored at the baseline decade
+(2030s tests 2020–2039 at n=20, rising to n=80 at the 2090s). Because the window expands,
+`trend_pvalue[2090]` **is** the long-term p-value, so one variable fills both legacy columns
+and `export_formatter.py` needed no change. 36 unit tests check it against an independent
+textbook MK implementation and tau-b against scipy. Backfilled into all 9 layers in place by
+`scripts/backfill_trend_significance.py`.
+
+**Two traps worth keeping**:
+
+- **Exactness matters at small n and is infeasible at large n.** An exact tie-aware null is
+  enumerable for n≤8 (it depends only on the tie pattern — a partition of n — so 65 tables
+  cover n=2..8), and it matters: with ties `scipy.stats.kendalltau` falls back to the
+  asymptotic normal and returned 0.127 where the exact value is 0.250, **2× too significant**.
+  At n=20–80 enumeration is impossible and unnecessary. The method therefore changed *because*
+  the sample size changed — the exactness decision was made under the old n and had to be
+  revisited, not carried forward.
+- **The reconstruction gate earned its place immediately.** Requiring the decade-mean of the
+  rebuilt annual series to reproduce the published `median` caught a missing fraction→percent
+  scale on all three `fldfrc` layers on the first run — wrong on **every cell by 100×**, and
+  invisible in the p-value itself because MK is rank-based and scale-invariant. It would have
+  shipped a layer whose significance was right and whose provenance claim was false. Gate on
+  the *share* of cell-decades over tolerance, not the max: `csoil` (36–91 of ~495k) and
+  `burntarea` (0–55 of ~472k) legitimately differ where a member's coverage varies **within**
+  a decade, because mean-over-years-of-mean-over-members is not mean-over-members-of-mean-over-years.
+  Gating on the max would have rejected them; gating on the median alone would have missed
+  fldfrc.
+
+**Also found**: the 2020s baseline is a **cross-scenario** construct in several processors
+(`process_driedarea_drought.py:280-284` averages each member across all three scenarios), so
+the published `median[2020]` does not equal any single scenario's own 2020s mean. The
+significance test uses each scenario's own annual trajectory, which is the honest test of that
+scenario, so the baseline decade is reported but **not** gated.
+
+See GUARDRAILS.md §15.
+
+---
+
+### 2026-07-30: The `median` Variable Has Always Held a MEAN — OPEN, deferred by the user
+
+**What happened**: While specifying the windy-days layer the user asked "I thought we were
+outputting both the median and the mean?". Checking the code rather than answering from the
+docs: **no processor emits a `mean` variable at all**, and every processor writes a *mean*
+into the variable named `median`:
+
+```
+process_csoil_soilcarbon.py:466   median[i] = np.nanmean(layer, axis=0)
+process_let_cyclone.py:319        median[i] = np.nanmean(layer, axis=0)
+```
+
+and every layer's `statistic` attribute says so plainly — `decadal_mean_soil_carbon_kg_per_m2`,
+`decadal_mean_exposed_area_fraction_spatially_smoothed`, `decadal_mean_annual_burnt_area_percent`,
+`decadal_mean_exposure_frequency`, `decadal_mean_annual_flooded_area_percent`.
+`grep -l '"mean": ('  scripts/process_*.py` returns nothing.
+
+**Impact**: The NetCDF variable name contradicts its content in all 9 published layers. A
+consumer reading the variable name alone gets a mean while believing it has a median; a
+consumer reading `statistic` is correctly informed. For `let`/`led` the mean is *deliberate*
+and documented (the field is ~97% zeros, so a true median is identically 0 and useless);
+`csoil`/`burntarea`/`fldfrc` simply inherited the same slot.
+
+**Root cause**: A legacy 6-slot schema (see `generate_maps.py`: `0 median, 1 percentile,
+2 trend, 3 significance, 4 lower_ci, 5 upper_ci`) fixed the *names* before the statistics were
+settled per hazard. The same legacy schema documents `lower_ci`/`upper_ci` as **Q25/Q75**,
+while `csoil`/`burntarea` implement them as mean ± 1 inter-member SD — a second divergence
+between documented and actual semantics.
+
+**Correct action**: Either add a real `mean` field and let `median` hold a true median (correct
+but breaking for every consumer), or keep one field and fix the naming where it is documented.
+
+**Status**: **OPEN — user decision 2026-07-30 to note it now and address it later.** Do not
+"fix" it opportunistically inside an unrelated layer; it is a cross-layer schema change.
+The windy-days layers ship with the existing convention (`median` holding the decadal mean,
+`statistic` stating it) so they stay directly comparable with the other 9 layers.
+
+**Second half of the same issue — `lower_ci` / `upper_ci` semantics.** The legacy 6-slot
+schema in `generate_maps.py` documents them as **Q25 / Q75**; every processor implements
+**ensemble mean ± 1 inter-member SD** (`csoil`'s `ci_definition` states this explicitly).
+Those are different quantities: the SD form is symmetric about the mean and can be inverted
+by clamping, the quantile form is not and cannot. The user initially specified Q25/Q75 for
+the windy-days layers, then **decided 2026-07-30 to keep mean ± 1 inter-member SD for now,
+so the five new layers stay consistent with the existing nine**, and asked that the
+divergence be recorded here for fuller treatment later.
+
+**Deferred decision, to take together**: whether `median` becomes a true median with a new
+`mean` field beside it, and whether `lower_ci`/`upper_ci` become genuine quantiles. Both are
+cross-layer schema changes affecting all published layers plus
+`scripts/utils/export_formatter.py` and the legacy 28-column schema; neither should be done
+piecemeal. Until then, **trust the `statistic` and `ci_definition` attributes, never the
+variable names.**
+
+**Rule created**: none yet — pending the schema decision.
+
 ### 2026-01-16: Fish TCB Downloaded Without Resolution Choice
 
 **What happened**: When searching for fish catch abundance data, I found both monthly (~135-158 MB/file) and annual (~8-12 MB/file) data available. I proceeded to download 28 monthly files (3.62 GB total) without asking the user which resolution they preferred.

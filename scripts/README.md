@@ -34,9 +34,51 @@ Features:
 - **`maps_bundle.zip`** — the whole collection in one object (~9.5 MB, 21 files), because the S3 console downloads one file at a time and the ~20 HTML pages are interlinked. Unzip and open `index.html`; all links are relative so navigation still works.
 - Values are serialized at **5 significant figures** (`_compact()`) — a ~35% payload cut at a max relative error of 1.3e-5, far below what a colour scale can render. Display only; the NetCDF in `data/` keeps full precision. The collection is ~57 MB uncompressed / ~9.5 MB zipped (the `go.Heatmap` z-grid carries ocean nulls the old scatter omitted, so the raster is slightly larger but pixel-exact).
 
+### utils/trend_significance.py
+
+The trend and significance statistics for every annualized layer. **Never hand-roll either
+of these in a processor.**
+
+- `theilsen_decadal(med_stack, DECADES, ...)` → **`trend`**: Theil-Sen slope of the DECADAL
+  MEDIAN series, expanding window from the baseline decade, already **per decade** (it fits
+  against the decade index — no `× window_years`). Fitted on the decadal series, not the
+  annual one, because Theil-Sen is a *median* of pairwise slopes and returns **exactly 0**
+  wherever most year-pairs are tied: 91.3% of `driedarea` ssp126 cells on annual values,
+  vs 13.7% on decadal. A reduction, not a cure — QA reports the residual.
+- `mk_expanding(years, mean_annual, DECADES, ...)` → **`trend_pvalue` / `trend_tau` /
+  `trend_n_obs`**: two-sided tie-corrected Mann-Kendall on the ensemble-mean **ANNUAL**
+  series (n = 20…80 **years**; members averaged within each year, never stacked). Rank-based,
+  so ties cost it nothing.
+- `AnnualEnsembleMean(y0, y1, shape)` → accumulates that annual series member-by-member
+  inside a processor, so peak memory is two grids rather than the whole stack. Add members in
+  **sorted filename order** — float addition is not associative, and sorted order is what
+  makes a processor's output match the backfill's bit-for-bit.
+- `mk_pvalue(series)` → the scalar path, for **regional** aggregation. A polygon's p-value
+  must be recomputed from its area-weighted annual series; averaging per-cell p-values is
+  meaningless.
+
+The baseline decade is NaN for all four fields. See GUARDRAILS §10 and §15.
+
+### backfill_trend_significance.py
+
+Adds/updates `trend` + the significance fields on an **already-published** layer, in place.
+
+```bash
+python scripts/backfill_trend_significance.py {layer_id} [--check-only]
+python scripts/backfill_trend_significance.py --all --check-only
+```
+
+Reuses each processor's own `parse_name`/`load_member` rather than restating member
+construction, and **gates on reproducing the published `median`** — that gate caught a
+missing fraction→percent scale on all three `fldfrc` layers on its first run, invisible in
+the p-value itself because Mann-Kendall is rank-based. Every pre-existing variable is
+asserted bit-identical except `trend`, which is deliberately replaced (`REPLACED_VARS`) and
+is required to have changed while the file still declares the old anchored method. Run
+`--check-only` first on any layer.
+
 ### generate_qa_report.py
 
-Runs the invariant checks the 6-value-class contract depends on, plus per-scenario statistics, and publishes `qa_report.json` + `qa_report.html`. **Layer-generic**: checks are driven by each file's own declared attributes (`trend_definition`, `percentile_direction`, `baseline_source`), so the same tool serves every annualized layer.
+Runs the invariant checks the 8-value-class contract depends on, plus per-scenario statistics, and publishes `qa_report.json` + `qa_report.html`. **Layer-generic**: checks are driven by each file's own declared attributes (`trend_definition`, `percentile_direction`, `baseline_source`), so the same tool serves every annualized layer.
 
 ```bash
 python scripts/generate_qa_report.py soilcarbon_csoil_annual
@@ -78,7 +120,7 @@ python scripts/download_driedarea_drought.py [--dry-run] [--force]
 
 ### process_driedarea_drought.py
 
-Processes `driedarea` into the TCFD 6-value-class format — **the current drought layer**, superseding `led` (newer round, SSP scenario family). Like `led` it is a **binary** per-cell annual flag, so the decadal statistic is the **mean** (drought frequency), never the median — and it is an *occurrence frequency*, not a within-cell area share.
+Processes `driedarea` into the TCFD 8-value-class format — **the current drought layer**, superseding `led` (newer round, SSP scenario family). Like `led` it is a **binary** per-cell annual flag, so the decadal statistic is the **mean** (drought frequency), never the median — and it is an *occurrence frequency*, not a within-cell area share.
 
 Three things differ from `process_led_drought.py` and must not be copied across:
 - **Filename fields `[0]`/`[1]`** hold model/GCM, not `[1]`/`[2]` — the `led` parser mis-keys every member. Membership is asserted (duplicates, vocabularies, exact per-scenario count) because the load pattern silently overwrites a duplicate.

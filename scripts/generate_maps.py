@@ -37,7 +37,20 @@ DECADES = {
 # read as patchier and less spatially coherent than the 7-decade 2090s rate.
 METRIC_DECADES = {
     "trend": (2030, DECADES["future"]),
+    # The significance fields share the trend's expanding-window anchoring, so the
+    # baseline decade is NaN for the same reason and must be skipped here too.
+    "trend_pvalue": (2030, DECADES["future"]),
+    "trend_significant": (2030, DECADES["future"]),
 }
+
+#: Threshold for the "significant trend" view. Two-sided, matching the legacy
+#: Looker gate on Long_Term_Trend_Significance.
+SIGNIFICANCE_ALPHA = 0.05
+
+#: Metrics drawn on a symmetric scale centred on zero, and reversed to red=worse
+#: when the layer declares `higher_is_worse`. Both are signed rates, so a scale
+#: that is not centred would read a uniformly positive field as "no change".
+DIVERGING_METRICS = {"trend", "trend_significant"}
 
 
 def comparison_decades(metric: str, available=None) -> List[Tuple[str, int]]:
@@ -138,6 +151,8 @@ COLORSCALES = {
     "median": "Viridis",
     "percentile": "RdYlBu_r",  # Reversed: low=blue (good), high=red (bad)
     "trend": "RdBu",  # Blue=positive (good for "more is better" variables)
+    "trend_pvalue": "Blues_r",   # dark = small p = significant
+    "trend_significant": "RdBu",
     "lower_ci": "Viridis",
     "upper_ci": "Viridis",
     "change": "RdBu",
@@ -149,6 +164,8 @@ METRIC_DESCRIPTIONS = {
     "median": "Ensemble Median Value",
     "percentile": "Percentile Rank (vs 2020s baseline)",
     "trend": "Decadal Trend",
+    "trend_pvalue": "Mann-Kendall p-value of the trend",
+    "trend_significant": f"Decadal Trend where p < {SIGNIFICANCE_ALPHA}",
     "lower_ci": "Lower Confidence Interval (25th percentile)",
     "upper_ci": "Upper Confidence Interval (75th percentile)",
     "change": "Absolute Change (2090s - 2020s)",
@@ -160,6 +177,8 @@ COLORBAR_LABELS = {
     "median": "{long_name} [{units}]",
     "percentile": "Percentile rank [1-100]",
     "trend": "Trend [{units} decade⁻¹]",
+    "trend_pvalue": "Mann-Kendall p-value [0-1]",
+    "trend_significant": "Significant trend [{units} decade⁻¹]",
     "lower_ci": "{long_name} [{units}]",
     "upper_ci": "{long_name} [{units}]",
     "change": "Change [{units}]",
@@ -564,6 +583,8 @@ class MapCollectionGenerator:
         if self.higher_is_worse:
             log("  Direction: higher_is_worse -> trend/change use reversed RdBu (red = worse)")
 
+        self._add_significance_views()
+
         # Filter out non-projection scenarios (picontrol, historical)
         # These are used to enhance baseline robustness but not shown as separate projections
         excluded = [s for s in self.scenarios if s in EXCLUDED_SCENARIOS]
@@ -665,6 +686,38 @@ class MapCollectionGenerator:
 
         log("  Format conversion complete")
 
+    def _add_significance_views(self):
+        """Derive ``trend_significant``: the trend, blanked where p >= alpha.
+
+        This is the customer-facing reading of ``trend`` and ``trend_pvalue``
+        together, and it is the panel that can actually show a defect in the
+        significance field. A p-value map on its own looks plausible almost
+        regardless of what it contains — smooth, bounded, mostly mid-range — so
+        reviewing only that would satisfy GUARDRAILS S11 in form and not in
+        substance. Masking the trend by it makes a wrong mask obvious: the
+        surviving pattern either follows physical geography or it does not.
+        """
+        self.has_significance = False
+        for scenario, ds in self.data.items():
+            if "trend_pvalue" not in ds.data_vars or "trend" not in ds.data_vars:
+                continue
+            p = ds["trend_pvalue"].values
+            masked = np.where(np.isfinite(p) & (p < SIGNIFICANCE_ALPHA),
+                              ds["trend"].values, np.nan)
+            ds["trend_significant"] = (ds["trend"].dims, masked)
+            ds["trend_significant"].attrs = {
+                "long_name": f"Trend where Mann-Kendall p < {SIGNIFICANCE_ALPHA}",
+                "units": ds["trend"].attrs.get("units", ""),
+                "note": "Derived for review only; not a published value class.",
+            }
+            self.has_significance = True
+        if self.has_significance:
+            log(f"  Significance: derived trend_significant at p < "
+                f"{SIGNIFICANCE_ALPHA}")
+        else:
+            log("  Significance: layer carries no trend_pvalue -- "
+                "significance panels skipped")
+
     def generate_all_collections(self, variable: str):
         """Generate all map collections for a variable."""
         self.load_data(variable)
@@ -674,7 +727,10 @@ class MapCollectionGenerator:
         var_dir.mkdir(exist_ok=True)
 
         # Generate each collection
-        for metric in ["median", "percentile", "trend"]:
+        metrics = ["median", "percentile", "trend"]
+        if getattr(self, "has_significance", False):
+            metrics += ["trend_pvalue", "trend_significant"]
+        for metric in metrics:
             self.generate_metric_comparison(variable, metric, var_dir)
 
         self.generate_confidence_comparison(variable, var_dir)
@@ -723,16 +779,21 @@ class MapCollectionGenerator:
                     valid = vals[~np.isnan(vals)]
                     all_values.extend(valid.tolist())
 
-        if all_values:
-            if metric == "trend":
-                # Trend maps use symmetric scaling centered on zero (white=no change)
+        if metric == "trend_pvalue":
+            # A p-value's scale is fixed by definition. Deriving it from
+            # percentiles would rescale it per layer, so the same colour would
+            # mean "significant" on one map and "not" on the next.
+            cmin, cmax = 0.0, 1.0
+        elif all_values:
+            if metric in DIVERGING_METRICS:
+                # Symmetric scaling centered on zero (white=no change)
                 max_abs = np.percentile(np.abs(all_values), 98)
                 cmin, cmax = -max_abs, max_abs
             else:
                 cmin = np.percentile(all_values, 2)
                 cmax = np.percentile(all_values, 98)
         else:
-            cmin, cmax = (-1, 1) if metric == "trend" else (0, 1)
+            cmin, cmax = (-1, 1) if metric in DIVERGING_METRICS else (0, 1)
 
         # Generate separate file for each scenario
         for scenario in self.scenarios:
@@ -772,7 +833,7 @@ class MapCollectionGenerator:
                         colorscale=COLORSCALES.get(metric, "Viridis"),
                         cmin=cmin, cmax=cmax,
                         colorbar_title=colorbar_label,
-                        reversescale=(metric == "trend" and self.higher_is_worse)
+                        reversescale=(metric in DIVERGING_METRICS and self.higher_is_worse)
                     )
 
                     html += '<div class="map-container">\n'
@@ -794,7 +855,7 @@ class MapCollectionGenerator:
                     colorscale=COLORSCALES.get(metric, "Viridis"),
                     cmin=cmin, cmax=cmax,
                     colorbar_title=colorbar_label,
-                    reversescale=(metric == "trend" and self.higher_is_worse)
+                    reversescale=(metric in DIVERGING_METRICS and self.higher_is_worse)
                 )
 
                 html += '<div class="map-container" style="grid-column: span 2;">\n'
@@ -1042,6 +1103,16 @@ class MapCollectionGenerator:
             ("median", "Median Values", "Ensemble median values (2020s vs 2090s)"),
             ("percentile", "Percentile Ranks", "Percentile ranks vs 2020s baseline"),
             ("trend", "Trends", "Baseline-anchored decadal rate (2030s vs 2090s)"),
+        ]
+        if getattr(self, "has_significance", False):
+            metrics += [
+                ("trend_significant", "Significant Trends",
+                 f"Trend where Mann-Kendall p &lt; {SIGNIFICANCE_ALPHA} "
+                 f"(blank = not significant)"),
+                ("trend_pvalue", "Trend p-values",
+                 "Mann-Kendall p-value on the ensemble-mean annual series"),
+            ]
+        metrics += [
             ("confidence", "Confidence Intervals", "Lower (25th) and upper (75th) bounds"),
             ("change", "Change Maps", "Absolute change (2090s - 2020s)"),
             ("anomaly", "Anomaly Detection", f"Values >{ANOMALY_SIGMA}σ from 2020s mean"),

@@ -1,4 +1,4 @@
-"""Process burntarea (wildfire burnt-area fraction) into the TCFD 6-value-class format.
+"""Process burntarea (wildfire burnt-area fraction) into the TCFD 8-value-class format.
 
 burntarea = the fraction of each grid cell burned per reporting interval, reported by
 ISIMIP vegetation/fire models in PERCENT [0, 100]. This is the direct biophysical fire
@@ -100,6 +100,10 @@ from isimip_pipeline import storage  # noqa: E402
 from utils.layer_publish import publish_processed_layer  # noqa: E402
 from utils.contact_sheet import render_contact_sheet  # noqa: E402
 from utils.finalize import finalize_layer  # noqa: E402
+from utils.trend_significance import (  # noqa: E402
+    METHOD as SIGNIFICANCE_METHOD, TREND_METHOD, AnnualEnsembleMean, mk_expanding,
+    significance_definition, theilsen_decadal, trend_definition_decadal,
+)
 
 VAR = "burntarea-total"
 LAYER_ID = "wildfire_burntarea_annual"
@@ -313,7 +317,7 @@ def main():
     models = sorted({m["model"] for m in meta.values()})
     gcms = sorted({m["gcm"] for m in meta.values()})
     log("=" * 70)
-    log("Processing burntarea (wildfire, ISIMIP3b) -> TCFD 6-value-class format")
+    log("Processing burntarea (wildfire, ISIMIP3b) -> TCFD 8-value-class format")
     log("=" * 70)
     log(f"Members: {len(files)} | scenarios: {scenarios}")
     log(f"Models: {models} | GCMs: {gcms}")
@@ -328,10 +332,17 @@ def main():
     # ---- Pass 1: per-member decadal-mean maps ---------------------------------
     dec = {s: {} for s in scenarios}            # dec[scen][member] = (n_dec, lat, lon)
     obs_max = 0.0
-    for f in files:
+    # trend_pvalue is tested on the ensemble-mean ANNUAL series (GUARDRAILS S15), which
+    # is gone once each member is reduced to decadal maps. `trend` needs only the
+    # decadal medians (S10). Sorted order matches backfill_trend_significance.py.
+    annual_acc = {s: AnnualEnsembleMean(MIN_YEAR, MAX_YEAR, (LAT, LON))
+                  for s in scenarios}
+    for f in sorted(files):
         info = meta[f]
         s, member = info["scenario"], info["member"]
         da = load_member(f)
+        if da.year.size:
+            annual_acc[s].add(da.year.values, da.values)
         if da.year.size == 0:
             log(f"  WARNING: {os.path.basename(f)} has no years in "
                 f"{MIN_YEAR}-{MAX_YEAR}; skipping (check time-axis parse)")
@@ -463,18 +474,31 @@ def main():
         median, lower, upper, percentile = (
             med_by_scen[s], lo_by_scen[s], hi_by_scen[s], pct_by_scen[s])
         nmem, nmodel = nmem_by_scen[s], nmodel_by_scen[s]
-        trend = np.full_like(median, np.nan)
+        # Theil-Sen on the DECADAL medians (S10) -- NOT the annual series: burnt area
+        # is zero over most of the land in most years, and a median of pairwise annual
+        # slopes is exactly 0 once over half the year-pairs are 0-to-0.
+        trend = theilsen_decadal(median, DECADES, window_years=WINDOW_YEARS,
+                                 baseline_decade=BASELINE_DECADE).astype(np.float32)
+        years_a, mean_annual = annual_acc[s].result()
+        tpval, ttau, tnobs = mk_expanding(years_a, mean_annual, DECADES,
+                                          window_years=WINDOW_YEARS,
+                                          baseline_decade=BASELINE_DECADE)
+        for arr in (trend, tpval, ttau):
+            arr[~np.isfinite(median)] = np.nan
+        tnobs[~np.isfinite(median)] = 0
         for i, d in enumerate(DECADES):
-            trend[i] = anchored_trend(median, i, b_idx)  # baseline->decade rate
             tag = "shared baseline" if d == BASELINE_DECADE else f"{len(members)} members"
             log(f"  {d}s: {tag:<15}  global-mean burnt%={np.nanmean(median[i]):.4f}  "
-                f"trend(base->{d}s)={np.nanmean(trend[i]):+.4f}%/dec")
+                f"trend={np.nanmean(trend[i]):+.4f}%/dec")
 
         ds_out = xr.Dataset(
             {
                 "median": (["decade", "lat", "lon"], median),
                 "percentile": (["decade", "lat", "lon"], percentile),
                 "trend": (["decade", "lat", "lon"], trend),
+                "trend_pvalue": (["decade", "lat", "lon"], tpval.astype(np.float32)),
+                "trend_tau": (["decade", "lat", "lon"], ttau.astype(np.float32)),
+                "trend_n_obs": (["decade", "lat", "lon"], tnobs.astype(np.float32)),
                 "lower_ci": (["decade", "lat", "lon"], lower),
                 "upper_ci": (["decade", "lat", "lon"], upper),
                 "n_members": (["decade", "lat", "lon"], nmem),
@@ -515,18 +539,18 @@ def main():
                 "excluded_models": ("; ".join(f"{k}: {v}" for k, v in sorted(EXCLUDED_MODELS.items()))
                                     or "none"),
                 "spatial_smoothing": "none (12-member ensemble is thick enough)",
-                "trend_definition": ("baseline-anchored rate: trend[decade] = (median[decade] "
-                                     "- median[2020s]) / (elapsed decades), units % per decade. "
-                                     "Each decade's panel is the trend FROM the 2020s baseline "
-                                     "TO that decade (so 2090s = the full baseline->2090s "
-                                     "trend). Built on decadal means (each a 12-member x 10-yr "
-                                     "average) and anchored at the baseline, so it is exactly "
-                                     "the (decade-2020s) change map / elapsed decades -- "
-                                     "spatially coherent by construction. A within-decade slope "
-                                     "of the annual series is NOT used (fire is too noisy year-"
-                                     "to-year -> spotty sign-flipping field). The 2020s baseline "
-                                     "has no elapsed change -> trend 0 (identical across "
-                                     "scenarios)."),
+                "trend_definition": trend_definition_decadal(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "trend_method": TREND_METHOD,
+                "significance_method": SIGNIFICANCE_METHOD,
+                "significance_definition": significance_definition(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "significance_pooling": (
+                    "flat mean across members within each year; the p-value is "
+                    "tested on that ANNUAL series while `trend` is fitted on the "
+                    "DECADAL medians (GUARDRAILS S10)"),
                 "trend_units": "% decade-1",
                 "ci_definition": ("lower/upper_ci = ensemble mean -/+ 1 inter-member standard "
                                   "deviation (across the 12 model x GCM members), floored at 0 "
@@ -591,7 +615,7 @@ def main():
                 "observational_context": ("GFED4 observes ~348 Mha/yr = ~3.5 Mkm2/yr burned "
                                           "globally; the 3 retained members give 4.6-7.3 "
                                           "Mkm2/yr, i.e. the right order of magnitude."),
-                "description": ("Wildfire burnt-area processed to TCFD 6-value-class format "
+                "description": ("Wildfire burnt-area processed to TCFD 8-value-class format "
                                 "with shared 2020s baseline; 3-model x GCM ensemble (12 members "
                                 "per scenario) in raw %, no normalization, no spatial smoothing. "
                                 "ISIMIP3b/SSP supersedes the earlier ISIMIP2b/RCP build."),

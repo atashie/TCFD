@@ -1,4 +1,4 @@
-"""Process ISIMIP3b `driedarea` (drought exposure) into the TCFD 6-value-class format.
+"""Process ISIMIP3b `driedarea` (drought exposure) into the TCFD 8-value-class format.
 
 `driedarea` (Heinicke2026, ISIMIP3b DerivedOutputData) is the SSP-era sibling of the
 ISIMIP2b Lange2020 `led` member, and shares its data nature: a BINARY per-cell annual
@@ -42,17 +42,25 @@ that drought is rare. Auto-switching to two-tier on that basis would collapse ev
 never-dry cell onto percentile 1 for the wrong reason. The measured zero fraction is
 recorded in the output attrs so the choice stays auditable.
 
-BASELINE-ANCHORED TREND, not a within-decade slope. A decadal frequency built from
-binary flags is far too noisy year-to-year for an OLS slope over ten annual points;
-the anchored rate is spatially coherent by construction and consistent with the change
-map. Matches burntarea and csoil. Unlike those two, the baseline decade's trend is NaN
-off-land rather than a finite zero everywhere (they use `np.zeros`, which makes the
-whole ocean a finite zero that QA does not catch).
+THEIL-SEN TREND ON THE DECADAL MEDIANS, and the p-value on the ANNUAL series. Two
+separate series, deliberately (GUARDRAILS S10 / S15):
+  * `trend` fits the 8 decadal medians. NOT the annual series -- this layer is binary
+    per member, so the annual ensemble mean is exactly 0 in any year all 15 members
+    agree there was no drought. Theil-Sen is a MEDIAN of pairwise slopes, so once more
+    than half of all year-pairs are 0-to-0 the slope is exactly 0 however much the
+    frequency moved: measured at 91.3% of cells at ssp126, with 25.1% of ssp585 cells
+    pairing p<0.05 with a zero slope. On decadal means the residual is ~10-14%.
+  * `trend_pvalue`/`trend_tau` DO use the annual series: Mann-Kendall is rank-based, so
+    ties cost it nothing, and n=20..80 is far better powered than 2..8.
+  * The baseline decade is NaN for both -- a fitted slope has no elapsed period.
+Neither is a within-decade slope: a decadal frequency built from binary flags is far
+too noisy year-to-year for a 10-point fit.
 
 NO SPATIAL SMOOTHING. 15 members per scenario; `let` needed 5x5 smoothing at 4.
 
 Output files: driedarea_{scenario}_processed.nc with variables
-{median, percentile, trend, lower_ci, upper_ci, n_members, n_models} on (decade, lat, lon).
+{median, percentile, trend, trend_pvalue, trend_tau, trend_n_obs, lower_ci, upper_ci,
+ n_members, n_models} on (decade, lat, lon).
 """
 
 import hashlib
@@ -71,6 +79,10 @@ from isimip_pipeline import storage  # noqa: E402
 from utils.layer_publish import publish_processed_layer  # noqa: E402
 from utils.contact_sheet import render_contact_sheet  # noqa: E402
 from utils.finalize import finalize_layer  # noqa: E402
+from utils.trend_significance import (  # noqa: E402
+    METHOD as SIGNIFICANCE_METHOD, TREND_METHOD, AnnualEnsembleMean, mk_expanding,
+    significance_definition, theilsen_decadal, trend_definition_decadal,
+)
 
 VAR = "driedarea"
 LAYER_ID = "drought_driedarea_annual"
@@ -198,7 +210,7 @@ def main():
     scenarios = sorted({m["scenario"] for m in meta.values()})
 
     log("=" * 70)
-    log("Processing driedarea (ISIMIP3b drought exposure) -> TCFD 6-value-class")
+    log("Processing driedarea (ISIMIP3b drought exposure) -> TCFD 8-value-class")
     log("=" * 70)
     log(f"Members: {len(files)} | scenarios discovered: {scenarios}")
 
@@ -229,11 +241,19 @@ def main():
 
     dec = {s: {} for s in scenarios}
     calendars, uniques = set(), set()
+    # `trend` is a Theil-Sen slope of the ensemble-mean ANNUAL series and
+    # `trend_pvalue` a Mann-Kendall test on the same series (GUARDRAILS S10, S15), so
+    # the annual detail has to be accumulated as members stream past — it is gone
+    # once each member is reduced to decadal maps. Sorted order, matching
+    # backfill_trend_significance.py, so the two paths agree bit-for-bit.
+    annual_acc = {s: AnnualEnsembleMean(MIN_YEAR, MAX_YEAR, (LAT, LON))
+                  for s in scenarios}
 
-    for f in files:
+    for f in sorted(files):
         info = meta[f]
         s, member = info["scenario"], info["member"]
         da, mlats, mlons, calendar, n_unique = load_member(f)
+        annual_acc[s].add(da.year.values, da.values)
 
         # Grid identity: values are written into a shared positional array, so a
         # flipped or shifted axis would corrupt a member invisibly.
@@ -348,8 +368,18 @@ def main():
         med_stack[b_idx] = shared_median  # shared baseline, identical across scenarios
 
         median = med_stack
+        # trend = Theil-Sen slope of the DECADAL median series (GUARDRAILS S10). NOT
+        # the annual series: this layer is binary per member, so on annual values the
+        # median pairwise slope is exactly 0 on 91% of cells at ssp126.
+        trend = theilsen_decadal(med_stack, DECADES, window_years=WINDOW_YEARS,
+                                 baseline_decade=BASELINE_DECADE).astype(np.float32)
+        # The p-value IS tested on the annual series -- far better powered
+        # (n=20..80 vs 2..8) and rank-based, so ties cost it nothing (S15).
+        years_a, mean_annual = annual_acc[s].result()
+        tpval, ttau, tnobs = mk_expanding(years_a, mean_annual, DECADES,
+                                          window_years=WINDOW_YEARS,
+                                          baseline_decade=BASELINE_DECADE)
         percentile = np.full_like(median, np.nan)
-        trend = np.full_like(median, np.nan)
         lower = np.full_like(median, np.nan)
         upper = np.full_like(median, np.nan)
         nmem = np.full_like(median, np.nan)
@@ -361,14 +391,14 @@ def main():
                 percentile[i] = shared_pct
                 lower[i], upper[i] = shared_lo, shared_hi
                 nmem[i], nmodel[i] = shared_nmem, shared_nmodel
-                trend[i] = anchored_trend(med_stack, i, b_idx, baseline_finite)
+                # trend/p-value stay NaN in the baseline decade: a fitted slope has
+                # no elapsed period to fit over (GUARDRAILS S10).
                 log(f"  {d}s: shared baseline (identical across scenarios)")
                 continue
 
             lower[i] = np.clip(median[i] - sd_stack[i], 0, 1)
             upper[i] = np.clip(median[i] + sd_stack[i], 0, 1)
             percentile[i] = pct(median[i])
-            trend[i] = anchored_trend(med_stack, i, b_idx, baseline_finite)
 
             finite_i = np.isfinite(median[i])
             cnt = np.sum(np.isfinite(stack[:, i]), axis=0).astype(np.float32)
@@ -379,6 +409,11 @@ def main():
             cnt[~finite_i] = np.nan
             mdl[~finite_i] = np.nan
             nmem[i], nmodel[i] = cnt, mdl
+            # Never publish a slope or a p-value on a cell whose median is masked.
+            trend[i][~finite_i] = np.nan
+            tpval[i][~finite_i] = np.nan
+            ttau[i][~finite_i] = np.nan
+            tnobs[i][~finite_i] = 0
 
             log(f"  {d}s: {len(members)} members  "
                 f"global-mean freq={np.nanmean(median[i]):.4f}  "
@@ -389,6 +424,9 @@ def main():
                 "median": (["decade", "lat", "lon"], median),
                 "percentile": (["decade", "lat", "lon"], percentile),
                 "trend": (["decade", "lat", "lon"], trend),
+                "trend_pvalue": (["decade", "lat", "lon"], tpval.astype(np.float32)),
+                "trend_tau": (["decade", "lat", "lon"], ttau.astype(np.float32)),
+                "trend_n_obs": (["decade", "lat", "lon"], tnobs.astype(np.float32)),
                 "lower_ci": (["decade", "lat", "lon"], lower),
                 "upper_ci": (["decade", "lat", "lon"], upper),
                 "n_members": (["decade", "lat", "lon"], nmem),
@@ -431,12 +469,19 @@ def main():
                     f"rests on 30 samples vs 450 for a fully covered one), so it "
                     f"reflects uneven model coverage rather than drought being rare."),
                 "percentile_direction": "higher_is_worse",
-                "trend_definition": (
-                    "baseline-anchored rate: (median[decade] - median[2020s]) / elapsed "
-                    "decades, i.e. proportional to the change map. NOT a within-decade "
-                    "slope -- a decadal frequency built from binary flags is too noisy "
-                    "year-to-year. Baseline decade = 0 where the baseline exists, NaN "
-                    "off-land."),
+                "trend_definition": trend_definition_decadal(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "trend_method": TREND_METHOD,
+                "significance_method": SIGNIFICANCE_METHOD,
+                "significance_definition": significance_definition(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "significance_pooling": (
+                    "flat mean across members within each year; the p-value is "
+                    "tested on that ANNUAL series while `trend` is fitted on the "
+                    "DECADAL medians (GUARDRAILS S10 zero-inflation trap), so the "
+                    "two describe different series by design"),
                 "trend_units": "1 decade-1",
                 "baseline_decade": BASELINE_DECADE,
                 "baseline_source": "shared_across_all_scenarios",
@@ -465,7 +510,7 @@ def main():
                     "ISIMIP3b DerivedOutputData/Heinicke2026 (driedarea); the SSP-era "
                     "sibling of ISIMIP2b Lange2020 `led`"),
                 "description": (
-                    "Drought exposure processed to TCFD 6-value-class format with a "
+                    "Drought exposure processed to TCFD 8-value-class format with a "
                     "shared 2020s baseline; 3 GHMs x 5 CMIP6 GCMs = 15 members per "
                     "scenario, ssp126/370/585. Union land mask, no filtering, no "
                     "smoothing, single-tier percentile, baseline-anchored trend."),

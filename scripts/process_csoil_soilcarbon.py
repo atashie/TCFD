@@ -1,4 +1,4 @@
-"""Process csoil-total (soil organic carbon stock) into the TCFD 6-value-class format.
+"""Process csoil-total (soil organic carbon stock) into the TCFD 8-value-class format.
 
 csoil-total = the total soil organic carbon pool of each land grid cell, reported
 by ISIMIP3b biomes (vegetation) models in kg C m-2. This is the direct subsurface
@@ -97,6 +97,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" /
 from isimip_pipeline import storage  # noqa: E402
 from utils.layer_publish import publish_processed_layer  # noqa: E402
 from utils.finalize import finalize_layer  # noqa: E402
+from utils.trend_significance import (  # noqa: E402
+    METHOD as SIGNIFICANCE_METHOD, TREND_METHOD, AnnualEnsembleMean, mk_expanding,
+    significance_definition, theilsen_decadal, trend_definition_decadal,
+)
 from utils.contact_sheet import render_contact_sheet  # noqa: E402
 
 VAR = "csoil-total"
@@ -332,7 +336,7 @@ def main():
     models = sorted({m["model"] for m in meta.values()})
     gcms = sorted({m["gcm"] for m in meta.values()})
     log("=" * 66)
-    log("Processing csoil-total (soil organic carbon) -> TCFD 6-value-class format")
+    log("Processing csoil-total (soil organic carbon) -> TCFD 8-value-class format")
     log("=" * 66)
     log(f"Members: {len(files)} | scenarios: {scenarios}")
     log(f"Models: {models} | GCMs: {gcms}")
@@ -346,10 +350,17 @@ def main():
 
     # ---- Pass 1: per-member decadal-mean maps ---------------------------------
     dec = {s: {} for s in scenarios}            # dec[scen][member] = (n_dec, lat, lon)
-    for f in files:
+    # trend_pvalue is tested on the ensemble-mean ANNUAL series (GUARDRAILS S15), which
+    # is gone once each member is reduced to decadal maps -- so accumulate it here.
+    # `trend` itself needs only the decadal medians (S10). Sorted order matches
+    # backfill_trend_significance.py so both paths agree bit-for-bit.
+    annual_acc = {s: AnnualEnsembleMean(MIN_YEAR, MAX_YEAR, (LAT, LON))
+                  for s in scenarios}
+    for f in sorted(files):
         info = meta[f]
         s, member = info["scenario"], info["member"]
         da = load_member(f)
+        annual_acc[s].add(da.year.values, da.values)
         if da.year.size == 0:
             log(f"  WARNING: {os.path.basename(f)} has no years in "
                 f"{MIN_YEAR}-{MAX_YEAR}; skipping (check time-axis parse)")
@@ -481,18 +492,29 @@ def main():
         median, lower, upper, percentile = (
             med_by_scen[s], lo_by_scen[s], hi_by_scen[s], pct_by_scen[s])
         nmem, nmodel = nmem_by_scen[s], nmodel_by_scen[s]
-        trend = np.full_like(median, np.nan)
+        # Theil-Sen on the DECADAL medians (S10), p-value on the ANNUAL series (S15).
+        trend = theilsen_decadal(median, DECADES, window_years=WINDOW_YEARS,
+                                 baseline_decade=BASELINE_DECADE).astype(np.float32)
+        years_a, mean_annual = annual_acc[s].result()
+        tpval, ttau, tnobs = mk_expanding(years_a, mean_annual, DECADES,
+                                          window_years=WINDOW_YEARS,
+                                          baseline_decade=BASELINE_DECADE)
+        for arr in (trend, tpval, ttau):
+            arr[~np.isfinite(median)] = np.nan
+        tnobs[~np.isfinite(median)] = 0
         for i, d in enumerate(DECADES):
-            trend[i] = anchored_trend(median, i, b_idx)  # baseline->decade rate
             tag = "shared baseline" if d == BASELINE_DECADE else f"{len(members)} members"
             log(f"  {d}s: {tag:<15}  global-mean csoil={np.nanmean(median[i]):.4f}  "
-                f"trend(base->{d}s)={np.nanmean(trend[i]):+.4f} kg m-2/dec")
+                f"trend={np.nanmean(trend[i]):+.4f} kg m-2/dec")
 
         ds_out = xr.Dataset(
             {
                 "median": (["decade", "lat", "lon"], median),
                 "percentile": (["decade", "lat", "lon"], percentile),
                 "trend": (["decade", "lat", "lon"], trend),
+                "trend_pvalue": (["decade", "lat", "lon"], tpval.astype(np.float32)),
+                "trend_tau": (["decade", "lat", "lon"], ttau.astype(np.float32)),
+                "trend_n_obs": (["decade", "lat", "lon"], tnobs.astype(np.float32)),
                 "lower_ci": (["decade", "lat", "lon"], lower),
                 "upper_ci": (["decade", "lat", "lon"], upper),
                 "n_members": (["decade", "lat", "lon"], nmem),
@@ -622,17 +644,18 @@ def main():
                                      "sensitivity runs, and duplicate soc variants, so each model "
                                      "contributes exactly one run per GCM x scenario."),
                 "spatial_smoothing": "none (17-member ensemble is thick enough)",
-                "trend_definition": ("baseline-anchored rate: trend[decade] = (median[decade] "
-                                     "- median[2020s]) / (elapsed decades), units kg C m-2 per "
-                                     "decade. Each decade's panel is the trend FROM the 2020s "
-                                     "baseline TO that decade (2090s = the full baseline->2090s "
-                                     "trend). Built on decadal means and anchored at the "
-                                     "baseline, so it is exactly the (decade-2020s) change map / "
-                                     "elapsed decades -- spatially coherent by construction and "
-                                     "consistent with the change map (GUARDRAILS S10). The 2020s "
-                                     "baseline has no elapsed change -> trend 0 (identical across "
-                                     "scenarios). A NEGATIVE trend = soil-carbon LOSS = the "
-                                     "adverse direction."),
+                "trend_definition": trend_definition_decadal(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "trend_method": TREND_METHOD,
+                "significance_method": SIGNIFICANCE_METHOD,
+                "significance_definition": significance_definition(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "significance_pooling": (
+                    "flat mean across members within each year; the p-value is "
+                    "tested on that ANNUAL series while `trend` is fitted on the "
+                    "DECADAL medians (GUARDRAILS S10)"),
                 "trend_units": "kg m-2 decade-1",
                 "ci_definition": ("lower/upper_ci = ensemble mean -/+ 1 inter-member standard "
                                   "deviation (across the 17 model x GCM members), floored at 0. "
@@ -676,7 +699,7 @@ def main():
                              "(jules -- its only published csoil-total run)."),
                 "source_dataset": ("ISIMIP3b OutputData/biomes (csoil-total; annual for classic/"
                                    "jules-es-vn6p3/mc2-usfs, monthly annualized for visit)"),
-                "description": ("Soil organic carbon stock processed to TCFD 6-value-class format "
+                "description": ("Soil organic carbon stock processed to TCFD 8-value-class format "
                                 "with shared 2020s baseline; 4-model x CMIP6-GCM ensemble "
                                 "(17 members per scenario) in raw kg C m-2, no normalization, no "
                                 "spatial smoothing, higher_is_better (risk = loss)."),

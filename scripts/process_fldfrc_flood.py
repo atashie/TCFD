@@ -1,4 +1,4 @@
-"""Process fldfrc (CaMa-Flood annual flooded area fraction) into the TCFD 6-value-class
+"""Process fldfrc (CaMa-Flood annual flooded area fraction) into the TCFD 8-value-class
 format -- THREE PARALLEL LAYERS, one per flood-protection level.
 
 fldfrc = the fraction of each grid cell inundated per year, from the CaMa-Flood v3.6.2
@@ -112,6 +112,10 @@ from isimip_pipeline import storage  # noqa: E402
 from utils.layer_publish import publish_processed_layer  # noqa: E402
 from utils.contact_sheet import render_contact_sheet  # noqa: E402
 from utils.finalize import finalize_layer  # noqa: E402
+from utils.trend_significance import (  # noqa: E402
+    METHOD as SIGNIFICANCE_METHOD, TREND_METHOD, AnnualEnsembleMean, mk_expanding,
+    significance_definition, theilsen_decadal, trend_definition_decadal,
+)
 
 VAR = "fldfrc"
 PROTECTIONS = ["none", "100yr", "flopros"]
@@ -286,10 +290,18 @@ def process_protection(protection, publish=True):
     # ---- Pass 1: per-member decadal-mean maps (as % of cell area) ---------------
     dec = {s: {} for s in scenarios}
     fpf_stack = []
-    for f in files:
+    # trend_pvalue is tested on the ensemble-mean ANNUAL series (GUARDRAILS S15). Held
+    # in % of cell area, matching the decadal maps below. `trend` uses only the decadal
+    # medians (S10) -- vital here: a single year is ~93% exact zeros, so a median of
+    # pairwise ANNUAL slopes would be exactly 0 almost everywhere.
+    annual_acc = {s: AnnualEnsembleMean(DECADES[0],
+                                        DECADES[-1] + WINDOW_YEARS - 1, (LAT, LON))
+                  for s in scenarios}
+    for f in sorted(files):
         info = meta[f]
         s, member = info["scenario"], info["member"]
         da, fpf = load_member(f)
+        annual_acc[s].add(da.year.values, da.values * 100.0)
         fpf_stack.append(fpf)
         maps = np.full((len(DECADES), LAT, LON), np.nan, np.float32)
         for i, d in enumerate(DECADES):
@@ -415,14 +427,22 @@ def process_protection(protection, publish=True):
         med_by[s], lo_by[s], hi_by[s], pct_by[s] = median, lower, upper, percentile
         nmem_by[s], nmodel_by[s] = nmem, nmodel
 
-    # ---- Phase B: anchored trend + write --------------------------------------
+    # ---- Phase B: Theil-Sen trend + significance + write -----------------------
     out_dir.mkdir(parents=True, exist_ok=True)
     for s in scenarios:
         log(f"\n--- {s} ---")
         median, lower, upper, percentile = med_by[s], lo_by[s], hi_by[s], pct_by[s]
-        trend = np.full_like(median, np.nan)
+        # Theil-Sen on the DECADAL medians (S10); p-value on the ANNUAL series (S15).
+        trend = theilsen_decadal(median, DECADES, window_years=WINDOW_YEARS,
+                                 baseline_decade=BASELINE_DECADE).astype(np.float32)
+        years_a, mean_annual = annual_acc[s].result()
+        tpval, ttau, tnobs = mk_expanding(years_a, mean_annual, DECADES,
+                                          window_years=WINDOW_YEARS,
+                                          baseline_decade=BASELINE_DECADE)
+        for arr in (trend, tpval, ttau):
+            arr[~np.isfinite(median)] = np.nan
+        tnobs[~np.isfinite(median)] = 0
         for i, d in enumerate(DECADES):
-            trend[i] = anchored_trend(median, i, b_idx)
             area = float(np.nansum(median[i] / 100.0 * A[:, None]))
             log(f"  {d}s: global flooded area={area:>12,.0f} km2/yr "
                 f"({100*(area/base_area-1):+6.1f}% vs 2020s)  "
@@ -433,6 +453,9 @@ def process_protection(protection, publish=True):
                 "median": (["decade", "lat", "lon"], median),
                 "percentile": (["decade", "lat", "lon"], percentile),
                 "trend": (["decade", "lat", "lon"], trend),
+                "trend_pvalue": (["decade", "lat", "lon"], tpval.astype(np.float32)),
+                "trend_tau": (["decade", "lat", "lon"], ttau.astype(np.float32)),
+                "trend_n_obs": (["decade", "lat", "lon"], tnobs.astype(np.float32)),
                 "lower_ci": (["decade", "lat", "lon"], lower),
                 "upper_ci": (["decade", "lat", "lon"], upper),
                 "n_members": (["decade", "lat", "lon"], nmem_by[s]),
@@ -470,17 +493,19 @@ def process_protection(protection, publish=True):
                     "so the spread is genuine GHM+GCM uncertainty and is retained as the "
                     "CI (model democracy)."),
                 "spatial_smoothing": "none (24 members per scenario is thick)",
-                "trend_definition": (
-                    "baseline-anchored rate: trend[decade] = (median[decade] - "
-                    "median[2020s]) / elapsed decades, in % of cell area per decade. Each "
-                    "panel is the trend FROM the 2020s baseline TO that decade, so it is "
-                    "exactly the (decade - 2020s) change map / elapsed decades and is "
-                    "spatially coherent by construction. A within-decade slope of the "
-                    "annual series is NOT used: annual flooded area swings ~17x between "
-                    "adjacent decades (h08/miroc5/flopros: 2080 = 1,207,332 km2 vs "
-                    "2100 = 69,751 km2), so an annual regression is noise. The 2020s "
-                    "baseline has no elapsed change -> trend 0, identical across "
-                    "scenarios."),
+                "trend_definition": trend_definition_decadal(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "trend_method": TREND_METHOD,
+                "significance_method": SIGNIFICANCE_METHOD,
+                "significance_definition": significance_definition(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "significance_pooling": (
+                    "flat mean across members within each year; the p-value is "
+                    "tested on that ANNUAL series while `trend` is fitted on the "
+                    "DECADAL medians -- a single year is ~93%% exact zeros, so an "
+                    "annual Theil-Sen would be exactly 0 almost everywhere (S10)"),
                 "trend_units": "% of cell area decade-1",
                 "ci_definition": (
                     "lower/upper_ci = ensemble mean -/+ 1 inter-member standard deviation "
@@ -555,7 +580,7 @@ def process_protection(protection, publish=True):
                     "flood-protection assumption. They answer different questions and are "
                     "not substitutes; compare them rather than picking one blindly."),
                 "description": (
-                    f"River-flood area processed to the TCFD 6-value-class format with a "
+                    f"River-flood area processed to the TCFD 8-value-class format with a "
                     f"shared 2020s baseline; 24-member (6 GHM x 4 GCM) ensemble, "
                     f"protection={protection}, rcp26/60/85, no normalization, no spatial "
                     f"smoothing."),

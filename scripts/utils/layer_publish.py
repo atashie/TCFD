@@ -44,13 +44,19 @@ DECISION_ATTRS = {
     "percentile_direction": "percentile_direction",
     "trend_definition": "trend_definition",
     "trend_units": "trend_units",
+    "significance_method": "significance_method",
+    "significance_definition": "significance_definition",
+    "significance_pooling": "significance_pooling",
     "baseline_decade": "baseline_decade",
     "baseline_source": "baseline_source",
     "window_years": "window_years",
 }
 
 #: Attributes that legitimately differ between scenario files.
-_SCENARIO_SPECIFIC = {"scenario", "history", "description", "percentile_zero_fraction"}
+_SCENARIO_SPECIFIC = {"scenario", "history", "description", "percentile_zero_fraction",
+                      # Each scenario's reconstruction residual is its own diagnostic;
+                      # requiring agreement would reject a correctly built layer.
+                      "significance_reconstruction_check"}
 
 _PROCESSED_RE = re.compile(r"^(?P<var>.+)_(?P<scenario>[a-z0-9]+)_processed\.nc$")
 
@@ -135,6 +141,20 @@ def manifest_from_processed(
     decisions = {
         field: merged[attr] for field, attr in DECISION_ATTRS.items() if attr in merged
     }
+
+    # GUARDRAILS S10 (from 2026-07-30): `trend` must be a Theil-Sen slope of the
+    # ensemble-mean annual series. Warn rather than raise, so a layer already in
+    # flight under the old definition can still be published — but make the gap
+    # loud and record it in the manifest, because the alternative is a layer
+    # shipping a trend that no longer matches what the docs and the p-value claim.
+    tm = str(merged.get("trend_method", ""))
+    if "theil_sen" not in tm.lower():
+        decisions["trend_method"] = tm or "MISSING"
+        print(f"  WARNING: {layer_id} declares trend_method={tm or 'MISSING'!r}, not "
+              f"theil_sen_on_ensemble_mean_annual_series. GUARDRAILS S10 requires the "
+              f"Theil-Sen slope of the ensemble-mean annual series; use "
+              f"utils.trend_significance.theilsen_expanding(). Publishing anyway.",
+              flush=True)
     mode = _percentile_mode(merged)
     if mode:
         decisions["percentile_mode"] = mode

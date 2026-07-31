@@ -1,4 +1,4 @@
-"""Process the 1-in-100-year river-flood EVENT into the TCFD 6-value-class format.
+"""Process the 1-in-100-year river-flood EVENT into the TCFD 8-value-class format.
 
 THE FOURTH FLOOD LAYER, and the only one that is not an expected-annual-area. The three
 `riverflood_fldfrc-{none,100yr,flopros}_annual` layers all answer "how much area is
@@ -92,6 +92,10 @@ from isimip_pipeline import storage  # noqa: E402
 from utils.layer_publish import publish_processed_layer  # noqa: E402
 from utils.contact_sheet import render_contact_sheet  # noqa: E402
 from utils.finalize import finalize_layer  # noqa: E402
+from utils.trend_significance import (  # noqa: E402
+    METHOD as SIGNIFICANCE_METHOD, TREND_METHOD, AnnualEnsembleMean, mk_expanding,
+    significance_definition, theilsen_decadal, trend_definition_decadal,
+)
 # Reuse the sibling processor's primitives rather than re-deriving them: the percentile
 # tiering, the anchored-trend definition and the cell-area weighting must match the other
 # three flood layers exactly, or the four are not comparable.
@@ -195,7 +199,11 @@ def main():
     foot = {s: {} for s in scenarios}
     fpf_stack = []
     lats = lons = None
-    for k in keys:
+    # The p-value is tested on the ensemble-mean ANNUAL exceedance-indicator series
+    # (GUARDRAILS S15); `trend` uses only the decadal medians (S10). Built lazily
+    # because the grid is not known until the first pair is opened.
+    annual_acc = {}
+    for k in sorted(keys):
         model, gcm, scen = k
         na, exceeded, valid, yrs, fpf = load_pair(files_n[k], files_h[k])
         if lats is None:
@@ -203,6 +211,14 @@ def main():
                 lats, lons = d0.lat.values, d0.lon.values
         fpf_stack.append(fpf)
         LAT, LON = len(lats), len(lons)
+        if not annual_acc:
+            annual_acc = {sc: AnnualEnsembleMean(
+                DECADES[0], DECADES[-1] + WINDOW_YEARS - 1, (LAT, LON))
+                for sc in scenarios}
+        # Percent of years exceeded, valid-masked so the denominator matches
+        # decade_stats(): a year with either field missing contributes nothing.
+        ind = np.where(valid, 100.0 * exceeded, np.nan).astype(np.float32)
+        annual_acc[scen].add(yrs, ind)
         fq = np.full((len(DECADES), LAT, LON), np.nan, np.float32)
         fp = np.full((len(DECADES), LAT, LON), np.nan, np.float32)
         for i, d in enumerate(DECADES):
@@ -323,10 +339,19 @@ def main():
         nmodel[~np.isfinite(nmem)] = np.nan
         nmem_fp[nmem_fp == 0] = np.nan
 
-        trend = np.full(shp, np.nan, np.float32)
+        # Theil-Sen on the DECADAL medians of the PRIMARY value (event frequency);
+        # p-value on the annual exceedance-indicator series.
+        trend = theilsen_decadal(median, DECADES, window_years=WINDOW_YEARS,
+                                 baseline_decade=BASELINE_DECADE).astype(np.float32)
+        years_a, mean_annual = annual_acc[s].result()
+        tpval, ttau, tnobs = mk_expanding(years_a, mean_annual, DECADES,
+                                          window_years=WINDOW_YEARS,
+                                          baseline_decade=BASELINE_DECADE)
+        for arr in (trend, tpval, ttau):
+            arr[~np.isfinite(median)] = np.nan
+        tnobs[~np.isfinite(median)] = 0
         log(f"\n--- {s} ---")
         for i, d in enumerate(DECADES):
-            trend[i] = anchored_trend(median, i, b_idx)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 ev = np.isfinite(f_med[i])
@@ -341,6 +366,9 @@ def main():
                 "median": (["decade", "lat", "lon"], median),
                 "percentile": (["decade", "lat", "lon"], percentile),
                 "trend": (["decade", "lat", "lon"], trend),
+                "trend_pvalue": (["decade", "lat", "lon"], tpval.astype(np.float32)),
+                "trend_tau": (["decade", "lat", "lon"], ttau.astype(np.float32)),
+                "trend_n_obs": (["decade", "lat", "lon"], tnobs.astype(np.float32)),
                 "lower_ci": (["decade", "lat", "lon"], lower),
                 "upper_ci": (["decade", "lat", "lon"], upper),
                 "n_members": (["decade", "lat", "lon"], nmem),
@@ -409,13 +437,18 @@ def main():
                     "none -- one hydrodynamic model (CaMa-Flood v3.6.2) fed by 6 GHMs, so "
                     "inter-member spread is genuine GHM+GCM uncertainty and becomes the CI."),
                 "spatial_smoothing": "none (24 members per scenario is thick)",
-                "trend_definition": (
-                    "baseline-anchored rate on the PRIMARY value: trend[decade] = "
-                    "(median[decade] - median[2020s]) / elapsed decades, in percentage "
-                    "points of years per decade. Matches the three sibling flood layers so "
-                    "all four are comparable. A within-decade slope is not used -- annual "
-                    "flooded area swings ~17x between adjacent decades. The 2020s baseline "
-                    "has no elapsed change -> 0, identical across scenarios."),
+                "trend_definition": trend_definition_decadal(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "trend_method": TREND_METHOD,
+                "significance_method": SIGNIFICANCE_METHOD,
+                "significance_definition": significance_definition(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "significance_pooling": (
+                    "flat mean across members within each year of the exceedance "
+                    "indicator; `trend` is fitted on the DECADAL medians of the "
+                    "PRIMARY value (event frequency), not the footprint (S10)"),
                 "trend_units": "% of years decade-1",
                 "ci_definition": (
                     "lower/upper_ci = ensemble mean +/- 1 inter-member SD over the 24 "
@@ -454,7 +487,7 @@ def main():
                 "description": (
                     "Exceedance frequency of the preindustrial 1-in-100-year river flood, "
                     "with the undefended event footprint as a companion; TCFD "
-                    "6-value-class format, shared 2020s baseline, 24-member (6 GHM x 4 GCM) "
+                    "8-value-class format, shared 2020s baseline, 24-member (6 GHM x 4 GCM) "
                     "ensemble, rcp26/60/85, no normalization, no spatial smoothing."),
             },
         )

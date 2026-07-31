@@ -105,6 +105,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "isimip-pipeline" /
 from isimip_pipeline import storage  # noqa: E402
 from utils.layer_publish import publish_processed_layer  # noqa: E402
 from utils.finalize import finalize_layer  # noqa: E402
+from utils.trend_significance import (  # noqa: E402
+    METHOD as SIGNIFICANCE_METHOD, TREND_METHOD, AnnualEnsembleMean, mk_expanding,
+    significance_definition, theilsen_decadal, trend_definition_decadal,
+)
 from utils.contact_sheet import render_contact_sheet  # noqa: E402
 
 # --- Track configuration ----------------------------------------------------
@@ -427,6 +431,13 @@ def main():
     dec = {s: {} for s in scenarios}
     fam_of = {}
     cover_dec = {s: {} for s in scenarios}
+    # The p-value is tested on the ensemble-mean ANNUAL series (GUARDRAILS S15), so the
+    # harmonized annual values are accumulated as members stream past. NOTE this is a
+    # FLAT member mean, whereas `median` pools family-mean-of-family-means -- a
+    # deliberate simplification (user decision 2026-07-30), recorded in
+    # significance_pooling. `trend` uses only the decadal medians (S10).
+    annual_acc = {s: AnnualEnsembleMean(MIN_YEAR, MAX_YEAR, (LAT, LON))
+                  for s in scenarios}
     for f in sorted(value_files):
         info = meta[f]
         s, member = info["scenario"], info["member"]
@@ -462,6 +473,16 @@ def main():
                     n_floored += int(np.sum(np.isfinite(raw) & (raw > 0) & ~ok))
                     raw = np.where(ok, raw / np.maximum(cmap, COVER_FLOOR), np.nan)
             maps[i] = raw * cfg["unit_scale"]
+
+        # Same harmonization as above but per YEAR: per-gridcell models are divided by
+        # their own annual cover with the 1% floor before the unit scale (S13).
+        ann = da.values.astype(np.float32)
+        if cov_da is not None and info["model"] in PER_GRIDCELL:
+            cov_y = cov_da.reindex(year=da.year.values).values
+            ok_y = np.isfinite(cov_y) & (cov_y >= COVER_FLOOR)
+            ann = np.where(ok_y, ann / np.maximum(cov_y, COVER_FLOOR), np.nan)
+        annual_acc[s].add(da.year.values, ann * cfg["unit_scale"])
+
         dec[s][member] = maps
         cover_dec[s][member] = cmaps
         fam_of[member] = info["family"]
@@ -580,12 +601,20 @@ def main():
                 cover[i] = np.nanmean(
                     np.stack([cover_dec[s][m][i] for m in members], 0), axis=0)
 
-        trend = np.full_like(median, np.nan)
+        # Theil-Sen on the DECADAL medians (S10); p-value on the ANNUAL series (S15).
+        trend = theilsen_decadal(median, DECADES, window_years=WINDOW_YEARS,
+                                 baseline_decade=BASELINE_DECADE).astype(np.float32)
+        years_a, mean_annual = annual_acc[s].result()
+        tpval, ttau, tnobs = mk_expanding(years_a, mean_annual, DECADES,
+                                          window_years=WINDOW_YEARS,
+                                          baseline_decade=BASELINE_DECADE)
+        for arr in (trend, tpval, ttau):
+            arr[~np.isfinite(median)] = np.nan
+        tnobs[~np.isfinite(median)] = 0
         for i, d in enumerate(DECADES):
-            trend[i] = anchored_trend(median, i, b_idx)
             tag = "shared baseline" if d == BASELINE_DECADE else f"{len(members)} members"
             log(f"  {d}s: {tag:<15} global-mean={np.nanmean(median[i]):.6g}  "
-                f"trend(base->{d}s)={np.nanmean(trend[i]):+.4g} {cfg['units']}/dec  "
+                f"trend={np.nanmean(trend[i]):+.4g} {cfg['units']}/dec  "
                 f"cells={int(np.isfinite(median[i]).sum()):,}")
 
         nmem[nmem == 0] = np.nan        # off-mask: NaN, not a misleading 0
@@ -597,6 +626,9 @@ def main():
                 "median": (["decade", "lat", "lon"], median),
                 "percentile": (["decade", "lat", "lon"], percentile),
                 "trend": (["decade", "lat", "lon"], trend),
+                "trend_pvalue": (["decade", "lat", "lon"], tpval.astype(np.float32)),
+                "trend_tau": (["decade", "lat", "lon"], ttau.astype(np.float32)),
+                "trend_n_obs": (["decade", "lat", "lon"], tnobs.astype(np.float32)),
                 "lower_ci": (["decade", "lat", "lon"], lower),
                 "upper_ci": (["decade", "lat", "lon"], upper),
                 "n_members": (["decade", "lat", "lon"], nmem),
@@ -680,15 +712,21 @@ def main():
                                       "families is thick enough, and the >=2-family mask already "
                                       "removes the single-model periphery that smoothing would "
                                       "otherwise bleed across."),
-                "trend_definition": ("baseline-anchored rate: trend[decade] = (median[decade] - "
-                                     "median[2020s]) / elapsed decades. Each panel is the trend "
-                                     "FROM the 2020s baseline TO that decade, so it is exactly "
-                                     "the change map / elapsed decades -- spatially coherent by "
-                                     "construction (GUARDRAILS S10). Chosen over a within-decade "
-                                     "Theil-Sen slope because PFT-level values are noisy "
-                                     "year-to-year, as for burntarea and csoil. The 2020s "
-                                     "baseline has no elapsed change -> 0. A NEGATIVE trend = "
-                                     "declining growth potential = the adverse direction."),
+                "trend_definition": trend_definition_decadal(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "trend_method": TREND_METHOD,
+                "significance_method": SIGNIFICANCE_METHOD,
+                "significance_definition": significance_definition(
+                    DECADES, window_years=WINDOW_YEARS,
+                    baseline_decade=BASELINE_DECADE),
+                "significance_pooling": (
+                    "FLAT mean across members within each year -- note `median` "
+                    "pools family-mean-of-family-means with a >=2-family mask, so "
+                    "the significance series is the same members equally weighted, "
+                    "not the identical estimator (user decision 2026-07-30). "
+                    "Coverage is still taken from median, so no cell gains a "
+                    "p-value that median masks out."),
                 "trend_units": f"{cfg['units']} decade-1",
                 "ci_definition": ("lower/upper_ci = ensemble value +/- 1 standard deviation "
                                   "ACROSS MODEL-FAMILY MEANS, i.e. between-model disagreement, "
@@ -709,7 +747,7 @@ def main():
                                   "once). NaN off-mask. Cells below the family threshold are "
                                   "masked, not reported with a low count."),
                 "pft_cover_note": ("pft_cover = ensemble-mean fractional cover (0-1) of this PFT, "
-                                   "a CONFIDENCE/CONTEXT field, not part of the 6 value classes. "
+                                   "a CONFIDENCE/CONTEXT field, not part of the 8 value classes. "
                                    "It answers 'do the models actually place this conifer here', "
                                    "which the per-tile median deliberately does not encode. "
                                    "INCOMPLETE BY CONSTRUCTION: clm45 publishes no cover, so "
@@ -821,7 +859,7 @@ def main():
                 "source_dataset": (f"ISIMIP2b OutputData/biomes ({track}-<temperate needleleaf "
                                    f"evergreen code>, annual 2006-2099, EWEMBI-bias-adjusted "
                                    f"CMIP5)"),
-                "description": (f"{cfg['long_name']} processed to the TCFD 6-value-class format "
+                "description": (f"{cfg['long_name']} processed to the TCFD 8-value-class format "
                                 f"with a shared 2020s baseline. {len(families)}-family x "
                                 f"CMIP5-GCM ensemble harmonized to per-tile density, no "
                                 f"normalization, no spatial smoothing, >= {MIN_FAMILIES}-family "

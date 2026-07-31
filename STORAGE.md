@@ -17,7 +17,7 @@ This follows the org-wide house rule (`wildfireModeling/CLAUDE.md:30-32`):
 1. **A layer version is immutable.** Once published, its objects are never rewritten. Reprocessing creates a new version.
 2. **Adding a layer is additive.** A new hazard layer creates one new prefix and appends one registry entry. It never edits an existing layer's objects.
 3. **Evidence travels with the data.** A version's QA/QC reports, maps, and provenance manifest sit *inside* that version prefix, so a report can never be read against the wrong data.
-4. **Products never mix.** TCFD/CDP (6 value classes, annualized) and Water Risk Index (20 value types, monthly) are separated at the top level, per `CLAUDE.md`.
+4. **Products never mix.** TCFD/CDP (8 value classes, annualized) and Water Risk Index (20 value types, monthly) are separated at the top level, per `CLAUDE.md`.
 5. **One place builds keys.** All key construction goes through `isimip_pipeline/storage.py`. No script hardcodes an S3 key.
 6. **Nothing publishes half-written.** A consumer reads a version only if its `_COMPLETE.json` verifies (see [Publish protocol](#publish-protocol)).
 
@@ -25,7 +25,7 @@ This follows the org-wide house rule (`wildfireModeling/CLAUDE.md:30-32`):
 
 ```
 TCFD/
-├── tcfd/                                    # Product 1: annualized, 6 value classes
+├── tcfd/                                    # Product 1: annualized, 8 value classes
 │   └── layers/
 │       └── {layer_id}/
 │           ├── v2026-07-27_3412446/         # immutable version
@@ -149,8 +149,10 @@ Most fields are already emitted by the processors as NetCDF global attributes (`
     "spatial_smoothing": "none",
     "percentile_mode": "single_tier",
     "percentile_direction": "higher_is_worse",
-    "trend_definition": "baseline_anchored_rate",
+    "trend_definition": "Theil-Sen slope of the DECADAL MEDIAN series over an expanding window anchored at 2020s ...",
+    "trend_method": "theil_sen_on_decadal_median_series",
     "trend_units": "% decade-1",
+    "significance_method": "mann_kendall_tie_corrected_asymptotic_two_sided_on_ensemble_mean_annual_series",
     "baseline_decade": 2020,
     "baseline_source": "shared_across_all_scenarios"
   },

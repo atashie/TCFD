@@ -1,11 +1,11 @@
 ---
 name: isimip-process-visualize
-description: Process annualized ISIMIP NetCDF into the TCFD 6-value-class format, then publish the layer to S3 with its QA/QC report and interactive maps. Use when processing a downloaded ISIMIP variable into a TCFD/CDP layer, reprocessing an existing layer, or regenerating QA evidence and visualizations.
+description: Process annualized ISIMIP NetCDF into the TCFD 8-value-class format, then publish the layer to S3 with its QA/QC report and interactive maps. Use when processing a downloaded ISIMIP variable into a TCFD/CDP layer, reprocessing an existing layer, or regenerating QA evidence and visualizations.
 ---
 
 # Process & Visualize (TCFD/CDP product)
 
-**This skill is for the TCFD/CDP product only** — 6 value classes, annualized decadal
+**This skill is for the TCFD/CDP product only** — 8 value classes, annualized decadal
 statistics. It is NOT for the Water Risk Index (20 value types, monthly, standalone
 scripts, no `isimip-pipeline` CLI). Never mix the two. See CLAUDE.md.
 
@@ -22,9 +22,26 @@ that bite most often here:
   ensemble is not guaranteed. And do not assume which *direction* a fixed-CO₂ member
   biases the trend — measure it. For `csoil`, fixed CO₂ turned out to produce the
   *strongest loss*, the opposite of the documented expectation.
-- **§10 — trend must be a decadal signal**, not a within-decade annual slope, for noisy
-  variables. Prefer the baseline-anchored rate
-  `(median[decade] − median[baseline]) / elapsed_decades`.
+- **§10 — `trend` is a THEIL-SEN SLOPE of the DECADAL MEDIAN series**, expanding window
+  from the baseline decade, in value per decade. Use
+  `trend_significance.theilsen_decadal(med_stack, DECADES, ...)` — the processor already
+  holds the decadal stack, so no extra data is needed, and it needs **no rescaling**
+  (fitting against the decade index already gives per-decade; a `× window_years` would
+  inflate every trend 10×). **Never fit the ANNUAL series**: Theil-Sen is a *median* of
+  pairwise slopes, so on a zero-inflated hazard it returns exactly 0 wherever most
+  year-pairs are 0→0 — **91.3% of `driedarea` ssp126 cells**, with 25.1% of ssp585 cells
+  pairing `p<0.05` with a zero slope. The decadal series cuts that to 10–14%: a
+  reduction, **not a cure**, so QA warns when a zero slope meets a significant p-value.
+  Never fit within a single decade, and never use the superseded two-point rate. The
+  baseline panel is **NaN, not 0**, and `trend × elapsed_decades == change map` **no
+  longer holds**. Declare `trend_method: theil_sen_on_decadal_median_series`.
+- **§15 — trend significance is mandatory, and is computed on the ensemble MEAN annual
+  series.** Emit `trend_pvalue` / `trend_tau` / `trend_n_obs` via
+  `scripts/utils/trend_significance.py`. Never stack member-years as independent
+  observations: between-model level offsets then dominate the sample (68.7× the
+  interannual SD on `csoil-total`), collapsing detection from 83.0% of land to 14.4%.
+  Never hand-roll the test. A constant series gives **p=1.0, not NaN**, and the p-value
+  measures monotonicity of the ensemble mean, **not** inter-model agreement.
 - **§2 — sub-annual data: ask the user for the aggregation method.** Do not pick silently.
 
 ## Workflow
@@ -113,6 +130,10 @@ into `layer.json` so the manifest cannot drift from the data:
 - `percentile_direction` — `higher_is_worse` (hazards) or `higher_is_better` (assets like
   stored carbon, where the risk is *loss* and the percentile is **inverted**).
 - `trend_definition` + `trend_units` — see §10.
+- `significance_method` + `significance_definition` + `significance_pooling` — see §15.
+  `generate_qa_report.py` gates its significance checks on `significance_method` being
+  present, so omitting it makes the layer WARN as "significance not carried" rather
+  than fail — do not rely on that; emit the fields.
 - `baseline_decade`, `baseline_source` — the shared 2020s baseline must be **identical
   across scenarios**, computed from all scenarios with overlapping 2020s data — **but only
   when ensemble composition is uniform across scenarios.** Check first. If any member is
@@ -182,6 +203,11 @@ the superseded version stays as history and `_VERSION.json` records the chain.
   HTML pages individually. Unzip, open `index.html` — links are relative.
 - **`maps/contact_sheet.html`** is the FIRST thing to review — per-member, full 0.5°.
   The pooled maps cannot show a defect confined to one member.
+- **`{var}_trend_significant_{scenario}.html`**, not just `{var}_trend_pvalue_*`. A
+  p-value field looks plausible almost regardless of what it contains — smooth, bounded,
+  mostly mid-range — so reviewing only that satisfies §11 in form and not in substance.
+  The masked-trend panel makes a wrong significance mask obvious, because the surviving
+  pattern either follows physical geography or it does not.
 - **`qa/qa_report.html`** is standalone; no bundle needed.
 - Map values serialize at 5 significant figures (`_compact()` in `generate_maps.py`), which
   is display-only — full precision stays in the NetCDF. Do not "fix" this by writing full
@@ -194,8 +220,12 @@ the superseded version stays as history and `_VERSION.json` records the chain.
 
 `generate_qa_report.py` checks: value classes present and shaped; `lower_ci ≤ median ≤
 upper_ci`; zero-width CIs isolated to all-zero or single-model cells; percentile in
-[1,100] and oriented to match the declared direction; `trend == 0` in the baseline decade;
-`trend × elapsed_decades == change map`; shared baseline bit-identical across scenarios;
+[1,100] and oriented to match the declared direction; `trend` is **NaN** in the baseline
+decade (fitted slope) or `== 0` for a legacy anchored layer, selected from the file's own
+`trend_method`; `sign(trend) == sign(trend_tau)` on the **significant** subset (the
+anchored `trend × elapsed_decades == change map` identity is retired); the significance
+fields are present, bounded, and their exactly-zero-slope residual is reported;
+shared baseline bit-identical across scenarios;
 coverage counts consistent; land coverage non-empty.
 
 Read the warnings, don't just check the verdict. And if a check reports itself
@@ -245,7 +275,7 @@ be re-downloadable. Never delete raw before the user has reviewed the maps.
 ## Reference implementations
 
 `process_csoil_soilcarbon.py` (mixed cadence, 17 members, `EXCLUDED_MODELS`, coverage diagnostics),
-`process_burntarea_fire.py` (thick ensemble, baseline-anchored trend),
+`process_burntarea_fire.py` (thick ensemble, Theil-Sen decadal trend),
 `process_let_cyclone.py` (thin ensemble → spatial smoothing, zero-inflated → two-tier
 percentile), `process_led_drought.py` (binary exposure flag),
 `process_timber_tempnle.py` (**two tracks from one parameterized script**; mixed per-tile /
