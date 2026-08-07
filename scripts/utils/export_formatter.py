@@ -57,11 +57,32 @@ EXPORT_COLUMNS = [
 VARIABLE_MAPPING = {
     "median": "Raw_Hazard_Value",
     "percentile": "Percentile_Score",
-    "trend": "Decadal_Trend_Strength",
-    "trend_pvalue": "Decadal_Trend_Significance",
+    "sen_slope": "Decadal_Trend_Strength",
     "lower_ci": "Raw_Hazard_Value_25th",
     "upper_ci": "Raw_Hazard_Value_75th",
 }
+
+#: `Decadal_Trend_Strength` takes `sen_slope` by default because it is the robust
+#: estimator on most layers. On a ZERO-INFLATED layer sen_slope collapses to exactly 0
+#: (91.3% of `driedarea` ssp126 cells) and `ols_slope` is the correct read instead --
+#: `test_shared_baseline.py` reports the zero fraction, and a caller should override via
+#: `strength_source` when it is high. See OUTPUT-SPEC.md.
+DEFAULT_STRENGTH_SOURCE = "sen_slope"
+
+#: No significance statistic exists under the current contract. The dual-slope design
+#: replaced the p-value: ols/sen DISAGREEMENT is the robustness signal.
+#:
+#: This constant must be written into the significance columns rather than leaving them
+#: NaN. That distinction is not cosmetic -- the previous schema declared a `significance`
+#: value class that no processor ever emitted, so these columns silently resolved to NaN
+#: and every layer ever delivered read as "not significant" rather than "not computed".
+#: Do not restore a NaN default.
+SIGNIFICANCE_NOT_COMPUTED = "NOT_COMPUTED"
+
+SIGNIFICANCE_COLUMNS = (
+    "Decadal_Trend_Significance",
+    "Long_Term_Trend_Significance",
+)
 
 
 @dataclass
@@ -172,14 +193,24 @@ def calculate_trend_aggregated(
 
     Returns:
         Trend strength if significant, else 0
+
+    Note:
+        Under OUTPUT-SPEC.md there is no significance statistic, so callers pass NaN for
+        both p-values and the gate reduces to DIRECTION CONSISTENCY between the decadal
+        and long-term trend. The p-value branches are retained for pre-spec layers that
+        still carry `trend_pvalue`.
+
+        A NaN p-value must NOT mean "return 0" -- doing that would zero the column for
+        every current layer, which is the same class of silent failure as the old NaN
+        significance reading as "not significant".
     """
-    if any(pd.isna([trend_strength, trend_significance, long_term_strength, long_term_significance])):
+    if pd.isna(trend_strength) or pd.isna(long_term_strength):
         return 0.0
 
-    # Check significance thresholds
-    if trend_significance >= decadal_threshold:
+    # Significance gating only when a p-value is actually available.
+    if not pd.isna(trend_significance) and trend_significance >= decadal_threshold:
         return 0.0
-    if long_term_significance >= significance_threshold:
+    if not pd.isna(long_term_significance) and long_term_significance >= significance_threshold:
         return 0.0
 
     # Check direction consistency
@@ -191,6 +222,7 @@ def calculate_trend_aggregated(
 
 def format_single_extraction(
     result: ExtractionResult,
+    strength_source: Optional[str] = None,
 ) -> pd.DataFrame:
     """Format a single extraction result to DataFrame rows.
 
@@ -198,6 +230,10 @@ def format_single_extraction(
 
     Args:
         result: ExtractionResult with extracted data
+        strength_source: Which slope feeds `Decadal_Trend_Strength`. Defaults to
+            :data:`DEFAULT_STRENGTH_SOURCE` (``sen_slope``). Pass ``"ols_slope"`` for a
+            ZERO-INFLATED layer, where sen_slope is exactly 0 almost everywhere --
+            `test_shared_baseline.py` prints that fraction.
 
     Returns:
         DataFrame with one row per decade
@@ -215,24 +251,31 @@ def format_single_extraction(
     if not decades:
         return pd.DataFrame(columns=EXPORT_COLUMNS)
 
+    # Trend strength source. Layers following OUTPUT-SPEC.md carry `ols_slope` and
+    # `sen_slope`; pre-spec layers carry a single `trend`. Prefer the spec fields, fall
+    # back to the legacy one, so both generations of layer export correctly.
+    strength_key = strength_source or DEFAULT_STRENGTH_SOURCE
+    if strength_key not in result.data:
+        strength_key = "ols_slope" if "ols_slope" in result.data else "trend"
+
     # Get long-term values from last decade (2090)
     last_decade = max(decades)
-    long_term_trend = result.data.get("trend", {}).get(last_decade, np.nan)
-    long_term_pvalue = result.data.get("trend_pvalue", {}).get(last_decade, np.nan)
+    long_term_trend = result.data.get(strength_key, {}).get(last_decade, np.nan)
 
     for decade in decades:
         # Extract values for this decade
         raw_value = result.data.get("median", {}).get(decade, np.nan)
         percentile = result.data.get("percentile", {}).get(decade, np.nan)
-        trend = result.data.get("trend", {}).get(decade, np.nan)
-        trend_pvalue = result.data.get("trend_pvalue", {}).get(decade, np.nan)
+        trend = result.data.get(strength_key, {}).get(decade, np.nan)
         lower_ci = result.data.get("lower_ci", {}).get(decade, np.nan)
         upper_ci = result.data.get("upper_ci", {}).get(decade, np.nan)
 
-        # Calculate derived values
+        # Calculate derived values. No significance statistic exists under the current
+        # contract, so the aggregation is driven by trend sign/magnitude alone; passing
+        # NaN p-values here would silently reproduce the "reads as not significant" bug.
         rel_hazard_label, rel_hazard_num = get_relative_hazard_score(percentile)
         trend_agg = calculate_trend_aggregated(
-            trend, trend_pvalue, long_term_trend, long_term_pvalue
+            trend, np.nan, long_term_trend, np.nan
         )
 
         row = {
@@ -249,9 +292,9 @@ def format_single_extraction(
             "Percentile_Score": percentile,
             "Relative_Hazard_Score": rel_hazard_label,
             "Decadal_Trend_Strength": trend,
-            "Decadal_Trend_Significance": trend_pvalue,
+            "Decadal_Trend_Significance": SIGNIFICANCE_NOT_COMPUTED,
             "Long_Term_Trend_Strength": long_term_trend,
-            "Long_Term_Trend_Significance": long_term_pvalue,
+            "Long_Term_Trend_Significance": SIGNIFICANCE_NOT_COMPUTED,
             "Relative_Hazard_Score_Number": rel_hazard_num,
             "Trend_Aggregated_For_Looker": trend_agg,
             "Advanced_Data_Measures": hazard.advanced_data_measures,

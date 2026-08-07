@@ -1,149 +1,178 @@
-"""Tests for shared 2020s baseline functionality.
+#!/usr/bin/env python
+"""Verify a processed layer against the TCFD output contract (OUTPUT-SPEC.md).
 
-Run after processing to verify:
-1. 2020s values are identical across all scenarios
-2. 2030s+ values differ across scenarios (as expected)
+    python scripts/test_shared_baseline.py {processed_dir} [--var csoil]
+
+Restored and extended. The original checked only the shared 2020s baseline; it was
+dropped during the S3 era and no layer built since carried it, so the checks that had
+to be re-derived by hand each time are folded in here.
+
+Run this after every processing run. `generate_qa_report.py` re-checks some of the
+same invariants -- this script is the contract, that report is the safety net.
+
+Exit code 0 = all checks passed, 1 = at least one failed.
 """
+
+import argparse
+import glob
+import os
+import sys
 
 import numpy as np
 import xarray as xr
-from pathlib import Path
+
+CONTRACT_VARS = ["median", "lower_ci", "upper_ci", "percentile",
+                 "ols_slope", "sen_slope"]
+
+_fail = 0
 
 
-def test_2020s_identical_across_scenarios():
-    """Verify that 2020s values are identical across all processed scenarios."""
-    # This test assumes processing has already been run
-    processed_dir = Path(__file__).parent.parent / "data" / "processed"
+def check(label, passed, detail=""):
+    global _fail
+    if not passed:
+        _fail += 1
+    mark = "PASS" if passed else "FAIL"
+    print(f"  [{mark}] {label}" + (f"  -- {detail}" if detail else ""))
+    return passed
 
-    # Load all scenario outputs
-    scenarios = ["ssp126", "ssp370", "ssp585"]
-    datasets = {}
 
-    for scenario in scenarios:
-        fpath = processed_dir / f"qg_{scenario}_processed.nc"
-        if fpath.exists():
-            datasets[scenario] = xr.open_dataset(fpath)
+def load(processed_dir, var):
+    pattern = os.path.join(processed_dir, f"{var}_*_processed.nc")
+    files = sorted(glob.glob(pattern))
+    if not files:
+        print(f"ERROR: no files matching {pattern}")
+        sys.exit(2)
+    out = {}
+    for f in files:
+        base = os.path.basename(f)
+        scen = base[len(var) + 1:-len("_processed.nc")]
+        out[scen] = xr.open_dataset(f)
+    return out
 
-    if len(datasets) < 2:
-        print("SKIP: Need at least 2 scenario outputs for comparison")
-        print(f"  Found: {list(datasets.keys())}")
-        return False
 
-    # Get 2020s decade index (decade=2020)
-    scenario_list = list(datasets.keys())
-    first_scenario = scenario_list[0]
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("processed_dir")
+    ap.add_argument("--var", default=None,
+                    help="variable prefix; inferred from the directory if omitted")
+    args = ap.parse_args()
 
-    all_pass = True
+    var = args.var
+    if var is None:
+        cands = sorted({os.path.basename(f).split("_")[0]
+                        for f in glob.glob(os.path.join(args.processed_dir,
+                                                        "*_processed.nc"))})
+        if len(cands) != 1:
+            print(f"ERROR: could not infer --var (candidates: {cands})")
+            sys.exit(2)
+        var = cands[0]
 
-    # Compare 2020s values across all pairs
-    for metric in ["median", "percentile", "lower_ci", "upper_ci"]:
-        first_2020s = datasets[first_scenario][metric].sel(decade=2020).values
+    ds = load(args.processed_dir, var)
+    scen = sorted(ds)
+    d0 = ds[scen[0]]
+    print(f"Layer '{var}' -- scenarios {scen}, dims {dict(d0.sizes)}")
 
-        for other_scenario in scenario_list[1:]:
-            other_2020s = datasets[other_scenario][metric].sel(decade=2020).values
+    print("\nSchema")
+    missing = [v for v in CONTRACT_VARS if v not in d0.data_vars]
+    check("all contract variables present", not missing,
+          f"missing {missing}" if missing else "")
+    check("legacy single 'trend' variable is gone", "trend" not in d0.data_vars,
+          "found 'trend' -- layer predates OUTPUT-SPEC.md" if "trend" in d0.data_vars else "")
+    check("decadal_statistic declared", "decadal_statistic" in d0.attrs,
+          d0.attrs.get("decadal_statistic", ""))
+    check("slope_units declared", "slope_units" in d0.attrs,
+          d0.attrs.get("slope_units", ""))
+    check("percentile_direction declared", "percentile_direction" in d0.attrs,
+          d0.attrs.get("percentile_direction", ""))
 
-            # Check if values are identical (allowing for NaN)
-            try:
-                np.testing.assert_array_equal(
-                    first_2020s,
-                    other_2020s,
-                    err_msg=f"{metric} differs between {first_scenario} and {other_scenario} for 2020s"
-                )
-                print(f"  PASS: {metric} identical for 2020s ({first_scenario} vs {other_scenario})")
-            except AssertionError as e:
-                print(f"  FAIL: {e}")
-                all_pass = False
+    print("\nShared 2020s baseline")
+    base_ok = True
+    for a in scen:
+        for b in scen:
+            for v in ("median", "lower_ci", "upper_ci", "percentile"):
+                if v in d0.data_vars and not np.array_equal(
+                        ds[a][v].values[0], ds[b][v].values[0], equal_nan=True):
+                    base_ok = False
+    check("2020s panel bit-identical across scenarios", base_ok)
+    check("baseline_source recorded",
+          d0.attrs.get("baseline_source") == "shared_across_all_scenarios",
+          d0.attrs.get("baseline_source", "<absent>"))
 
-    # Close datasets
-    for ds in datasets.values():
-        ds.close()
-
-    if all_pass:
-        print("\nAll 2020s values are identical across scenarios!")
+    if len(scen) > 1:
+        last = d0.sizes["decade"] - 1
+        a, b = scen[0], scen[-1]
+        ma, mb = ds[a]["median"].values[last], ds[b]["median"].values[last]
+        f = np.isfinite(ma) & np.isfinite(mb)
+        check("final decade DIFFERS across scenarios",
+              f.any() and not np.allclose(ma[f], mb[f]),
+              f"{a} vs {b}")
     else:
-        print("\nSome 2020s values differ across scenarios (UNEXPECTED)")
+        print("  [SKIP] only one scenario -- cross-scenario checks NOT TESTED")
 
-    return all_pass
+    print("\nValue classes")
+    viol = 0
+    for s in scen:
+        m, lo, hi = (ds[s][k].values for k in ("median", "lower_ci", "upper_ci"))
+        f = np.isfinite(m) & np.isfinite(lo) & np.isfinite(hi)
+        viol += int(((lo[f] > m[f] + 1e-5) | (m[f] > hi[f] + 1e-5)).sum())
+    check("lower_ci <= median <= upper_ci", viol == 0, f"{viol} violations")
 
+    p = np.concatenate([ds[s]["percentile"].values.ravel() for s in scen])
+    p = p[np.isfinite(p)]
+    check("percentile within [1, 100]", p.size and p.min() >= 1 - 1e-4
+          and p.max() <= 100 + 1e-4, f"min {p.min():.2f} max {p.max():.2f}")
 
-def test_2030s_differs_across_scenarios():
-    """Verify that 2030s+ values differ across scenarios (as expected)."""
-    processed_dir = Path(__file__).parent.parent / "data" / "processed"
+    direction = d0.attrs.get("percentile_direction", "higher_is_worse")
+    m0, p0 = d0["median"].values[0], d0["percentile"].values[0]
+    f = np.isfinite(m0) & np.isfinite(p0)
+    r = float(np.corrcoef(m0[f], p0[f])[0, 1]) if f.sum() > 2 else float("nan")
+    want_neg = direction == "higher_is_better"
+    check(f"percentile orientation matches '{direction}'",
+          (r < 0) if want_neg else (r > 0), f"corr(median, percentile) = {r:+.3f}")
 
-    scenarios = ["ssp126", "ssp585"]  # Compare extreme scenarios
-    datasets = {}
+    print("\nSlopes")
+    b_nan = all(np.all(np.isnan(ds[s][k].values[0]))
+                for s in scen for k in ("ols_slope", "sen_slope"))
+    check("baseline panel slopes are NaN (not 0)", b_nan,
+          "a finite 0 here makes the whole ocean a finite zero" if not b_nan else "")
 
-    for scenario in scenarios:
-        fpath = processed_dir / f"qg_{scenario}_processed.nc"
-        if fpath.exists():
-            datasets[scenario] = xr.open_dataset(fpath)
+    later = all(np.isfinite(ds[s][k].values[1:]).any()
+                for s in scen for k in ("ols_slope", "sen_slope"))
+    check("non-baseline slopes are populated", later)
 
-    if len(datasets) < 2:
-        print("SKIP: Need ssp126 and ssp585 outputs for comparison")
-        return True  # Not a failure, just can't test
+    leak = 0
+    for s in scen:
+        for i in range(1, ds[s].sizes["decade"]):
+            mf = np.isfinite(ds[s]["median"].values[i])
+            for k in ("ols_slope", "sen_slope"):
+                leak += int((np.isfinite(ds[s][k].values[i]) & ~mf).sum())
+    check("no slope finite where median is NaN", leak == 0, f"{leak} cells (ocean leak)")
 
-    all_pass = True
+    for s in scen:
+        o = ds[s]["ols_slope"].values[1:]
+        se = ds[s]["sen_slope"].values[1:]
+        f = np.isfinite(o) & np.isfinite(se)
+        if not f.any():
+            continue
+        agree = float((np.sign(o[f]) == np.sign(se[f])).mean())
+        zero_sen = float((se[f] == 0).mean())
+        print(f"  [INFO] {s}: ols/sen sign agreement {agree:.1%}, "
+              f"sen exactly zero on {zero_sen:.1%} of cells")
+        if zero_sen > 0.5:
+            print("         -> zero-inflated field: read ols_slope, not sen_slope")
 
-    # Compare 2080s values (should be different for extreme scenarios)
-    for metric in ["median"]:
-        ssp126_2080s = datasets["ssp126"][metric].sel(decade=2080).values
-        ssp585_2080s = datasets["ssp585"][metric].sel(decade=2080).values
+    if "n_members" in d0.data_vars:
+        print("\nEnsemble depth")
+        nm = d0["n_members"].values[1:]
+        nmod = d0["n_models"].values[1:]
+        check("n_members >= 1 where finite", np.nanmin(nm) >= 1,
+              f"range {np.nanmin(nm):.0f}-{np.nanmax(nm):.0f}")
+        check("n_models <= n_members", np.nanmax(nmod - nm) <= 0,
+              f"models {np.nanmin(nmod):.0f}-{np.nanmax(nmod):.0f}")
 
-        # They should NOT be identical (assuming different scenario data)
-        if np.allclose(ssp126_2080s, ssp585_2080s, equal_nan=True):
-            print(f"  WARNING: {metric} is identical for 2080s (unexpected for extreme scenarios)")
-            all_pass = False
-        else:
-            print(f"  PASS: {metric} differs for 2080s (as expected)")
-
-    for ds in datasets.values():
-        ds.close()
-
-    return all_pass
-
-
-def test_baseline_source_attribute():
-    """Verify that processed files have the correct baseline_source attribute."""
-    processed_dir = Path(__file__).parent.parent / "data" / "processed"
-
-    scenarios = ["ssp126", "ssp370", "ssp585"]
-    all_pass = True
-
-    for scenario in scenarios:
-        fpath = processed_dir / f"qg_{scenario}_processed.nc"
-        if fpath.exists():
-            ds = xr.open_dataset(fpath)
-            baseline_source = ds.attrs.get("baseline_source", "NOT_SET")
-            ds.close()
-
-            if baseline_source == "shared_across_all_scenarios":
-                print(f"  PASS: {scenario} has correct baseline_source attribute")
-            else:
-                print(f"  FAIL: {scenario} baseline_source = '{baseline_source}' (expected 'shared_across_all_scenarios')")
-                all_pass = False
-        else:
-            print(f"  SKIP: {fpath.name} not found")
-
-    return all_pass
+    print(f"\n{'ALL CHECKS PASSED' if _fail == 0 else f'{_fail} CHECK(S) FAILED'}")
+    return 1 if _fail else 0
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("Testing shared 2020s baseline functionality")
-    print("=" * 60)
-
-    print("\n1. Testing baseline_source attribute:")
-    attr_ok = test_baseline_source_attribute()
-
-    print("\n2. Testing 2020s identical across scenarios:")
-    identical_ok = test_2020s_identical_across_scenarios()
-
-    print("\n3. Testing 2030s+ differs across scenarios:")
-    differs_ok = test_2030s_differs_across_scenarios()
-
-    print("\n" + "=" * 60)
-    if attr_ok and identical_ok and differs_ok:
-        print("All tests PASSED!")
-    else:
-        print("Some tests FAILED - check output above")
-    print("=" * 60)
+    sys.exit(main())

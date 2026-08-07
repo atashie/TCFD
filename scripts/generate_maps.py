@@ -66,11 +66,18 @@ ANOMALY_SIGMA = 6  # Flag values > 6σ from 2020s mean
 VALUE_CLASS_MAP = {
     0: "median",        # smoothed_median in pipeline
     1: "percentile",    # percentile rank
-    2: "trend",         # Theil-Sen slope
-    3: "significance",  # Spearman p-value (not used by generate_maps.py)
+    2: "trend",         # LEGACY single trend -- pre-OUTPUT-SPEC layers only
+    3: "significance",  # LEGACY, never populated -- pre-OUTPUT-SPEC layers only
     4: "lower_ci",      # lower_bound (Q25)
     5: "upper_ci",      # upper_bound (Q75)
 }
+
+# Metrics under the current contract (OUTPUT-SPEC.md). `trend` is retired in favour of
+# the two slopes, which fail in OPPOSITE regimes and must both be mapped: sen collapses
+# to 0 on zero-inflated fields, ols absorbs member level offsets when coverage is uneven.
+# `trend` is still accepted so pre-spec layers keep rendering.
+SLOPE_METRICS = ["ols_slope", "sen_slope"]
+CONTRACT_METRICS = ["median", "percentile"] + SLOPE_METRICS + ["lower_ci", "upper_ci"]
 
 # Non-projection scenarios to exclude from report generation
 # These are used to enhance baseline robustness but not shown as separate projections
@@ -96,7 +103,9 @@ def detect_scenario_type(scenarios: List[str]) -> Tuple[Dict[str, str], Dict[str
 COLORSCALES = {
     "median": "Viridis",
     "percentile": "RdYlBu_r",  # Reversed: low=blue (good), high=red (bad)
-    "trend": "RdBu",  # Blue=positive (good for "more is better" variables)
+    "trend": "RdBu",  # legacy pre-spec layers
+    "ols_slope": "RdBu",  # Blue=positive (good for "more is better" variables)
+    "sen_slope": "RdBu",
     "lower_ci": "Viridis",
     "upper_ci": "Viridis",
     "change": "RdBu",
@@ -107,7 +116,9 @@ COLORSCALES = {
 METRIC_DESCRIPTIONS = {
     "median": "Ensemble Median Value",
     "percentile": "Percentile Rank (vs 2020s baseline)",
-    "trend": "Decadal Trend",
+    "trend": "Decadal Trend (legacy)",
+    "ols_slope": "Decadal Trend \u2014 OLS slope",
+    "sen_slope": "Decadal Trend \u2014 Theil-Sen slope",
     "lower_ci": "Lower Confidence Interval (25th percentile)",
     "upper_ci": "Upper Confidence Interval (75th percentile)",
     "change": "Absolute Change (2090s - 2020s)",
@@ -119,6 +130,8 @@ COLORBAR_LABELS = {
     "median": "{long_name} [{units}]",
     "percentile": "Percentile rank [1-100]",
     "trend": "Trend [{units} decade⁻¹]",
+    "ols_slope": "OLS slope [{units} decade⁻¹]",
+    "sen_slope": "Theil-Sen slope [{units} decade⁻¹]",
     "lower_ci": "{long_name} [{units}]",
     "upper_ci": "{long_name} [{units}]",
     "change": "Change [{units}]",
@@ -275,7 +288,7 @@ def generate_html_header(
 
     # Build cross-metric navigation (same scenario, other metrics)
     cross_nav = []
-    for m in ["median", "percentile", "trend", "confidence", "change", "anomaly"]:
+    for m in CONTRACT_METRICS + ["trend", "confidence", "change", "anomaly"]:
         active = "active" if m == metric else ""
         cross_nav.append(f'<a href="{variable}_{m}_{scenario}.html" class="{active}">{m.title()}</a>')
 
@@ -562,8 +575,17 @@ class MapCollectionGenerator:
         var_dir = self.output_dir / variable
         var_dir.mkdir(exist_ok=True)
 
-        # Generate each collection
-        for metric in ["median", "percentile", "trend"]:
+        # Generate each collection. Which slope fields exist depends on whether the layer
+        # predates OUTPUT-SPEC.md (single `trend`) or follows it (`ols_slope`+`sen_slope`),
+        # so render whatever is actually present rather than assuming either.
+        available = set()
+        for ds in self.data.values():
+            available |= set(ds.data_vars)
+        wanted = ["median", "percentile"] + SLOPE_METRICS + ["trend"]
+        present = [m for m in wanted if m in available]
+        if not present:
+            log(f"  WARNING: none of {wanted} found in {variable}; nothing to map")
+        for metric in present:
             self.generate_metric_comparison(variable, metric, var_dir)
 
         self.generate_confidence_comparison(variable, var_dir)

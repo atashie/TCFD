@@ -135,10 +135,10 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 
 ## 6. Water Index Is a Separate Workflow From Standard TCFD
 
-**Rule**: The water risk index (`waterIndexUnderlyingData_*.nc`, 20 value types) is a **completely independent data product** from the standard TCFD annualized pipeline (6 value classes). **NEVER apply standard TCFD pipeline concepts** (kernel smoothing, Theil-Sen trends, percentile-of-score ranking, shared 2020s baseline) to the water index workflow.
+**Rule**: The water risk index (`waterIndexUnderlyingData_*.nc`, 20 value types) is a **completely independent data product** from the standard TCFD annualized pipeline. **NEVER apply standard TCFD pipeline concepts** (kernel smoothing, OLS/Theil-Sen slopes, percentile-of-score ranking, shared 2020s baseline) to the water index workflow.
 
 **Why this matters**:
-- The standard TCFD pipeline produces 6 value classes: smoothed median, percentile score, trend, significance, lower/upper CI bounds
+- The standard TCFD pipeline produces the variables defined in [OUTPUT-SPEC.md](OUTPUT-SPEC.md): `median`, `lower_ci`, `upper_ci`, `percentile`, `ols_slope`, `sen_slope`, `n_members`, `n_models`
 - The water index produces 20 value types: 12 monthly ensemble means + annual mean + 7 annual quantile breakpoints (Q05-Q95)
 - These are fundamentally different statistical approaches — confusing them produces incorrect output
 - The R code that generated the original water index files was NOT found in `_deprecated/` — it was a separate codebase
@@ -217,7 +217,21 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 
 ## 10. Trend Must Be a Decadal Signal, Not a Within-Decade Annual Slope for Noisy Variables
 
-**Rule**: For a variable with high interannual variability (fire, precipitation extremes, floods), do **not** report the trend as the OLS slope of the *annual* series within a single decade. Use a **baseline-anchored across-decade rate** so the trend is spatially coherent and consistent with the change map.
+> **Superseded in part by [OUTPUT-SPEC.md](OUTPUT-SPEC.md).** The *diagnosis* below still
+> holds and is why the contract exists; the *prescribed fix* has changed. Layers now emit
+> **two** slopes — `ols_slope` and `sen_slope` — each fitted over an **expanding window**
+> from the 2020s baseline through the target decade, via `scripts/utils/decadal_stats.py`.
+> The expanding window solves the within-decade-noise problem structurally (the 2090s
+> panel fits 80 years, not 10), so the baseline-anchored two-point rate is **retired**.
+>
+> Two consequences of the change:
+> - `trend × elapsed_decades == change map` **no longer holds** — do not reinstate that
+>   check. The slopes are fitted, not differenced.
+> - The baseline panel is **NaN**, not 0. A finite 0 there makes the entire ocean a
+>   finite zero, which QA does not catch (it only asserts that *finite* baseline trends
+>   equal zero, never that the masks agree).
+
+**Original rule (retained for context)**: For a variable with high interannual variability (fire, precipitation extremes, floods), do **not** report the trend as the OLS slope of the *annual* series within a single decade. Use an across-decade signal so the trend is spatially coherent rather than dominated by interannual noise.
 
 **Why this matters**:
 - The legacy processors (`process_qg.py`, `process_led_drought.py`, `process_let_cyclone.py`) compute `trend[decade]` as the slope of the annual values *inside* that decade (10 points). For a noisy variable this slope is dominated by interannual noise → a spatially **spotty, sign-flipping** field, while the change map (a difference of two 10-year decadal means) is smooth. A user flagged exactly this for `burntarea` (2026-07-24).
@@ -229,5 +243,8 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 - This makes each decade's trend the rate **from the 2020s baseline to that decade** (2090s panel = full baseline→2090s trend), built on decadal means so it is exactly the (decade − 2020s) change map ÷ elapsed decades → coherent by construction (corr = 1.0 with change at the last decade).
 - The baseline decade has no elapsed change → trend 0 (keeps the 2020s baseline bit-identical across scenarios).
 - The generate_maps trend label is `[units decade⁻¹]`, so emit per-**decade** units, not per-year.
-- Reference: `scripts/process_burntarea_fire.py` (`anchored_trend`). Low-variance variables may keep the within-decade slope, but confirm the trend map is coherent against the change map before finalizing.
+- Reference under the CURRENT contract: `scripts/process_csoil_soilcarbon.py` calling
+  `decadal_stats.expanding_slopes`. Never hand-roll a slope in a processor.
+- Verify with `python scripts/test_shared_baseline.py {processed_dir}` — it asserts the
+  baseline panel is NaN and that no slope is finite where `median` is NaN.
 

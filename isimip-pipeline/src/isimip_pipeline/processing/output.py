@@ -1,5 +1,30 @@
 """NetCDF output generation for processed ISIMIP data.
 
+.. warning::
+
+   **LEGACY FORMAT -- does NOT conform to OUTPUT-SPEC.md.**
+
+   This module writes the pre-2026-08 layout: a single data variable with a
+   ``value_class`` dimension, carrying ``significance``, which no processor has ever
+   populated. The current TCFD/CDP contract is NAMED VARIABLES on ``(decade, lat, lon)``
+   -- ``median``, ``lower_ci``, ``upper_ci``, ``percentile``, ``ols_slope``,
+   ``sen_slope``, ``n_members``, ``n_models`` -- produced via
+   ``scripts/utils/decadal_stats.py``.
+
+   Consequences of using this path for a NEW layer:
+
+   * the output will not pass ``scripts/test_shared_baseline.py``;
+   * it carries one ``trend`` of a definition that is retired, and a ``significance``
+     field that is structurally always NaN;
+   * ``scripts/generate_maps.py`` still renders it (the value-class mapping is kept for
+     exactly that reason), but the two-slope panels will be absent.
+
+   Use ``isimip-pipeline`` for **search and download**, then process with a dedicated
+   ``scripts/process_*.py`` modelled on ``scripts/process_csoil_soilcarbon.py``.
+
+   Retained so existing pre-spec layers stay readable and reproducible. Do not build a
+   new layer on it without porting the statistics to ``decadal_stats`` first.
+
 Creates standardized NetCDF4 files with dimensions:
 (lon, lat, decade, scenario, value_class)
 
@@ -7,11 +32,12 @@ Value classes (6 types):
 1. Absolute smoothed median value
 2. Percentile rank (1-100)
 3. Decadal trend (slope)
-4. Trend significance (p-value)
+4. Trend significance (p-value)  -- NEVER POPULATED; see the warning above
 5. Lower confidence bound
 6. Upper confidence bound
 """
 
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -158,7 +184,18 @@ def write_netcdf(
         output_path: Path to output file.
         compression: Whether to enable zlib compression.
         complevel: Compression level (1-9).
+
+    Warning:
+        Emits the LEGACY ``value_class`` layout, not OUTPUT-SPEC.md. See the module
+        docstring. A ``RuntimeWarning`` is raised so a new layer built on this path is
+        not mistaken for a conforming one.
     """
+    warnings.warn(
+        "write_netcdf emits the LEGACY value_class layout, which does NOT conform to "
+        "OUTPUT-SPEC.md (named variables incl. ols_slope/sen_slope). It will not pass "
+        "scripts/test_shared_baseline.py. Use a dedicated scripts/process_*.py built on "
+        "scripts/utils/decadal_stats.py for new layers.",
+        RuntimeWarning, stacklevel=2)
     # Ensure parent directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
