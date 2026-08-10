@@ -273,11 +273,19 @@ search_results:
   # wildfire searches (fire sector + biomes burntarea)
   # -------------------------
   wildfire:
-    last_searched: "2026-07-24"
-    description: "Wildfire has THREE distinct ISIMIP representations -- enumerate all, don't assume the exposure family is the only option."
+    last_searched: "2026-08-08"
+    description: "Wildfire has FIVE distinct ISIMIP representations -- enumerate all, don't assume the exposure family is the only option: (1) Lange2020 lew/pew exposure (2b), (2) its Zantout2025 SSP re-issue 'wildfire' (3b), (3) direct burntarea burnt-area fraction (2a/2b/3a/3b), (4) ffire emissions flux (3a/3b), (5) the ISIMIP3a fire sector's 10-model pool (no future scenarios)."
     products:
       lew_exposure:
-        note: "Lange 2020 land-area-exposed-to-unprecedented-wildfire. See drought.exposure_lange2020.family (lew). Exposure framing; NOT processed."
+        note: "Lange 2020 land-area-exposed-to-unprecedented-wildfire. See drought.exposure_lange2020.family (lew). Exposure framing; NOT processed. SSP re-issue exists -> see isimip3b_ssp_reissue_exposure below."
+        enumerated: "2026-08-08 (ISIMIP2b/DerivedOutputData/Lange2020/{MODEL}/{gcm}/future/ -- note the 3-level depth and the leading 'lange2020_' filename token, which shifts every field by one)"
+        matrix: |
+          5 models x 4 GCMs = 19 members/scenario (visit has only 3 GCMs; VISIT/hadgem2-es is a genuine HTTP 404):
+            caraib, lpj-guess, lpjml, orchidee -> gfdl-esm2m, hadgem2-es, ipsl-cm5a-lr, miroc5
+            visit                              -> gfdl-esm2m, ipsl-cm5a-lr, miroc5
+          scenarios: rcp26 + rcp60 ONLY (no rcp85 -- confirmed, matches the documented lew gap) + picontrol
+          cadence annual 2006-2099; uniform 2005soc/co2; ~12 MB/file; 38 files for both scenarios (~456 MB)
+          pew (population-exposed twin) has the same 19 members.
       burntarea:
         long_name: "Burnt area fraction (percent of grid cell burned per year)"
         note: "DIRECT biophysical fire output (the one processed 2026-07-24). API count for bare 'burntarea' = 1001 (TRUNCATED) -> enumerated per round."
@@ -298,12 +306,86 @@ search_results:
             mc2-usfs   units=% min=0   max=100 mean=3.84 zeros=44.8% (coarse biome model, ~5-7x hotter outlier); TIME AXIS = 'days since 1661' (others 'years since')
         isimip3b:
           datasets: 560
-          note: "Monthly output is PFT-decomposed (burntarea-c3crop/-c3grass/...); annual is single-model (mc2-usfs, burntarea-total). Thin/messy vs 2b -> not chosen."
+          note: |
+            RE-ENUMERATED 2026-08-08 from the file server; the previous note ("annual is single-model
+            (mc2-usfs); thin/messy vs 2b") was compiled from the BIOMES sector only and understated the
+            round. ISIMIP3b also has a dedicated OutputData/fire/ SECTOR (this catalog previously recorded
+            the fire sector as ISIMIP3a-only).
           scenarios: ["ssp126", "ssp370", "ssp585", "historical", "picontrol"]
+          sectors: ["fire", "biomes"]
+          cross_sector_duplicate: |
+            CRITICAL: fire and biomes publish the SAME burntarea files -- 2001 of 2031 basenames shared,
+            and a spot-checked pair (visit gfdl-esm4 ssp370 monthly) returned identical Content-Length
+            (101637650) and identical ETag ("639c4a8e-60ede12"). Ingest ONE sector only; taking both
+            double-weights those models (same failure mode as elm-eca csoil-total in biomes+permafrost).
+          burntarea_total_by_model: |
+            model             GCMs                                                cadence         soc tokens (future)
+            classic           2 (gfdl-esm4, ukesm1-0-ll)                          daily + monthly 2015soc, 2015soc-from-histsoc
+            elm-eca           5 (gfdl,ipsl,mpi,mri,ukesm)                         monthly         2015soc-from-histsoc ONLY
+            lpjml5-7-10-fire  5                                                   daily + monthly 1850soc, 2015soc, 2015soc-from-histsoc, nat
+            visit             5                                                   monthly         2015soc ONLY (+ nat)
+            mc2-usfs-r87g5c1  5                                                   ANNUAL          nat ONLY
+            jules-es-vn6p3    -- publishes NO burntarea at all (0 files) despite appearing in the fire/ sector listing
+          annual_availability: "mc2-usfs-r87g5c1 is the ONLY annual burntarea publisher in all of ISIMIP3b (fire UNION biomes). Every other model is monthly (classic/lpjml also daily)."
+          soc_harmonization: |
+            NO single soc token covers all four monthly models:
+              2015soc                -> classic(2) + lpjml(5) + visit(5)   = 12 members/scenario
+              2015soc-from-histsoc   -> classic(2) + elm-eca(5) + lpjml(5) = 12 members/scenario
+                                        BUT classic/2015soc-from-histsoc is documented MIS-SCALED ACROSS
+                                        GCMs within the one model (gfdl fraction-scaled, ukesm percent) --
+                                        see isimip-process-visualize SKILL.md. Avoid.
+              mixed per-model        -> classic+lpjml+visit @2015soc, elm-eca @2015soc-from-histsoc
+                                        = 17 members/scenario (GUARDRAILS 9: user decision, record it)
+            Extra sens variants seen: 2015co2, nondep, nondep2015co2, ssp585ndep, and lpjml varlightning (ukesm only).
+          volumes_measured_2026_08_08: |
+            monthly per file: lpjml 192 MB, visit 101 MB, elm-eca 96 MB
+            candidate A (2015soc, 3 models x 12 members x 3 ssp = 36 files) = 4545 MB (~4.4 GB)
+            adding elm-eca (mixed soc, 15 files @96 MB) -> ~5.8 GB, 17 members/scenario
+            mc2-usfs annual: 12 MB/file, 15 files (5 GCM x 3 ssp) = ~180 MB
+            classic daily: 153 MB per DECADE-chunk per member -> daily is ~30x monthly, not worth it
+          coverage_caveat: "3b future runs start 2015 -> no complete 2010s decade; a 3b layer begins at the 2020s baseline."
+      isimip3b_ssp_reissue_exposure:
+        publication: "ISIMIP3b/DerivedOutputData/Zantout2025/"
+        long_name: "wildfire -- land-area-exposed-to-unprecedented-wildfire, the SSP re-issue of the Lange2020 lew concept (named by hazard word, not le* code)"
+        enumerated: "2026-08-08"
+        matrix: |
+          3 models x GCMs = 12 members/scenario, ANNUAL, 2015-2100, uniform 2015soc/default:
+            classic           2 GCMs (gfdl-esm4, ukesm1-0-ll)
+            lpjml5-7-10-fire  5 GCMs
+            visit             5 GCMs
+          scenarios: ssp126, ssp370, ssp585 (+ historical 1850-2014, picontrol)
+          Sibling hazards in the same publication: cropfailure (240 files), heatwave (30, HWMID-NONE).
+        volume_measured: "ALL 36 ssp files are exactly 425 MB -> 14 GB total (15307 MB). That is ~4.8x a 0.5deg float32 86-year field, so either float64/uncompressed storage or a finer-than-nominal grid -- EFFECTIVE RESOLUTION UNVERIFIED, measure at download."
+        units_unverified: "Could not read CF attributes: a 4 MB HTTP range read of the header exposed only dims (lat/lon/time/bnds/time_bnds), variable 'wildfire', _FillValue -- no units/long_name in that range. The venv lacks fsspec/h5netcdf so no lazy open was possible. Value-check per GUARDRAILS 9 before processing."
       ffire:
         long_name: "Fire carbon emissions flux (kg C m-2 s-1), PFT-split"
-        note: "797 datasets, ISIMIP3a/3b only (no 2b), mostly monthly, PFT-decomposed (ffire-c3crop...). Emissions metric -- least aligned with an asset-facing wildfire risk layer."
-    chosen: "burntarea, ISIMIP2b, annual, 3 models x 4 GCMs x {rcp26,rcp60,rcp85} = 36 members. Raw %, NO normalization (same unit), NO spatial smoothing (12/scenario is thick), baseline-anchored trend."
+        note: "797 datasets, ISIMIP3a/3b only (no 2b), mostly monthly, PFT-decomposed (ffire-c3crop...). Emissions metric -- least aligned with an asset-facing wildfire risk layer. 3b future publishers: classic, elm-eca, lpjml5-7-10-fire, visit (all monthly, ffire-total + PFT split)."
+      isimip3a_fire_sector:
+        enumerated: "2026-08-08"
+        models: ["CLASSIC", "ELM-ECA", "JULES-INFERNO-VN6P3", "LPJ-GUESS-SIMFIRE-BLAZE", "LPJ-GUESS-SPITFIRE", "LPJmL5-7-10-fire", "MC2-USFS-r87g5c1", "ORCHIDEE-MICT", "SSiB4-TRIFFID-Fire", "VISIT"]
+        note: |
+          The DEEPEST fire-model pool anywhere in ISIMIP (10 models) -- but harvest of all 5924 files found
+          ZERO ssp/rcp tokens: only histsoc / 2015soc under observational forcing (obsclim/counterclim).
+          It CANNOT produce 2030s-2090s decadal projections. Value as a validation/benchmark reference for a
+          projection layer, NOT as a TCFD layer source. (Do not re-derive this; it is measured, not assumed.)
+    chosen_2026_08_08: |
+      ISIMIP3b burntarea-total, ALL of it: 5 impact models x their CMIP6 GCMs = 22 members
+      per scenario x {ssp126, ssp370, ssp585} = 66 files, 6.03 GiB. User decision: maximize
+      ensemble members across BOTH GCMs and impact models, and prefer ssp over rcp.
+      Monthly members SUMMED to annual totals (burnt area accumulates); mc2-usfs read as
+      annual and pooled in. Mixed soc by necessity (elm-eca only 2015soc-from-histsoc,
+      visit only 2015soc, mc2-usfs only nat); classic pinned to 2015soc to avoid its
+      mis-scaled 2015soc-from-histsoc run. Uniform sens=default (transient CO2).
+      Raw %, NO normalization, NO spatial smoothing, two-tier percentile, higher_is_worse.
+    processed_2026_08_10: |
+      -> TCFD layer. scripts/process_burntarea_isimip3b.py (+ download_burntarea_isimip3b.py).
+      data/processed/wildfire-isimip3b_burntarea-total_annual/burntarea_{ssp126,ssp370,ssp585}_processed.nc
+      test_shared_baseline.py: ALL CHECKS PASSED (2020s panel bit-identical across scenarios,
+      0 CI violations, 0 ocean leak, baseline slopes NaN, n_members 1-22 / n_models 1-5).
+      Land cells 70,849. Global-mean burnt 0.766% (2020s) -> 0.825 / 1.056 / 1.181 % by 2090s;
+      2090s ols_slope +0.031 / +0.153 / +0.212 % dec-1. sen_slope is EXACTLY 0 on 66-76% of
+      finite cells (zero-inflated) -> read ols_slope. See WORKFLOW-ISSUES.md 2026-08-10.
+    chosen: "[SUPERSEDED for new work by chosen_2026_08_08 above; this is the 2b layer] burntarea, ISIMIP2b, annual, 3 models x 4 GCMs x {rcp26,rcp60,rcp85} = 36 members. Raw %, NO normalization (same unit), NO spatial smoothing (12/scenario is thick), baseline-anchored trend."
     processed: "2026-07-24 -> TCFD layer. scripts/process_burntarea_fire.py; data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc. Verified: global-mean burnt% flat rcp26, +6.6% rcp60, +14.8% rcp85 by 2090s. See memory project_burntarea_fire_layer, WORKFLOW-ISSUES.md 2026-07-24, GUARDRAILS §9-§10."
 
   # -------------------------

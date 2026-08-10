@@ -79,6 +79,48 @@ VALUE_CLASS_MAP = {
 SLOPE_METRICS = ["ols_slope", "sen_slope"]
 CONTRACT_METRICS = ["median", "percentile"] + SLOPE_METRICS + ["lower_ci", "upper_ci"]
 
+#: The dashboard tab strip. Deliberately NOT one tab per contract variable:
+#:  * `ols_slope` / `sen_slope` / `change` are all decadal-change views and belong on one
+#:    "Trend" tab so the two estimators can be read against each other (they fail in
+#:    OPPOSITE regimes -- see OUTPUT-SPEC.md -- so comparing them IS the diagnostic).
+#:  * `lower_ci` / `upper_ci` are exactly what the "Confidence" tab already plots side by
+#:    side, so separate tabs were pure duplication.
+#:  * `members` shows every LSM x GCM member on a shared scale (needs {var}_members.nc).
+DASHBOARD_TABS = ["median", "percentile", "trend", "confidence", "anomaly", "members"]
+
+#: Tabs that are one page for the whole layer rather than one page per scenario.
+SCENARIO_INDEPENDENT_TABS = {"members"}
+
+#: Decades compared on the Trend tab. NOT the 2020s baseline -- its slopes are NaN by
+#: contract and its change-from-itself is identically 0, so a 2020s panel is always blank.
+TREND_DECADES = [2030, 2090]
+
+#: How the symmetric (zero-centred) limit for diverging panels is chosen.
+#:   95   -> the 95th percentile of |value| (current setting)
+#:   None -> true max|value|
+#:
+#: Measured on the wildfire layer: max|ols_slope| = 38.2 %/dec against a median of 0.049,
+#: so a true-max scale left 99.67% of cells inside the middle 10% of the colour range and
+#: the maps read as blank. The 95th percentile spends the colour range on the body of the
+#: distribution instead.
+#:
+#: Values BEYOND the limit are not lost or blanked: Plotly clamps `marker.color` to the
+#: cmin/cmax endpoints, so anything more extreme renders in the full max (red) or min
+#: (blue) colour. Both ends stay symmetric about zero either way.
+SYMMETRIC_LIMIT_PERCENTILE = 95
+
+#: Payload control. Every map is an SVG Scattergeo: one DOM marker per land cell, and the
+#: JSON carries lon/lat/value per point. At 0.5 deg that is ~70,849 points per panel, so a
+#: 6-panel Trend page was 11.2 MB and the 22-panel Members page 37.6 MB.
+#:  * COORD_DECIMALS / VALUE_SIGFIGS trim float text without any visible change -- a 0.5 deg
+#:    grid is exact at 2 dp, and 4 significant figures is far beyond what a colour can show.
+#:  * MEMBERS_GRID_STRIDE block-averages the Members tab only. That tab answers "do the
+#:    members differ in level or distribution?", which does not need 0.5 deg; stride 2 (1 deg)
+#:    cuts its points 4x. Set to 1 for full resolution.
+COORD_DECIMALS = 2
+VALUE_SIGFIGS = 4
+MEMBERS_GRID_STRIDE = 2
+
 # Non-projection scenarios to exclude from report generation
 # These are used to enhance baseline robustness but not shown as separate projections
 EXCLUDED_SCENARIOS = {"picontrol", "historical"}
@@ -116,14 +158,34 @@ COLORSCALES = {
 METRIC_DESCRIPTIONS = {
     "median": "Ensemble Median Value",
     "percentile": "Percentile Rank (vs 2020s baseline)",
-    "trend": "Decadal Trend (legacy)",
     "ols_slope": "Decadal Trend \u2014 OLS slope",
     "sen_slope": "Decadal Trend \u2014 Theil-Sen slope",
     "lower_ci": "Lower Confidence Interval (25th percentile)",
     "upper_ci": "Upper Confidence Interval (75th percentile)",
     "change": "Absolute Change (2090s - 2020s)",
-    "anomaly": "Anomaly Detection (>6σ from 2020s mean)"
+    "anomaly": "Anomaly Detection (>6σ from 2020s mean)",
+    "trend": "Decadal Trend — OLS & Theil-Sen slopes and change vs baseline",
+    "members": "Per-member raw values (every LSM × GCM on a shared scale)"
 }
+
+# Tab strip labels (m.title() gives "Ols_Slope"-style names, which read badly)
+TAB_TITLES = {
+    "median": "Median",
+    "percentile": "Percentile",
+    "trend": "Trend",
+    "confidence": "Confidence",
+    "anomaly": "Anomaly",
+    "members": "Members",
+}
+
+# Hover number formats. Percentiles are integers on [1,100]; scientific notation there is
+# noise, not precision.
+HOVER_FORMATS = {
+    "percentile": ".0f",
+    "n_members": ".0f",
+    "n_models": ".0f",
+}
+DEFAULT_HOVER_FORMAT = ".3e"
 
 # Colorbar labels by metric type (templates with {long_name} and {units} placeholders)
 COLORBAR_LABELS = {
@@ -137,6 +199,36 @@ COLORBAR_LABELS = {
     "change": "Change [{units}]",
     "anomaly": "{long_name} [{units}]"
 }
+
+
+def _sigfig(a: np.ndarray, n: int = VALUE_SIGFIGS) -> np.ndarray:
+    """Round to n significant figures (np.round takes only scalar decimals)."""
+    out = np.array(a, dtype=np.float64, copy=True)
+    nz = np.isfinite(out) & (out != 0)
+    if np.any(nz):
+        mag = np.floor(np.log10(np.abs(out[nz])))
+        factor = np.power(10.0, (n - 1 - mag))
+        out[nz] = np.round(out[nz] * factor) / factor
+    return out
+
+
+def block_mean(values: np.ndarray, stride: int) -> np.ndarray:
+    """NaN-aware block mean over (stride x stride) cells; trims a ragged edge.
+
+    Plain slicing (values[::2, ::2]) would SAMPLE every other cell and drop the rest,
+    which on a sparse hazard silently deletes burning cells. Averaging keeps them.
+    """
+    if stride <= 1:
+        return values
+    ny, nx = values.shape
+    ny -= ny % stride
+    nx -= nx % stride
+    v = values[:ny, :nx].reshape(ny // stride, stride, nx // stride, stride)
+    with np.errstate(invalid="ignore"):
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.filterwarnings("ignore", message="Mean of empty slice")
+            return np.nanmean(v, axis=(1, 3))
 
 
 def log(msg: str):
@@ -155,7 +247,9 @@ def create_map_figure(
     cmax: Optional[float] = None,
     anomaly_mask: Optional[np.ndarray] = None,
     colorbar_title: str = "Value",
-    reversescale: bool = False
+    reversescale: bool = False,
+    hover_format: str = ".3e",
+    subtitle: Optional[str] = None
 ) -> go.Figure:
     """Create a Plotly geographic map figure.
 
@@ -196,24 +290,27 @@ def create_map_figure(
 
     # Main data scatter
     fig.add_trace(go.Scattergeo(
-        lon=lon_valid.tolist(),
-        lat=lat_valid.tolist(),
+        lon=np.round(lon_valid, COORD_DECIMALS).tolist(),
+        lat=np.round(lat_valid, COORD_DECIMALS).tolist(),
         mode='markers',
         marker=dict(
             size=2,
-            color=val_valid.tolist(),
+            color=_sigfig(val_valid).tolist(),
             colorscale=colorscale,
             reversescale=reversescale,
             cmin=cmin,
             cmax=cmax,
+            # NO colorbar title: a long title (e.g. "Annual burnt area [%]") reserves more
+            # horizontal space than the map itself. The text moves to the figure title
+            # directly above the map instead.
             colorbar=dict(
-                title=colorbar_title,
                 exponentformat="power",  # Use ×10⁻⁶ style instead of μ
                 showexponent="all"       # Show exponent on all tick labels
             ) if showscale else None,
             showscale=showscale
         ),
-        hovertemplate="Lon: %{lon:.1f}<br>Lat: %{lat:.1f}<br>Value: %{marker.color:.3e}<extra></extra>"
+        hovertemplate=("Lon: %{lon:.1f}<br>Lat: %{lat:.1f}<br>"
+                       "Value: %{marker.color:" + hover_format + "}<extra></extra>")
     ))
 
     # Add anomaly markers if provided
@@ -237,8 +334,16 @@ def create_map_figure(
                 hovertemplate="ANOMALY<br>Lon: %{lon:.1f}<br>Lat: %{lat:.1f}<extra></extra>"
             ))
 
+    # The figure title carries what used to be the colorbar title, sitting directly over
+    # the map; `title` (the panel/decade label) becomes the smaller second line.
+    heading = colorbar_title if colorbar_title else title
+    if subtitle:
+        heading = f"{heading}<br><span style='font-size:11px;color:#666'>{subtitle}</span>"
+    elif colorbar_title and title:
+        heading = f"{heading}<br><span style='font-size:11px;color:#666'>{title}</span>"
+
     fig.update_layout(
-        title=dict(text=title, x=0.5, font=dict(size=14)),
+        title=dict(text=heading, x=0.5, xanchor="center", font=dict(size=13)),
         geo=dict(
             projection_type='equirectangular',
             showland=True,
@@ -255,8 +360,8 @@ def create_map_figure(
             lataxis=dict(range=[-90, 90]),
             lonaxis=dict(range=[-180, 180])
         ),
-        margin=dict(l=0, r=0, t=40, b=0),
-        height=300,
+        margin=dict(l=0, r=0, t=55, b=0),
+        height=320,
         showlegend=bool(anomaly_mask is not None and np.any(anomaly_mask))
     )
 
@@ -279,18 +384,26 @@ def generate_html_header(
         scenarios: List of all scenarios to include in navigation
         scenario_labels: Dict mapping scenario codes to display labels
     """
-    # Build metric navigation (same metric, all scenarios)
+    # Build metric navigation (same metric, all scenarios). Scenario-independent tabs have
+    # exactly one page for the whole layer, so per-scenario links would 404 -- say so
+    # instead of emitting dead links.
     metric_nav = []
-    for scen in scenarios:
-        active = "active" if scen == scenario else ""
-        label = scenario_labels.get(scen, scen).split()[0]  # e.g., "SSP1-2.6" or "RCP2.6"
-        metric_nav.append(f'<a href="{variable}_{metric}_{scen}.html" class="{active}">{label}</a>')
+    if metric in SCENARIO_INDEPENDENT_TABS:
+        metric_nav.append('<span style="color:#95a5a6">all scenarios (one page)</span>')
+    else:
+        for scen in scenarios:
+            active = "active" if scen == scenario else ""
+            label = scenario_labels.get(scen, scen).split()[0]  # "SSP1-2.6" / "RCP2.6"
+            metric_nav.append(
+                f'<a href="{variable}_{metric}_{scen}.html" class="{active}">{label}</a>')
 
-    # Build cross-metric navigation (same scenario, other metrics)
+    # Build cross-metric navigation (same scenario, other tabs)
     cross_nav = []
-    for m in CONTRACT_METRICS + ["trend", "confidence", "change", "anomaly"]:
+    for m in DASHBOARD_TABS:
         active = "active" if m == metric else ""
-        cross_nav.append(f'<a href="{variable}_{m}_{scenario}.html" class="{active}">{m.title()}</a>')
+        href = (f"{variable}_{m}.html" if m in SCENARIO_INDEPENDENT_TABS
+                else f"{variable}_{m}_{scenario}.html")
+        cross_nav.append(f'<a href="{href}" class="{active}">{TAB_TITLES.get(m, m.title())}</a>')
 
     scenario_label = scenario_labels.get(scenario, scenario)
 
@@ -581,16 +694,19 @@ class MapCollectionGenerator:
         available = set()
         for ds in self.data.values():
             available |= set(ds.data_vars)
-        wanted = ["median", "percentile"] + SLOPE_METRICS + ["trend"]
+        wanted = ["median", "percentile"]
         present = [m for m in wanted if m in available]
         if not present:
             log(f"  WARNING: none of {wanted} found in {variable}; nothing to map")
         for metric in present:
             self.generate_metric_comparison(variable, metric, var_dir)
 
+        # Slopes and change now live together on one Trend tab; `change` and the
+        # per-slope tabs are no longer emitted as standalone pages.
+        self.generate_trend_page(variable, var_dir)
         self.generate_confidence_comparison(variable, var_dir)
-        self.generate_change_maps(variable, var_dir)
         self.generate_anomaly_maps(variable, var_dir)
+        self.generate_members_page(variable, var_dir)
         self.generate_index(variable, var_dir)
 
         # Close datasets
@@ -681,7 +797,10 @@ class MapCollectionGenerator:
                         colorscale=COLORSCALES.get(metric, "Viridis"),
                         cmin=cmin, cmax=cmax,
                         colorbar_title=colorbar_label,
-                        reversescale=(metric == "trend" and self.higher_is_worse)
+                        reversescale=(metric in ("trend",) + tuple(SLOPE_METRICS)
+                                      and self.higher_is_worse),
+                        hover_format=HOVER_FORMATS.get(metric, DEFAULT_HOVER_FORMAT),
+                        subtitle=decade_label,
                     )
 
                     html += '<div class="map-container">\n'
@@ -703,7 +822,9 @@ class MapCollectionGenerator:
                     colorscale=COLORSCALES.get(metric, "Viridis"),
                     cmin=cmin, cmax=cmax,
                     colorbar_title=colorbar_label,
-                    reversescale=(metric == "trend" and self.higher_is_worse)
+                    reversescale=(metric in ("trend",) + tuple(SLOPE_METRICS)
+                                  and self.higher_is_worse),
+                    hover_format=HOVER_FORMATS.get(metric, DEFAULT_HOVER_FORMAT),
                 )
 
                 html += '<div class="map-container" style="grid-column: span 2;">\n'
@@ -719,6 +840,283 @@ class MapCollectionGenerator:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(html)
             log(f"  Saved: {output_path.name}")
+
+    def _symmetric_limit(self, metric: str, decades: List[int]) -> float:
+        """Largest |value| for `metric` over `decades`, across ALL scenarios.
+
+        Diverging panels must be centred on zero with equal blue/red extent, so the limit
+        is a single symmetric magnitude rather than a (cmin, cmax) pair. It is pooled
+        across scenarios so the same colour means the same rate on every page.
+        """
+        peak = 0.0
+        for ds in self.data.values():
+            if metric not in ds.data_vars:
+                continue
+            for d in decades:
+                if d not in ds.decade.values:
+                    continue
+                v = ds[metric].sel(decade=d).values
+                v = np.abs(v[np.isfinite(v)])
+                if v.size:
+                    peak = max(peak, float(np.max(v) if SYMMETRIC_LIMIT_PERCENTILE is None
+                                            else np.percentile(v, SYMMETRIC_LIMIT_PERCENTILE)))
+        return peak if peak > 0 else 1.0
+
+    def _change_limit(self, base_decade: int, decades: List[int]) -> float:
+        peak = 0.0
+        for ds in self.data.values():
+            if "median" not in ds.data_vars or base_decade not in ds.decade.values:
+                continue
+            b = ds["median"].sel(decade=base_decade).values
+            for d in decades:
+                if d not in ds.decade.values:
+                    continue
+                diff = ds["median"].sel(decade=d).values - b
+                diff = np.abs(diff[np.isfinite(diff)])
+                if diff.size:
+                    peak = max(peak, float(np.max(diff) if SYMMETRIC_LIMIT_PERCENTILE is None
+                                           else np.percentile(diff, SYMMETRIC_LIMIT_PERCENTILE)))
+        return peak if peak > 0 else 1.0
+
+    def _clamped_fraction(self, metric: str, decades: List[int], lim: float,
+                          base_decade: Optional[int] = None) -> float:
+        """Fraction of finite cells whose |value| exceeds the colour limit.
+
+        Those cells are not lost -- Plotly clamps them to the endpoint colour -- but the
+        reader deserves to know how much of the map is saturated.
+        """
+        beyond = total = 0
+        for ds in self.data.values():
+            if base_decade is not None:
+                if "median" not in ds.data_vars or base_decade not in ds.decade.values:
+                    continue
+                b = ds["median"].sel(decade=base_decade).values
+            elif metric not in ds.data_vars:
+                continue
+            for d in decades:
+                if d not in ds.decade.values:
+                    continue
+                v = (ds["median"].sel(decade=d).values - b if base_decade is not None
+                     else ds[metric].sel(decade=d).values)
+                v = np.abs(v[np.isfinite(v)])
+                beyond += int(np.sum(v > lim))
+                total += v.size
+        return (beyond / total) if total else 0.0
+
+    def generate_trend_page(self, variable: str, output_dir: Path):
+        """One Trend tab per scenario: both slopes AND change-vs-baseline.
+
+        Design notes:
+          * Decades are TREND_DECADES (2030s, 2090s), never the 2020s baseline -- its
+            slopes are NaN by contract and its change-from-itself is identically 0.
+          * Every panel is diverging, centred on 0, spanning +/- max|value| so blue and
+            red cover equal magnitude. The limit is shared across scenarios per metric.
+          * Showing OLS and Theil-Sen together is the point: they fail in opposite
+            regimes, so their disagreement is the signal that a trend is not robust.
+        """
+        log("Generating trend maps (slopes + change)...")
+
+        first_ds = list(self.data.values())[0]
+        lons, lats = first_ds.lon.values, first_ds.lat.values
+        base = DECADES["current"]
+
+        available = set()
+        for ds in self.data.values():
+            available |= set(ds.data_vars)
+        slope_metrics = [m for m in SLOPE_METRICS if m in available]
+        if not slope_metrics and "trend" in available:
+            slope_metrics = ["trend"]        # pre-OUTPUT-SPEC layers
+
+        decades = [d for d in TREND_DECADES if d in first_ds.decade.values]
+        limits = {m: self._symmetric_limit(m, decades) for m in slope_metrics}
+        change_lim = self._change_limit(base, decades)
+        sat = {m: self._clamped_fraction(m, decades, limits[m]) for m in slope_metrics}
+        sat["change"] = self._clamped_fraction("median", decades, change_lim,
+                                               base_decade=base)
+        scale_note = ("95th pct of |value|" if SYMMETRIC_LIMIT_PERCENTILE is not None
+                      else "true max|value|")
+
+        # Diverging scales read blue=low / red=high once reversed; for a hazard where more
+        # is worse we want red = increase.
+        rev = bool(self.higher_is_worse)
+
+        for scenario in self.scenarios:
+            if scenario not in self.data:
+                continue
+            ds = self.data[scenario]
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            html = generate_html_header(variable, "trend", scenario,
+                                        self.scenarios, self.scenario_labels)
+
+            html += ('<div class="stats-box"><h3>How to read this tab</h3>'
+                     '<p style="margin:0;font-size:13px">All panels are centred on zero '
+                     f'(white) and span &plusmn;max|value| so blue and red cover equal '
+                     'magnitude. <b>OLS</b> and <b>Theil-Sen</b> fail in opposite regimes '
+                     '(Theil-Sen collapses to exactly 0 on zero-inflated fields; OLS '
+                     'absorbs member level offsets when coverage is uneven), so '
+                     '<b>disagreement between them means the trend is not robust</b>. '
+                     'The 2020s baseline is omitted: its slopes are NaN by contract and '
+                     'its change from itself is zero. Colour limits are the '
+                     f'<b>{scale_note}</b>; more extreme cells are clamped to the end '
+                     'colour (never blanked) &mdash; the clamped share is noted on each '
+                     'panel.</p></div>\n')
+
+            for metric in slope_metrics:
+                label = COLORBAR_LABELS.get(metric, "Slope").format(
+                    long_name=self.variable_long_name, units=self.variable_units)
+                html += f'<h2 style="color:#2c3e50">{METRIC_DESCRIPTIONS.get(metric, metric)}</h2>\n'
+                html += '<div class="comparison-grid">\n'
+                for d in decades:
+                    if metric not in ds.data_vars or d not in ds.decade.values:
+                        continue
+                    values = ds[metric].sel(decade=d).values
+                    lim = limits[metric]
+                    fig = create_map_figure(
+                        lons, lats, values, f"{d}s",
+                        colorscale=COLORSCALES.get(metric, "RdBu"),
+                        cmin=-lim, cmax=lim,
+                        colorbar_title=label,
+                        reversescale=rev,
+                        hover_format=HOVER_FORMATS.get(metric, DEFAULT_HOVER_FORMAT),
+                        subtitle=(f"{d}s &nbsp;|&nbsp; scale &plusmn;{lim:.3g} "
+                                  f"({scale_note}); {100*sat[metric]:.1f}% clamped"),
+                    )
+                    html += '<div class="map-container">\n'
+                    html += f'<div class="map-label">{d}s</div>\n'
+                    html += fig.to_html(full_html=False, include_plotlyjs=False)
+                    html += '</div>\n'
+                html += '</div>\n'
+
+            # Change vs the shared baseline, formerly its own tab.
+            if "median" in ds.data_vars and base in ds.decade.values:
+                clabel = COLORBAR_LABELS.get("change", "Change").format(
+                    long_name=self.variable_long_name, units=self.variable_units)
+                html += (f'<h2 style="color:#2c3e50">Absolute change vs {base}s baseline'
+                         f'</h2>\n<div class="comparison-grid">\n')
+                b = ds["median"].sel(decade=base).values
+                for d in decades:
+                    if d not in ds.decade.values:
+                        continue
+                    diff = ds["median"].sel(decade=d).values - b
+                    fig = create_map_figure(
+                        lons, lats, diff, f"{d}s - {base}s",
+                        colorscale=COLORSCALES.get("change", "RdBu"),
+                        cmin=-change_lim, cmax=change_lim,
+                        colorbar_title=clabel,
+                        reversescale=rev,
+                        hover_format=DEFAULT_HOVER_FORMAT,
+                        subtitle=(f"{d}s &minus; {base}s &nbsp;|&nbsp; scale "
+                                  f"&plusmn;{change_lim:.3g} ({scale_note}); "
+                                  f"{100*sat['change']:.1f}% clamped"),
+                    )
+                    html += '<div class="map-container">\n'
+                    html += f'<div class="map-label">{d}s &minus; {base}s</div>\n'
+                    html += fig.to_html(full_html=False, include_plotlyjs=False)
+                    html += '</div>\n'
+                html += '</div>\n'
+
+            html += generate_html_footer(timestamp, self.data_source)
+            output_path = output_dir / f"{variable}_trend_{scenario}.html"
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(html)
+            log(f"  Saved: {output_path.name}")
+
+    def generate_members_page(self, variable: str, output_dir: Path):
+        """Per-member (LSM x GCM) raw-value maps on ONE shared colour scale.
+
+        Reads an optional `{variable}_members.nc` sitting beside the processed scenario
+        files, with dims (member, lat, lon). Processors emit it as a diagnostic; when it
+        is absent the tab is skipped rather than failing, so pre-existing layers still
+        render. A shared scale is the whole point -- it makes a member that runs hot, or
+        one whose spatial distribution is unlike its siblings, visible at a glance.
+        """
+        log("Generating per-member maps...")
+        path = self.processed_dir / f"{variable}_members.nc"
+        if not path.exists():
+            log(f"  SKIP: {path.name} not found "
+                f"(processor did not emit per-member diagnostics)")
+            return
+
+        ds = xr.open_dataset(path)
+        var = "value" if "value" in ds.data_vars else list(ds.data_vars)[0]
+        members = [str(m) for m in ds["member"].values]
+        lons, lats = ds.lon.values, ds.lat.values
+        vals = ds[var].values                       # (member, lat, lon)
+
+        # This tab is 22 panels on one page -- at full 0.5 deg it was 37.6 MB. Block-mean
+        # to a coarser grid; the question it answers (do members differ in level or
+        # distribution?) does not need per-cell resolution.
+        stride = MEMBERS_GRID_STRIDE
+        if stride > 1:
+            vals = np.stack([block_mean(vals[i], stride) for i in range(vals.shape[0])])
+            ny = lats.size - lats.size % stride
+            nx = lons.size - lons.size % stride
+            lats = lats[:ny].reshape(-1, stride).mean(axis=1)
+            lons = lons[:nx].reshape(-1, stride).mean(axis=1)
+            log(f"  block-averaged to stride {stride} -> "
+                f"{vals.shape[1]}x{vals.shape[2]} grid ({lats.size}x{lons.size} coords)")
+
+        finite = vals[np.isfinite(vals)]
+        cmin = float(np.percentile(finite, 2)) if finite.size else 0.0
+        cmax = float(np.percentile(finite, 98)) if finite.size else 1.0
+
+        label = COLORBAR_LABELS.get("median", "{long_name} [{units}]").format(
+            long_name=self.variable_long_name, units=self.variable_units)
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        scen0 = self.scenarios[0] if self.scenarios else ""
+        html = generate_html_header(variable, "members", scen0,
+                                    self.scenarios, self.scenario_labels)
+        html += (f'<div class="stats-box"><h3>{len(members)} ensemble members '
+                 f'&mdash; shared colour scale [{cmin:.3g}, {cmax:.3g}]</h3>'
+                 '<p style="margin:0;font-size:13px">Every LSM &times; GCM member on the '
+                 'SAME scale, so a member that runs systematically hot/cold, or whose '
+                 'spatial distribution differs from its siblings, is visible immediately. '
+                 f'Field: {ds.attrs.get("member_field", "per-member mean")}.</p></div>\n')
+
+        # Quantified companion to the eyeball test.
+        html += ('<table style="width:100%;border-collapse:collapse;background:white;'
+                 'margin-bottom:20px;font-size:13px">'
+                 '<tr style="background:#34495e;color:white">'
+                 '<th style="padding:8px;text-align:left">Member</th>'
+                 '<th style="padding:8px">Land mean</th><th style="padding:8px">Median</th>'
+                 '<th style="padding:8px">P95</th><th style="padding:8px">Max</th>'
+                 '<th style="padding:8px">Zero %</th><th style="padding:8px">Cells</th></tr>\n')
+        for i, m in enumerate(members):
+            v = vals[i][np.isfinite(vals[i])]
+            if not v.size:
+                continue
+            html += (f'<tr><td style="padding:6px;border-bottom:1px solid #ecf0f1">{m}</td>'
+                     f'<td style="padding:6px;text-align:center">{np.mean(v):.4g}</td>'
+                     f'<td style="padding:6px;text-align:center">{np.median(v):.4g}</td>'
+                     f'<td style="padding:6px;text-align:center">{np.percentile(v,95):.4g}</td>'
+                     f'<td style="padding:6px;text-align:center">{np.max(v):.4g}</td>'
+                     f'<td style="padding:6px;text-align:center">{100*np.mean(v==0):.1f}</td>'
+                     f'<td style="padding:6px;text-align:center">{v.size:,}</td></tr>\n')
+        html += '</table>\n'
+
+        html += '<div class="comparison-grid">\n'
+        for i, m in enumerate(members):
+            fig = create_map_figure(
+                lons, lats, vals[i], m,
+                colorscale=COLORSCALES.get("median", "Viridis"),
+                cmin=cmin, cmax=cmax,
+                colorbar_title=label,
+                hover_format=DEFAULT_HOVER_FORMAT,
+                subtitle=m,
+            )
+            html += '<div class="map-container">\n'
+            html += f'<div class="map-label">{m}</div>\n'
+            html += fig.to_html(full_html=False, include_plotlyjs=False)
+            html += '</div>\n'
+        html += '</div>\n'
+        html += generate_html_footer(timestamp, self.data_source)
+
+        output_path = output_dir / f"{variable}_members.html"
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+        ds.close()
+        log(f"  Saved: {output_path.name} ({len(members)} members)")
 
     def generate_confidence_comparison(self, variable: str, output_dir: Path):
         """Generate confidence interval comparison maps (per-scenario files)."""
@@ -950,10 +1348,11 @@ class MapCollectionGenerator:
         metrics = [
             ("median", "Median Values", "Ensemble median values (2020s vs 2090s)"),
             ("percentile", "Percentile Ranks", "Percentile ranks vs 2020s baseline"),
-            ("trend", "Trends", "Decadal trend analysis"),
+            ("trend", "Trend",
+             "OLS &amp; Theil-Sen slopes and change vs baseline (2030s, 2090s)"),
             ("confidence", "Confidence Intervals", "Lower (25th) and upper (75th) bounds"),
-            ("change", "Change Maps", "Absolute change (2090s - 2020s)"),
             ("anomaly", "Anomaly Detection", f"Values >{ANOMALY_SIGMA}σ from 2020s mean"),
+            ("members", "Members", "Every LSM × GCM member on a shared scale"),
         ]
 
         # Build dynamic CSS for scenario button colors
@@ -1030,8 +1429,13 @@ class MapCollectionGenerator:
         for metric_key, metric_name, metric_desc in metrics:
             # Build scenario cells dynamically
             scenario_cells = ""
-            for scenario in self.scenarios:
-                scenario_cells += f'            <td><a href="{variable}_{metric_key}_{scenario}.html" class="btn {scenario}">View</a></td>\n'
+            if metric_key in SCENARIO_INDEPENDENT_TABS:
+                scenario_cells = (f'            <td colspan="{len(self.scenarios)}">'
+                                  f'<a href="{variable}_{metric_key}.html" class="btn">'
+                                  f'View (all members)</a></td>\n')
+            else:
+                for scenario in self.scenarios:
+                    scenario_cells += f'            <td><a href="{variable}_{metric_key}_{scenario}.html" class="btn {scenario}">View</a></td>\n'
 
             html += f"""        <tr>
             <td class="metric-name">{metric_name}<br><span style="font-weight:normal;font-size:11px;color:#888;">{metric_desc}</span></td>

@@ -31,6 +31,48 @@ datasets/models/GCMs available. More data points improve statistical robustness 
 uncertainty quantification. Never settle for single-model analysis when multi-model
 ensembles are available.
 
+## Answering "what data exists for {hazard}?"
+
+This is the most common request, and the easiest one to answer beside the point. The user
+is asking **what the repository holds for that hazard**. They are not asking how it compares
+to whatever shipped last.
+
+**Stay inside the hazard.** Enumerate that hazard's representations and judge each on **its
+own** properties — cadence, ensemble depth (models × GCMs), units, measured data nature,
+scenario and year coverage, download volume, and what the variable physically means for an
+asset. Those properties decide it.
+
+**Do not rank datasets by resemblance to an already-processed layer.** "Aligns with the
+`csoil` round", "same shape as the `let` processor", "matches the units of the existing 2b
+layer" — none of these are properties of the candidate data, and none of them make it the
+right answer for *this* hazard. A previously shipped layer is precedent to **re-verify**,
+never a reason to prefer. Mention another layer only when the user asks, or when it is a
+genuine constraint: an existing processor that can be reused, the OUTPUT-SPEC contract, or a
+guardrail. Where the current product already ships this same hazard, say so in one line —
+round, scenarios, processor — so the user knows what is being extended or replaced, and stop
+there.
+
+**STOP AT THE INVENTORY. This is a hard stop, not a section break.** Report *everything
+found* as the matrix described under "Reporting availability", state the open decisions it
+depends on (sub-annual aggregation per GUARDRAILS §1–§2, soc/sens harmonization, the
+data-nature value check per §9), and **end the turn there**. Choosing the dataset is a
+discussion the user opens, not a question you close.
+
+In that turn, do **not**:
+- attach a recommendation, a "primary/runner-up" ranking, or a preferred option;
+- call `AskUserQuestion` to make them pick;
+- pre-answer the open decisions or start downloading.
+
+The user's product judgement is the input the choice waits on, and an inventory delivered
+with a recommendation stapled to it forecloses the discussion it was supposed to open. Give
+your reading of the trade-offs **when asked** — then the choice is made together. Do not
+silently drop an option because you would not pick it.
+
+**Framing choices are not transferable.** How another hazard resolved normalization,
+smoothing, percentile tiering, or `higher_is_better` tells you nothing about this one. Those
+follow from *this* variable's measured values, and the measurement has not happened yet at
+search time. Flag them as pending, do not pre-answer them from precedent.
+
 ## Search Catalog Reference
 
 **Before starting any ISIMIP search**, consult `config/isimip_search_catalog.yaml` to check
@@ -145,7 +187,44 @@ https://files.isimip.org/{round}/OutputData/{sector}/{MODEL}/{gcm}/{future|histo
   verify downloads and read soc/sens tokens without downloading the NetCDF. 2b files carry
   these; 3b `biomes` largely does not, so verify 3b by HTTP status instead.
 - To inspect a header without downloading a large file, open it lazily over HTTP
-  (`fsspec` + `xarray`/`h5netcdf`).
+  (`fsspec` + `xarray`/`h5netcdf`). **Check the interpreter first — in this repo neither is
+  installed.** `python` is not on PATH at all (only `python3`), and `.venv` has `xarray` but
+  **no `fsspec`, no `h5netcdf`, no `yaml`**. So there is no lazy remote open and no YAML
+  validator available; budget for that instead of discovering it mid-search.
+- **Do not chase CF attributes with HTTP range reads.** NetCDF4 is HDF5 and places attribute
+  object headers at unpredictable offsets: a 1 MB *and* a 4 MB prefix read of a
+  `Zantout2025` file surfaced only the dims (`lat`/`lon`/`time`/`bnds`), the variable name
+  and `_FillValue` — **no `units`, no `long_name`**. Units are a download-time measurement
+  (GUARDRAILS §9); record them as unverified and move on.
+
+### Harvest only what the question needs (2026-08-08: this cost ~75 min of wall clock)
+
+Enumeration is ~1 HTTP request per directory plus the serial sleeps, so every directory you
+list and every file you store is wall time. One wildfire inventory spent 75 minutes; the
+measured waste:
+
+- **Grep the target variable *during* the harvest — never store whole sectors.** Storing all
+  86,065 filenames across three sectors left **87–93% irrelevant** (`qtot`, `snd`, `lai`,
+  `tsl`, `trans-*`…) for a question about `burntarea`.
+- **List `future/` first; touch `historical/`/`pre-industrial/` only when the baseline or a
+  specific check needs them.** 65% of 142 directory listings (93 of them) went to
+  `historical/` + `pre-industrial/` and were never used by the inventory.
+- **Before harvesting a SECOND sector, test whether it is a duplicate of the first — 2
+  requests, not 28 minutes.** ISIMIP3b `fire` and `biomes` publish the *same* `burntarea`
+  files (2001/2031 basenames shared; a spot-checked pair matched on `Content-Length` **and**
+  `ETag`). Compare basenames against the sector you already hold, then `curl -sI` one shared
+  pair. A full second-sector walk cost 28 min and added nothing. (Cross-sector duplicates are
+  a known ISIMIP pattern — `elm-eca` csoil-total in `biomes`+`permafrost`.)
+- **Probe the directory depth with ONE listing before writing a walker.** Depth is not
+  uniform: `OutputData` is `{MODEL}/{gcm}/{future|historical}/`, but publications under
+  `DerivedOutputData/` vary. Guessing Lange2020's depth twice — a 3-level walk that returned
+  empty, then a 2-level walk that found 0 files because the level really is
+  `{MODEL}/{gcm}/{future,historical,pre-industrial}/` — burned **~35 min** before one correct
+  14-min run. An `http 200` on a directory with 0 matched files means **wrong depth**, not
+  "no data".
+- **Size by sampling, not exhaustively.** File size is near-uniform within a
+  (model, variable, cadence, span) group — all 36 `Zantout2025` wildfire files were *exactly*
+  425 MB. HEAD 2–3 per group and multiply; 36 sequential HEADs told us nothing extra.
 
 Filename grammar (parse from the END; model/GCM names contain hyphens, never underscores):
 
@@ -157,6 +236,23 @@ Filename grammar (parse from the END; model/GCM names contain hyphens, never und
 **Parsing from the END is not optional for PFT-qualified variables.** The variable field
 itself contains hyphens (`cveg-needleleaf-evergreen-tree-temperate`), so any fixed forward
 index breaks on exactly the datasets that need it most.
+
+**`DerivedOutputData/` filenames carry a LEADING publication token**, which shifts every
+from-the-start field by one and makes a forward index read the wrong column *silently* —
+`$4` lands on the forcing (`w5e5`/`ewembi`) and gets reported as the scenario:
+
+```
+zantout2025_classic_gfdl-esm4_w5e5_ssp126_2015soc_default_wildfire_global_annual_2015_2100.nc
+lange2020_caraib_gfdl-esm2m_ewembi_rcp26_2005soc_co2_lew_global_annual_2006_2099.nc4
+^^^^^^^^^^ publication    model=$2  gcm=$3  forcing=$4  scenario=$5  soc=$6  sens=$7
+```
+
+This happened twice in one search and both times produced a plausible-looking matrix that
+had to be re-derived. From the end it is invariant: `variable=$(NF-4)`, `timestep=$(NF-2)`.
+
+**Mind token ORDER when grepping a filename.** The scenario precedes the variable, so
+`grep '_lew_.*rcp26'` matches **nothing** — it must be `'rcp26.*_lew_'` (or two `grep`s).
+A zero-match grep here looks exactly like absent data.
 
 **Anchor the extension in harvest regexes: `\.nc4?$`.** An unanchored `[\w.-]+\.nc` matches
 the `.nc` *inside* `.nc4` and truncates every ISIMIP2b filename by one character, so every

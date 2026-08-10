@@ -298,6 +298,140 @@ For flux variables with `aggregation="sum"` (potevap, qr), this summed the 12 mo
 
 ---
 
+### 2026-08-07: Wildfire Availability Review Answered Against Other Layers, and Skipped Its Own Skill
+
+**What happened**: Asked to "process wildfire data, review the isimip repository and suggest possible data", I never invoked `/isimip-search-download` — I improvised a `curl` sweep — and then framed the findings comparatively against previously shipped layers, recommending a dataset partly because it was "SSP-aligned with `csoil`" and "structurally identical to `let`/`led`". The user's ask was about wildfire.
+
+**Impact**:
+
+1. **Wrong basis for a recommendation.** `csoil` is a soil-carbon stock; its round and processor shape are not evidence about a fire dataset. The ranking should have rested on cadence, ensemble depth, units, measured data nature, coverage and volume — properties of the candidates.
+2. **Re-derived documented findings.** `Zantout2025` and the ISIMIP3a `fire` sector (10 models) are already written into `isimip-search-download/SKILL.md`. I presented both as new discoveries after ~15 tool calls of hand enumeration.
+3. **Missed live warnings the skill carries.** `isimip-process-visualize/SKILL.md` already records that `burntarea` **accumulates** (monthly→annual = **SUM**, and copying the `csoil` mean precedent under-scales fire 12×), that `clm45`/`orchidee` declare `%` on a 0–1 fraction scale, and that `classic`/`2015soc-from-histsoc` is **mis-scaled across GCMs within one model**. None reached the user's answer.
+4. **Unsound absence claims.** I harvested with **parallel** curls and matched only `\.nc"`. The skill warns that parallel curls get rate-limited and return empty listings indistinguishable from "no data", and that a `.nc`-only filter silently drops the entire ISIMIP2b round (2b publishes `.nc4`). Every "not present" in that review is therefore unverified.
+
+**Root cause**: two compounding faults.
+
+- **No trigger discipline.** Nothing instructed that a repository-availability question *is* the search skill. CLAUDE.md listed the skills by name only.
+- **Always-on context was a per-layer changelog.** CLAUDE.md's TCFD section carried three dense narrative paragraphs on `led`/`let`, `burntarea` and `csoil` — loaded every session. Asked about wildfire, the most salient material in context was a comparative essay about other layers, so the answer became one. The `csoil` reference was not a slip; it was what the context primed.
+
+**Correct action**: invoke `/isimip-search-download` first; enumerate serially matching `\.nc4?$`; report the full model × GCM × scenario matrix as inventory; then recommend separately, justified on the candidates' own properties, naming the pending decisions (monthly→annual aggregation §1–§2, soc/sens harmonization, data-nature value check §9).
+
+**Fix applied**:
+
+- CLAUDE.md — replaced the three per-layer narrative bullets with a shipped-layer table plus pointers to each processor docstring and incident entry; added a **Scope discipline** rule (answer within the hazard asked about; never rank a dataset by resemblance to an unrelated layer); made the skill-invocation trigger explicit and declared the skill authoritative over CLAUDE.md for coverage.
+- Corrected two stale CLAUDE.md facts that caused the false "new discovery" framing: the Lange 2020 family is **twelve** (`le*` + `pe*` twins), not six, and its ISIMIP3b/SSP re-issue **does** exist (`Heinicke2026`, `Zantout2025`).
+- `isimip-search-download/SKILL.md` — new section **"Answering 'what data exists for {hazard}?'"**: stay inside the hazard, separate inventory from recommendation, treat precedent as a hypothesis to re-verify rather than a reason to prefer, and never pre-answer framing choices that depend on measurements not yet taken.
+
+**Rule created**: CLAUDE.md *Scope discipline*; `isimip-search-download` §"Answering 'what data exists for {hazard}?'". Reinforces GUARDRAILS §8 (enumerate, don't conclude from empty results) and §9 (measure, never inherit).
+
+---
+
+### 2026-08-08: Wildfire Inventory — Recommendation Stapled to the Inventory, and 75 Minutes of Avoidable Enumeration
+
+**What happened**: Re-running the wildfire availability review (the 2026-08-07 entry above fixed the *scope* fault: the skill was invoked, the harvest was serial, `\.nc4?$` was matched, and the inventory stayed inside the hazard). Two new faults surfaced.
+
+**Fault 1 — did not stop at the inventory.** The matrix was correct, but the same turn attached a ranked recommendation ("primary" / "runner-up" / "too thin") and an `AskUserQuestion` asking the user to pick a dataset and decide how it related to the shipped layer. The user's correction: *"we should always pause at the inventory for a table for a discussion, and only thereafter should we work together to decide which dataset(s) we may want to process."* Delivering the inventory with a recommendation attached forecloses the discussion the inventory exists to open; the ranking is also the least reliable part of the answer, since it rests on framing choices whose measurements have not been taken yet.
+
+**Fault 2 — ~75 minutes of wall clock on enumeration** (19:19 → 20:32, plus a ~5 min sizing tail), most of it avoidable. Measured from the harvest logs:
+
+| Phase | Wall time | Verdict |
+|---|---|---|
+| 3b `fire` + `Zantout2025` | 8 min | necessary |
+| 3b `biomes` full sector | **28 min** | waste — its `burntarea` is byte-identical to `fire`, already harvested |
+| Lange2020 attempts 1 + 2 (empty, then wrong depth) | **~35 min** | waste — one probe request settles depth |
+| Lange2020 attempt 3 (correct) | 14 min | necessary |
+
+Root causes, all quantified:
+
+1. **Harvested whole sectors instead of one variable.** 86,065 filenames stored across three sectors; **87–93% were irrelevant** variables (`qtot`, `snd`, `lai`, `tsl`, `trans-*`) for a `burntarea` question. Grep the target variable during the harvest.
+2. **Listed directories the inventory never used.** 93 of 142 listings (**65%**) were `historical/` + `pre-industrial/`. List `future/` first.
+3. **Harvested a second sector without testing for duplication.** ISIMIP3b `fire` and `biomes` publish the *same* `burntarea` files — 2001/2031 basenames shared, spot-checked pair identical on `Content-Length` **and** `ETag`. A 2-request check would have replaced a 28-minute walk. (Also a real correctness trap: ingesting both double-weights those models.)
+4. **Guessed directory depth twice.** `DerivedOutputData/Lange2020` is `{MODEL}/{gcm}/{future,historical,pre-industrial}/`. A 3-level walk returned empty (read as rate-limiting) and a 2-level walk found 0 files at `http 200`. **An `http 200` with 0 matched files means wrong depth, not "no data."**
+5. **Sized 36 files sequentially** that were all *exactly* 425 MB. Sample 2–3 per (model, variable, cadence, span) group.
+6. **Two off-by-one filename parses.** `DerivedOutputData/` names carry a leading publication token (`zantout2025_`, `lange2020_`), shifting every forward index by one so `$4` reads the forcing and is reported as the scenario. Both produced plausible-looking matrices that had to be re-derived. Parse from the END.
+7. **A grep that can never match** — `_lew_.*rcp26`; scenario precedes variable in the filename. A zero-match grep looks exactly like absent data.
+8. **Dead-end header chase.** Tried to read CF attributes via 1 MB and 4 MB HTTP range reads; HDF5 puts attribute headers at unpredictable offsets and neither read exposed `units`/`long_name`. Then discovered `python` is not on PATH (only `python3`) and `.venv` lacks `fsspec`, `h5netcdf` and `yaml` — so no lazy remote open and no YAML validation for the catalog edit.
+
+**Fix applied**:
+
+- `isimip-search-download/SKILL.md` — "Separate inventory from recommendation" replaced by **"STOP AT THE INVENTORY"** as a hard stop with an explicit do-not list (no ranking, no `AskUserQuestion`, no pre-answering, no downloading); new section **"Harvest only what the question needs"** carrying all six efficiency rules with their measured costs; new subsections on the leading publication token and on grep token order; the lazy-open bullet now records that `fsspec`/`h5netcdf` are absent and that range-reading CF attributes does not work.
+- CLAUDE.md — new first bullet under the TCFD section: availability questions stop at the inventory.
+- `config/isimip_search_catalog.yaml` — wildfire section re-enumerated (see below). Edited **unvalidated**: no YAML parser is available in any interpreter on this machine, so structure was verified by reading it back rather than by parsing.
+
+**Inventory recorded** (2026-08-08, for the record — five representations, not three): 3b `burntarea-total` 12–17 members/ssp monthly (4.4–5.8 GB); 3b `mc2-usfs` **the only annual `burntarea` publisher in the whole round**, 5 members (180 MB); 3b `Zantout2025` `wildfire` exposure 12 members annual (14 GB, units unverified); 2b `Lange2020` `lew`/`pew` 19 members annual but **rcp26/rcp60 only** (456 MB); 3b `ffire` emissions; and the 3a `fire` sector's 10-model pool which has **zero ssp/rcp tokens** and cannot yield projections. `jules-es-vn6p3` publishes no `burntarea` despite listing in the `fire` sector.
+
+**Rule created**: CLAUDE.md *availability questions stop at the inventory*; `isimip-search-download` §"STOP AT THE INVENTORY" and §"Harvest only what the question needs".
+
+---
+
+### 2026-08-10: ISIMIP3b burntarea Wildfire Layer — Memory Thrashing Cost 12 Hours, and Two Silent-Zero Bugs
+
+**Context**: Building the SSP-generation wildfire layer from ALL ISIMIP3b `burntarea-total` (user decision: maximize members across both GCMs and impact models, prefer ssp over rcp). Ensemble = 5 impact models × their CMIP6 GCMs = **22 members/scenario** × {ssp126, ssp370, ssp585}, 66 files, 6.03 GiB. Monthly members summed to annual totals; `mc2-usfs` (the only annual publisher in the round) pooled in directly.
+
+**1. Parallelising three scenarios drove a 16 GB machine into swap and cost ~12 hours.**
+
+The loading pass — structurally copied from `process_csoil_soilcarbon.py` — materialised every member as a full 360×720 grid before repacking to land cells: 83 MB × 66 members = **5.5 GB per process**. Running one process per scenario tripled that. Measured at the point of intervention: swap 14.4 GB of 15.4 GB used, 19.5M swapouts, 1.5 billion decompressions, load average 13.7, processes at 55% CPU (I/O-bound, not computing).
+
+The diagnostic tell was **identical work diverging**: the 2070s panel took 2,005 s / 9,217 s / 33,044 s in the three scenarios. Equal workloads differing 16× is a resource problem, never an algorithmic one. I had extrapolated from an uncontended 300-cell benchmark and did not re-check memory when the first panel times came in high.
+
+**Resolution**: two-pass loading — Pass A scans for the land mask holding **one member at a time**, Pass B packs directly into `(member, year, land_cell)`; the full-grid stack is never built. The baseline also now slices its 10-year window *before* concatenating (180 MB, not 1.44 GB). Peak fell 5.5 GB → **2.9 GB**, and the run was done serially in one process. Verified as a pure memory change: the refactor reproduced the pre-refactor baseline exactly (0.7336%, 28.33% zeros on the 300-cell probe).
+
+**Rule**: a processor's memory scales with `n_members`, and `csoil`'s 12-member shape does not transfer to 22. Size the resident set *before* choosing concurrency; when equal-cost panels diverge, check `vm.swapusage` first.
+
+**2. `np.nansum` turned the ocean into land.** The monthly→annual sum used `np.nansum`, which maps an all-NaN ocean cell to **0.0**. The value check then reported **259,200** "land" cells — the entire grid — and every land mean was diluted by ~70% ocean zeros, which made `mc2-usfs` look 4–7× hotter than its siblings. Fixed by requiring all 12 months finite before emitting a year. Same failure class as the `np.zeros()` baseline-panel defect already in GUARDRAILS: **a silent finite zero where NaN belongs.**
+
+**3. `--scenarios` silently changed the "shared" baseline.** Subsetting scenarios pooled the 2020s baseline over only the *selected* ones, so per-scenario runs would each have emitted a different shared baseline (measured drift: 0.7293% vs 0.7336%). Fixed to always pool all scenarios found on disk and only *write* the requested subset.
+
+**Value-check (GUARDRAILS §9), unusually clean for this variable**: all 5 models declare `units="%"`, `long_name="Burnt Area Fraction"`, `days since` on `365_day`, `_FillValue=1e20`. Annual-total land means 1.89–3.72% — same unit, comparable magnitude → **no normalization**. Within-model cross-GCM spread 1.0–1.2×, i.e. no mis-scaling: `classic` was deliberately taken from `2015soc` to avoid its `2015soc-from-histsoc` run, which is documented mis-scaled across GCMs within the one model. Annual totals legitimately exceed 100% where a cell reburns (`classic` ~151%, `elm-eca` ~575%) and are **not** clipped.
+
+**soc is MIXED by design**: no single token spans the ensemble (`elm-eca` only `2015soc-from-histsoc`, `visit` only `2015soc`, `mc2-usfs` only `nat`), so a uniform filter would drop 5–15 of 22 members. Recorded in `soc_by_model` / `soc_treatment`. CO₂ treatment *is* uniform (`default` transient for every member) — unlike `csoil`.
+
+**Verified**: `test_shared_baseline.py` → **ALL CHECKS PASSED**. 2020s panel bit-identical across all three scenarios (max|diff| = 0.0 on median/lower_ci/upper_ci/percentile); 0 CI-ordering violations; 0 ocean leak in every decade; baseline slopes NaN not 0; `n_members` 1–22, `n_models` 1–5 per cell. Global-mean burnt area 0.766% (2020s) → 0.825 / 1.056 / 1.181 % by the 2090s under ssp126 / ssp370 / ssp585; 2090s `ols_slope` +0.031 / +0.153 / +0.212 % decade⁻¹ — a 6.8× trend separation across the forcing range.
+
+**The two-slope rule earned its keep**: `sen_slope` is **exactly 0 on 66–76% of finite cells** (75.8% ssp126, 69.7% ssp370, 66.2% ssp585) and its sign agrees with `ols_slope` only 31–40% of the time. This is the zero-inflation regime OUTPUT-SPEC predicts; the layer records `ols_slope` as the one to read.
+
+**Cost**: exact Theil-Sen at 22 members is ~1.53M pairs/cell at the 2090s panel, 3.4× the `csoil` ensemble. Serial run ≈ 4.5 h for all three scenarios on 10 cores' worth of single-threaded work. `--max-pairs` exists for iteration but was not used in production.
+
+**Processor**: `scripts/process_burntarea_isimip3b.py`; downloader `scripts/download_burntarea_isimip3b.py` (resumable, size-verified against `Content-Length`, writes `download_provenance.csv`). Output `data/processed/wildfire-isimip3b_burntarea-total_annual/burntarea_{ssp126,ssp370,ssp585}_processed.nc`.
+
+---
+
+### 2026-08-10: HTML Dashboard Rework — Tab Structure, Zero-Centred Scales, and a Browser-Payload Ceiling
+
+**Context**: User review of the first wildfire dashboard. Seven changes, all now standing conventions in `isimip-process-visualize/SKILL.md` — they apply to **every** layer's dashboard, not just this one.
+
+**What changed**
+
+1. **Colorbar titles removed.** A title like "Annual burnt area (percent of grid cell burned per year) [%]" reserved more horizontal space than the map itself. The text became the figure title directly above the map, with the decade as a smaller second line.
+2. **Per-metric hover formats** (`HOVER_FORMATS`). Percentiles are integers on [1,100]; `.3e` there was noise, not precision.
+3. **Tabs collapsed** from ten to six: `Median | Percentile | Trend | Confidence | Anomaly | Members`. `Lower_Ci`/`Upper_Ci` duplicated Confidence; `Ols_Slope`/`Sen_Slope`/`Change` all belong on Trend, where the two estimators can be read against each other — their *disagreement* is the diagnostic.
+4. **Trend tab uses the 2030s and 2090s, not the 2020s.** The baseline's slopes are NaN by contract and its change-from-itself is identically 0, so a 2020s panel is guaranteed blank.
+5. **New Members tab** — all 22 LSM × GCM members on one shared colour scale plus a per-member stats table, fed by an optional `{variable}_members.nc` diagnostic `(member, lat, lon)`. Skipped gracefully when absent so older layers still render. `--members-only` rebuilds it from cache in seconds.
+
+**Bug found while doing it**: only the legacy `trend` metric received `reversescale`, so on a `higher_is_worse` layer the `ols_slope`/`sen_slope`/`change` maps rendered **increases in blue**. Now applied to all diverging metrics.
+
+**Zero-centred scales, and why true max failed.** Panels are symmetric about zero (`cmin = -L`, `cmax = +L`). Implemented first with `L = max|value|` as specified, which proved unusable: `max|ols_slope|` is 38.2 %/dec against a **median of 0.049**, so 99.67% of cells sat inside the middle 10% of the colour range and the maps read as blank. Surfaced with numbers rather than silently overridden; the user chose the 95th percentile. Result:
+
+| | true max | 95th pct |
+|---|---|---|
+| `ols_slope` limit | 38.2 | 1.16 |
+| cells using >10% of colour range | 0.33% | **37.5%** |
+| clamped at ends | 0% | 5.0% |
+
+Cells beyond the limit are clamped to the endpoint colour by Plotly, never blanked, and each panel now states its scale and clamped share. **Caveat to carry into any writeup**: `sen_slope`'s limit is 14× smaller than `ols_slope`'s (0.080 vs 1.16), so equal redness across those two rows does **not** mean an equal rate.
+
+**Browser payload — the constraint is marker count, not file size.** Every map is an SVG `Scattergeo` with one DOM marker per land cell (~70,849 at 0.5°). The Members page was asking the browser for **1.56 million** markers at 37.6 MB — genuinely past safe. Reduced to 6.2 MB / ~390k, and the layer total from **127 MB to 69 MB**, via `COORD_DECIMALS=2` (exact on a 0.5° grid), `VALUE_SIGFIGS=4`, and `MEMBERS_GRID_STRIDE=2` (Members tab only).
+
+**Subtlety**: downsampling uses a NaN-aware `block_mean()`, not `values[::2, ::2]`. Slicing *samples* every other cell and discards the rest, which on a sparse, zero-inflated hazard silently deletes burning cells — the same "silent data loss that looks like a rendering choice" family as the `np.nansum` ocean bug.
+
+**Known remaining ceiling**: Trend is now the heaviest page at ~425k markers. The next real step, if pages still feel slow, is a raster `go.Heatmap` (equirectangular is exactly linear in lon/lat, so it maps 1:1) at the cost of the coastline overlay. Not done.
+
+**Also confirmed (no change made)**: the wildfire percentile does rank against **non-zero baseline values only**, verified by reconstructing the stored values from the 50,144 non-zero baseline cells to within 4e-6. But zeros map to **1** and non-zeros to **[2,100]**, per OUTPUT-SPEC.md — *not* 0 and [1,100]. Moving to 0/[1,100] would be an output-contract change affecting every layer and `export_formatter.py`; left as an open question for the user.
+
+**Files**: `scripts/generate_maps.py` (tab structure, scaling, payload), `scripts/process_burntarea_isimip3b.py` (`--members-only`, members diagnostic), `.claude/skills/isimip-process-visualize/SKILL.md` (conventions).
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

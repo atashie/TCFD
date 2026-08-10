@@ -205,6 +205,95 @@ python scripts/generate_maps.py {variable} {processed_dir} {output_dir}
 python scripts/generate_maps.py leh ./outputs/heatwave-exposure_leh-annual/processed ./reports/maps
 ```
 
+### Dashboard conventions (2026-08-10 — apply to EVERY layer's dashboard)
+
+These are settled decisions, not per-layer taste. Do not reintroduce the old shape.
+
+**Tabs are exactly:** `Median | Percentile | Trend | Confidence | Anomaly | Members`
+(`DASHBOARD_TABS`).
+
+- **No `Lower_Ci` / `Upper_Ci` tabs** — the Confidence tab already plots both bounds side
+  by side; separate tabs were pure duplication.
+- **No `Ols_Slope` / `Sen_Slope` / `Change` tabs.** All three are decadal-change views and
+  belong on the single **Trend** tab, so the two estimators can be read against each other
+  — they fail in OPPOSITE regimes, so their *disagreement* is the diagnostic (OUTPUT-SPEC).
+
+**Trend tab shows the 2030s and 2090s, never the 2020s** (`TREND_DECADES`). The baseline
+panel's slopes are NaN by contract and its change-from-itself is identically 0, so a 2020s
+panel is guaranteed blank. It also carries the change maps: 2030s − 2020s and 2090s − 2020s.
+
+**Diverging panels are centred on zero** with equal blue/red extent: `cmin = -L`,
+`cmax = +L`, where `L = SYMMETRIC_LIMIT_PERCENTILE`-th percentile of `|value|`
+(**currently 95**; `None` would mean true `max|value|`). Cells beyond `L` are **clamped to
+the endpoint colour by Plotly, never blanked**, and each panel's subtitle states its scale
+and clamped share.
+
+Do not go back to true max. Measured on the wildfire layer:
+
+| | true max | 95th pct |
+|---|---|---|
+| `ols_slope` limit | 38.2 | **1.16** |
+| cells using >10% of the colour range | 0.33% | **37.5%** |
+| clamped at the ends | 0% | 5.0% |
+
+A handful of outliers set `max|value|` (median `ols_slope` is 0.049), so the true-max scale
+left ~99.7% of cells in the near-white middle.
+
+**Slope panels do NOT share a scale.** `sen_slope`'s limit came out 14× smaller than
+`ols_slope`'s (0.080 vs 1.16) because Sen collapses to zero on zero-inflated fields. Each
+metric gets its own symmetric limit — a shared one would render Sen entirely white — so
+equal redness across those two rows does **not** mean an equal rate. Say so in any writeup.
+
+**No colorbar titles.** A title like "Annual burnt area (percent of grid cell burned per
+year) [%]" reserves more horizontal space than the map. That text is now the figure title
+directly above the map, with the panel/decade label as a smaller second line.
+
+**Hover formats are per metric** (`HOVER_FORMATS`). Percentiles are integers on [1,100] —
+`.0f`, not `.3e`; scientific notation there is noise, not precision. Counts (`n_members`,
+`n_models`) likewise.
+
+**Members tab** renders every LSM × GCM member on ONE shared colour scale, plus a table of
+each member's land mean / median / P95 / max / zero% / cell count — so a member running
+systematically hot, or with an unlike spatial distribution, is visible at a glance. It reads
+an optional **`{variable}_members.nc`** sitting beside the processed files, dims
+`(member, lat, lon)`, variable `value`, attr `member_field`. **Every processor should emit
+it** (see `process_burntarea_isimip3b.py`, which also offers `--members-only` to rebuild it
+from cache in seconds without redoing the slopes). It is a *diagnostic*, not part of the
+OUTPUT-SPEC contract; when the file is absent the tab is skipped rather than failing, so
+older layers still render.
+
+**Reversed diverging scales.** `RdBu` runs red→blue, so a layer where increase = harm needs
+`reversescale=True` to put red at the top. This now applies to `ols_slope`/`sen_slope`/
+`change`, not just the legacy `trend` (previously only `trend` got it, so slope maps on
+`higher_is_worse` layers rendered increases in *blue*).
+
+### Browser payload — the binding constraint is MARKER COUNT, not file size
+
+Every map is an SVG `Scattergeo`: **one DOM marker per land cell** (~70,849 at 0.5°). SVG
+scatter degrades well before 100k nodes, so panels-per-page is what makes a dashboard slow.
+The wildfire dashboard measured, before → after the 2026-08-10 reductions:
+
+| Page | Panels | Markers | Before | After |
+|---|---|---|---|---|
+| Members | 22 | 1.56M → 390k | **37.6 MB** | 6.2 MB |
+| Trend | 6 | 425k | 11.2 MB | 8.0 MB |
+| Confidence | 4 | 283k | 7.3 MB | 5.1 MB |
+| Median / Percentile | 2 | 142k | 3.8 MB | 2.6 MB |
+| **Layer total** | | | **127 MB** | **69 MB** |
+
+Three knobs, none of which change what the reader sees:
+
+- `COORD_DECIMALS = 2` — exact for a 0.5° grid, zero loss.
+- `VALUE_SIGFIGS = 4` — finer than a colour can encode.
+- `MEMBERS_GRID_STRIDE = 2` — block-averages **the Members tab only** to 1°. Use
+  `block_mean()`, **never** `values[::2, ::2]`: slicing samples every other cell and
+  silently deletes burning cells on a sparse hazard.
+
+**Watch the count when adding panels.** A tab with many panels (Members) is the one that
+breaks first. If pages still feel slow, the real fix is switching from SVG markers to a
+raster `go.Heatmap` — equirectangular is exactly linear in lon/lat so it maps 1:1 — at the
+cost of the geographic coastline overlay. Not done yet; it is a larger change.
+
 **Do NOT**:
 - Write custom inline Python to generate HTML visualizations
 - Create per-decade files instead of per-scenario files
