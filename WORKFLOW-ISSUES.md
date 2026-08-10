@@ -394,6 +394,8 @@ The diagnostic tell was **identical work diverging**: the 2070s panel took 2,005
 
 **Processor**: `scripts/process_burntarea_isimip3b.py`; downloader `scripts/download_burntarea_isimip3b.py` (resumable, size-verified against `Content-Length`, writes `download_provenance.csv`). Output `data/processed/wildfire-isimip3b_burntarea-total_annual/burntarea_{ssp126,ssp370,ssp585}_processed.nc`.
 
+**Supersession (user decision 2026-08-10)**: this layer **replaces** the ISIMIP2b/RCP wildfire layer (`process_burntarea_fire.py`) as the shipped wildfire hazard — newer experiment generation, deeper ensemble in both dimensions (22 vs 12 members, 5 vs 3 impact models), and a high-forcing scenario. The 2b processor is kept for provenance with a SUPERSEDED banner: it documents that generation's per-member metadata defects (`lpj-guess`'s "Fire Return Interval" mislabel, `mc2-usfs`'s `days since` axis), which are real findings about *that* data and do **not** recur in 3b. Do not extend it, and do not read its framing decisions as precedent (GUARDRAILS §9). Marked in CLAUDE.md, `scripts/README.md`, and the catalog.
+
 ---
 
 ### 2026-08-10: HTML Dashboard Rework — Tab Structure, Zero-Centred Scales, and a Browser-Payload Ceiling
@@ -426,7 +428,9 @@ Cells beyond the limit are clamped to the endpoint colour by Plotly, never blank
 
 **Known remaining ceiling**: Trend is now the heaviest page at ~425k markers. The next real step, if pages still feel slow, is a raster `go.Heatmap` (equirectangular is exactly linear in lon/lat, so it maps 1:1) at the cost of the coastline overlay. Not done.
 
-**Also confirmed (no change made)**: the wildfire percentile does rank against **non-zero baseline values only**, verified by reconstructing the stored values from the 50,144 non-zero baseline cells to within 4e-6. But zeros map to **1** and non-zeros to **[2,100]**, per OUTPUT-SPEC.md — *not* 0 and [1,100]. Moving to 0/[1,100] would be an output-contract change affecting every layer and `export_formatter.py`; left as an open question for the user.
+**Also confirmed (no change made)**: the wildfire percentile does rank against **non-zero baseline values only**, verified by reconstructing the stored values from the 50,144 non-zero baseline cells to within 4e-6. Zeros map to **1** and non-zeros to **[2,100]**, per OUTPUT-SPEC.md.
+
+> **RESOLVED 2026-08-10.** The user initially described the encoding as 0 / [1,100], then confirmed after review that **1 / [2,100] is correct — keep as is**. No code change. Recorded because the question will recur: the tiers exist so a never-burning cell is distinguishable from the lowest-ranked burning cell, and [1,100] keeps every layer's percentile on one scale regardless of whether it is zero-inflated. Do not "fix" this to 0-based.
 
 **Files**: `scripts/generate_maps.py` (tab structure, scaling, payload), `scripts/process_burntarea_isimip3b.py` (`--members-only`, members diagnostic), `.claude/skills/isimip-process-visualize/SKILL.md` (conventions).
 

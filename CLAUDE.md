@@ -25,8 +25,8 @@ Processes ISIMIP data into annualized decadal statistics for physical climate ri
 |---|---|---|---|
 | Drought (exposure) | `led` | 2b, rcp26/60 | `process_led_drought.py` |
 | Tropical cyclone (exposure) | `let` | 2b, rcp26/60 | `process_let_cyclone.py` |
-| Wildfire (burnt area) | `burntarea` | 2b `biomes`, rcp26/60/85 | `process_burntarea_fire.py` |
-| Wildfire (burnt area, SSP) | `burntarea-total` | 3b `fire`+`biomes`, ssp126/370/585 | `process_burntarea_isimip3b.py` |
+| **Wildfire (burnt area)** | `burntarea-total` | 3b `fire`+`biomes`, ssp126/370/585 | `process_burntarea_isimip3b.py` |
+| ~~Wildfire, ISIMIP2b~~ — **SUPERSEDED 2026-08-10** | `burntarea` | 2b `biomes`, rcp26/60/85 | ~~`process_burntarea_fire.py`~~ |
 | Soil / subsurface carbon | `csoil-total` | 3b `biomes`, ssp126/370/585 | `process_csoil_soilcarbon.py` |
 | Timber, fisheries, health, … | various | — | `process_*.py` |
 

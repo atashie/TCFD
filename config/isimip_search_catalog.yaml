@@ -385,8 +385,8 @@ search_results:
       Land cells 70,849. Global-mean burnt 0.766% (2020s) -> 0.825 / 1.056 / 1.181 % by 2090s;
       2090s ols_slope +0.031 / +0.153 / +0.212 % dec-1. sen_slope is EXACTLY 0 on 66-76% of
       finite cells (zero-inflated) -> read ols_slope. See WORKFLOW-ISSUES.md 2026-08-10.
-    chosen: "[SUPERSEDED for new work by chosen_2026_08_08 above; this is the 2b layer] burntarea, ISIMIP2b, annual, 3 models x 4 GCMs x {rcp26,rcp60,rcp85} = 36 members. Raw %, NO normalization (same unit), NO spatial smoothing (12/scenario is thick), baseline-anchored trend."
-    processed: "2026-07-24 -> TCFD layer. scripts/process_burntarea_fire.py; data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc. Verified: global-mean burnt% flat rcp26, +6.6% rcp60, +14.8% rcp85 by 2090s. See memory project_burntarea_fire_layer, WORKFLOW-ISSUES.md 2026-07-24, GUARDRAILS §9-§10."
+    chosen: "[SUPERSEDED 2026-08-10 by chosen_2026_08_08 above -- user decision: the ISIMIP3b SSP layer replaces this one as the shipped wildfire hazard. Kept for provenance only.] burntarea, ISIMIP2b, annual, 3 models x 4 GCMs x {rcp26,rcp60,rcp85} = 36 members. Raw %, NO normalization (same unit), NO spatial smoothing (12/scenario is thick), baseline-anchored trend."
+    processed: "[SUPERSEDED 2026-08-10] 2026-07-24 -> TCFD layer. scripts/process_burntarea_fire.py; data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc. Verified: global-mean burnt% flat rcp26, +6.6% rcp60, +14.8% rcp85 by 2090s. See memory project_burntarea_fire_layer, WORKFLOW-ISSUES.md 2026-07-24, GUARDRAILS §9-§10."
 
   # -------------------------
   # soil / subsurface carbon searches (biomes sector)

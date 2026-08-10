@@ -1,4 +1,18 @@
-"""Process burntarea (wildfire burnt-area fraction) into the TCFD 6-value-class format.
+"""SUPERSEDED 2026-08-10 -- do not use for new work.
+
+    The shipped wildfire hazard layer is now `process_burntarea_isimip3b.py`
+    (ISIMIP3b `burntarea-total`, ssp126/370/585, 22 members/scenario across 5 impact
+    models x 5 CMIP6 GCMs). It supersedes this ISIMIP2b/RCP layer on every axis the
+    selection criteria weigh: newer experiment generation (SSP over RCP), a deeper
+    ensemble in BOTH dimensions (22 vs 12 members, 5 vs 3 impact models), and a
+    high-forcing scenario (ssp585).
+
+    This module is kept for provenance -- it documents the ISIMIP2b generation's
+    per-member metadata defects (see below), which are real findings about that data
+    and not reproduced in 3b. Do not extend it; do not read its framing decisions as
+    precedent for a new layer (GUARDRAILS 9: measure, never inherit).
+
+Process burntarea (wildfire burnt-area fraction) into the TCFD 6-value-class format.
 
 burntarea = the fraction of each grid cell burned per year, reported by ISIMIP2b
 vegetation/fire models in PERCENT [0, 100]. This is the direct biophysical fire
