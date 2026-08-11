@@ -4,6 +4,30 @@
 # Update this file as new searches are conducted to build institutional knowledge
 # and avoid redundant API queries.
 #
+# -----------------------------------------------------------------------------
+# HOW TO WRITE A NEGATIVE IN THIS FILE  (GUARDRAILS §11 — read before adding one)
+# -----------------------------------------------------------------------------
+# A negative ("X does not exist", "no SSP version", "0 hits") ends the next session's
+# search before it starts, so it is never tested the way a positive is. This file
+# carried "ISIMIP3b/SSP version of this family NOT found (0 hits)" for the drought
+# section from 2026-07-24 to 2026-08-11. It was FALSE — 3b publishes `driedarea`
+# under DerivedOutputData/Heinicke2026, a complete 3 x 5 x 3 = 45-file SSP matrix —
+# and the `led` layer shipped on rcp26/rcp60 because of it.
+#
+# Therefore EVERY negative in this file must carry its receipt inline:
+#
+#     verified_absent_on: "2026-08-11 — listed https://files.isimip.org/ISIMIP3b/DerivedOutputData/"
+#
+# naming the directory ACTUALLY enumerated. If you cannot name the path you listed,
+# write UNVERIFIED instead of the negative. Two further rules:
+#
+#   * A negative about a CODE is not a negative about a HAZARD. "`led` returns 0 hits
+#     in 3b" is true and nearly useless — re-issues are renamed by hazard word
+#     (driedarea, floodedarea, heatwave, wildfire, cropfailure).
+#   * If this file and the /isimip-search-download skill disagree, STOP, enumerate,
+#     and write the answer back to BOTH. Believing the skill and leaving this file
+#     stale is exactly how the above survived four days after the skill was corrected.
+#
 # Last updated: 2026-01-20
 
 # -----------------------------------------------------------------------------
@@ -125,23 +149,46 @@ pft_codes:
 #   noirr = rainfed (no irrigation)
 #
 crop_codes:
+  # CORRECTED 2026-08-11: the earlier isimip3b list mixed PROTOCOL codes (crop-calendar
+  # InputData) with codes that models actually PUBLISH as output. They are not the same set.
+  # Enumerated from all 63 ISIMIP3b agriculture {model}/{gcm}/future/ listings.
   isimip3b:
-    bea: "Dry beans (Phaseolus vulgaris)"
+    # --- measured in OutputData (yield-{crop}-{firr,noirr} and companions) ---
+    bea: "Dry beans (Phaseolus vulgaris)"   # LPJ-GUESS only
+    cas: "Cassava"                           # LPJmL only
     mai: "Maize"
-    mil: "Millet"
-    nut: "Groundnut"
-    pea: "Field peas"
-    rap: "Rapeseed"
+    mil: "Millet"                            # CYGMA1p74, LPJ-GUESS, LPJmL
+    pot: "Potato"                            # SIMPLACE-LINTUL5 only
     ri1: "Rice (first growing period)"
     ri2: "Rice (second growing period)"
-    sor: "Sorghum"
+    sor: "Sorghum"                           # CYGMA1p74, LPJ-GUESS, LPJmL, SIMPLACE
     soy: "Soybean"
-    sgb: "Sugar beet"
-    sgc: "Sugarcane"
-    sun: "Sunflower"
     swh: "Spring wheat"
     wwh: "Winter wheat"
+    # --- PROTOCOL-ONLY: present in InputData/socioeconomic/crop_calendar/, but NO ISIMIP3b
+    #     model publishes output for them.
+    #     verified_absent_on: "2026-08-11 -- projected the variable field $(NF-4) from EVERY
+    #     ISIMIP3b agriculture listing (all 14 models x their GCMs, future/, 63 dirs, 0
+    #     empty). Observed vocabulary is exactly the 11 codes above; these 9 never appear."
+    #   bar, cot, nut, pea, rap, rye, sgb, sgc, sun
     # NOTE: Code 'bea' for beans in ISIMIP3
+    # NOTE: 'sgc' is the crop-calendar code for sugarcane. Sugarcane OUTPUT is published
+    #       under the code 'sug', and only in ISIMIP2a/2b (see search_results.sugarcane).
+
+  isimip2b:
+    # Measured 2026-08-11 from all 4 models x 4 GCMs, future/ + historical/
+    cas: "Cassava"          # LPJmL only
+    mai: "Maize"            # all 4 models
+    mil: "Millet"           # LPJmL only
+    nut: "Groundnut"        # LPJmL only
+    pea: "Field peas"       # LPJmL only
+    rap: "Rapeseed"         # LPJmL only
+    ric: "Rice"             # GEPIC, LPJmL, PEPIC
+    sgb: "Sugar beet"       # LPJmL only
+    soy: "Soybean"          # all 4 models
+    sug: "Sugarcane"        # LPJmL ONLY -- the sole sugarcane source with future scenarios
+    sun: "Sunflower"        # LPJmL only
+    whe: "Wheat"            # GEPIC, LPJmL, PEPIC (single wheat code, not swh/wwh)
 
   isimip2a:
     ben: "Dry beans (Phaseolus vulgaris)"
@@ -197,21 +244,58 @@ search_results:
       # This family ALSO answers searches for tropical-cyclone / heatwave / river-flood /
       # wildfire / crop-failure exposure, not only drought.
       family:
-        led: {hazard: "drought",         datasets: 219, impact_models: "8 GHM/land (clm45,h08,jules-w1,lpjml,mpi-hm,orchidee,pcr-globwb,watergap2)", data_nature: "binary {0,1} per cell (verified)"}
+        led: {hazard: "drought",         datasets: 219, impact_models: "8 GHM/land (clm45,h08,jules-w1,lpjml,mpi-hm,orchidee,pcr-globwb,watergap2)", data_nature: "binary {0,1} per cell (re-verified 2026-08-11 across all 62 future members: exactly 2 unique values each, exact-0 + exact-1 = 100.00%, is_boolean_field=True)"}
         ler: {hazard: "river flood",     datasets: 218, impact_models: "8 GHM/land (same set as led)"}
         lew: {hazard: "wildfire",        datasets: 134, impact_models: "5 DGVM/fire (caraib,lpj-guess,lpjml,orchidee,visit) x 4 GCMs; future rcp26=31/rcp60=19; data_nature UNVERIFIED. NOTE: this is the EXPOSURE member -- distinct from the direct 'burntarea' burnt-area-fraction fire output, which was the one actually processed (see search_results.wildfire)."}
         lec: {hazard: "crop failure",    datasets: 90,  impact_models: "gepic"}
         leh: {hazard: "heatwave",        datasets: 30,  impact_models: "hwmid-humidex (derived index)"}
         let: {hazard: "tropical cyclone", datasets: 28, impact_models: "ke-tg-meanfield (Emanuel KE wind model, derived)", data_nature: "FRACTIONAL area [0,1) per cell (re-verified 2026-08-11: max 0.952, NEVER exactly 1, is_boolean_field=False, 97.84% of finite cell-years EXACTLY ZERO); 1 impact model x 4 GCMs = thin ensemble -> aggressive 5x5 L=2.5 smoothing + pooled_mean_zero_inflated statistic. See search_results.tropical_cyclone."}
-      not_real: ["letc", "lecdd", "letr"]  # guessed codes; each returns 0 hits
+      # verified_absent_on: "2026-07-24 -- paginated datasets API, each code returned 0."
+      # These are GUESSED codes that do not exist, not hazards that lack data.
+      not_real: ["letc", "lecdd", "letr"]
       common_coverage:  # identical across all six members
         product: "DerivedOutputData"
-        simulation_round: "ISIMIP2b only (NO ISIMIP3b/SSP version of this family)"
+        # CORRECTED 2026-08-11. This previously read "ISIMIP2b only (NO ISIMIP3b/SSP
+        # version of this family)", which is false and contradicted both CLAUDE.md and
+        # the /isimip-search-download skill. The le*/pe* CODES are 2b-only, but the
+        # exposure CONCEPT was re-issued for ISIMIP3b under different publication
+        # directories and hazard-word names -- see isimip3b_ssp_reissue below. Do not
+        # restore the old wording; it is how the drought layer nearly shipped on
+        # rcp26/rcp60 without anyone checking whether ssp126/370/585 existed.
+        simulation_round: "ISIMIP2b for the le*/pe* codes themselves; the concept IS re-issued in 3b under other names"
         climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]  # 4 CMIP5 GCMs
         scenarios: ["historical", "picontrol", "rcp26", "rcp60"]  # NO rcp85, NO SSP
         timestep: "annual"
         grid: "global 0.5deg"
         data_nature: "VARIES BY HAZARD -- value-check each member before processing. led=binary{0,1} (verified), let=fractional[0,1) (verified 2026-07-24), ler/lew/lec/leh=UNVERIFIED. Decadal stat = MEAN either way (mean of binary flags OR mean of fractional area = expected annual exposed-area fraction)."
+      isimip3b_ssp_reissue:
+        note: |
+          The Lange 2020 exposure CONCEPT carried into ISIMIP3b, split across two
+          publication directories and renamed by hazard word rather than le* code.
+          DROUGHT is `driedarea` under DerivedOutputData/Heinicke2026.
+          It is a DIFFERENT product with a different ensemble, NOT a drop-in newer
+          version of the `led` files; a switch is a product decision, not an upgrade.
+        # FULLY ENUMERATED 2026-08-11 (15 future/ listings, 0 failures, 0 gaps).
+        # NOTE the filename grammar: Heinicke2026 files carry NO leading publication
+        # token (h08_gfdl-esm4_w5e5_ssp126_...), unlike Lange2020's `lange2020_...`.
+        # DerivedOutputData grammar is per-publication -- parse from the END regardless.
+        driedarea:
+          path: "ISIMIP3b/DerivedOutputData/Heinicke2026/{MODEL}/{gcm}/future/"
+          impact_models: ["h08", "jules-w2", "watergap2-2e"]   # 3
+          climate_forcings: ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]  # 5 CMIP6
+          scenarios: ["ssp126", "ssp370", "ssp585"]
+          matrix: "COMPLETE 3 x 5 x 3 = 45 future files, no missing combination"
+          soc_sens: "UNIFORM 2015soc / default -- no harmonization compromise"
+          bias_adjustment: "w5e5"
+          timestep: "annual"
+          period: "2015-2100"
+          volume: "~3.7 MB/file, ~168 MB for all 45; .json sidecars WITH sha512 ARE published (unlike 3b biomes)"
+          data_nature: "UNVERIFIED -- must be value-checked before processing. Do NOT assume it inherits `led`'s binary nature: its Heinicke2026 sibling `floodedarea` is binary {0,1} despite units='1', and the two differ on masking (floodedarea is non-NaN over 94.7% of the globe INCLUDING ocean; driedarea is correctly land-masked)."
+          vs_led: "3 models vs led's 8; 5 CMIP6 GCMs vs led's 4 CMIP5; 15 members/scenario vs 31; 3 SSPs vs 2 RCPs. Recorded as facts, NOT as a recommendation."
+        flood: "floodedarea (Heinicke2026) -- WARNING: binary {0,1} despite units='1', and non-NaN over 94.7% of the globe INCLUDING ocean (driedarea, same product/model, is correctly land-masked)"
+        others: "heatwave, wildfire, cropfailure (Zantout2025)"
+        no_reissue: "tropical cyclone -- ke-tg-meanfield appears in no 3a/3b directory"
+
       isimip2b:
         led:
           # TRUE coverage via paginated API (CLI listing caps at 20): 219 datasets.
@@ -221,6 +305,16 @@ search_results:
           scenarios: ["historical", "picontrol", "rcp26", "rcp60"]  # NO rcp85/SSP
           timestep: "annual"
           period: "2006-2099 (some members extend to 2299 - not used)"
+          # ENUMERATED 2026-08-11 by listing all 32 {MODEL}/{gcm}/future/ directories
+          # serially (31 x HTTP 200 + 1 real 404). Supersedes the earlier "31/31 with
+          # mpi-hm missing 2 GCM combos" note, which over-counted the gap.
+          future_matrix_verified: "62 files = 31 members x {rcp26, rcp60}. Composition IDENTICAL across the two scenarios -> shared 2020s baseline valid."
+          missing_combination: "mpi-hm x hadgem2-es ONLY (directory returns a genuine HTTP 404, not an empty listing). Absent from BOTH scenarios, so scenario symmetry is preserved."
+          soc_scenario: "MIXED, and each model publishes exactly ONE variant -- 2005soc for clm45,h08,lpjml,mpi-hm,pcr-globwb,watergap2; nosoc for jules-w1,orchidee. Harmonizing would mean DROPPING 2 of 8 impact models, not switching a token. All 31 kept (user decision 2026-08-11)."
+          sens_scenario: "co2 -- uniform across all 62 files"
+          land_masks: "HETEROGENEOUS: clm45 60,695 / pcr-globwb 67,223 / jules-w1 67,209 / h08,lpjml,mpi-hm,watergap2 67,420 / orchidee 75,438 cells. Union 75,673; all-8 intersection 60,501. Time-invariant per member."
+          inter_model_spread: "LARGE -- 2020s global-mean drought frequency runs h08 0.0085 to orchidee 0.0660 (7.8x). Structural, not a unit error; it belongs in the CI."
+          file_size: "~7 MB each, 421 MiB for all 62 (sha512-verified from .json sidecars)"
           future_members: "rcp26=31, rcp60=31 (mpi-hm missing 2 GCM combos)"
           data_nature: "BINARY per-cell annual flag {0,1}; fraction emerges on aggregation"
           processed: "2026-07-24 -> TCFD layer. See memory project_led_drought_layer, scripts/process_led_drought.py"
@@ -236,7 +330,11 @@ search_results:
         annual, rcp26/rcp60 only.
 
         NO ISIMIP3b/SSP re-issue of THIS FAMILY under its own codes -- but read that
-        narrowly. The exposure CONCEPT was carried into 3b, split across Heinicke2026
+        narrowly.
+        verified_absent_on: "2026-08-11 -- listed https://files.isimip.org/ISIMIP3b/DerivedOutputData/
+        (exactly four publications: Heinicke2026, Jaegermeyr2021, TipESM2025, Zantout2025)
+        and walked Heinicke2026 in full; no le*/pe* code appears in any of them."
+        The exposure CONCEPT was carried into 3b, split across Heinicke2026
         (driedarea, floodedarea) and Zantout2025 (heatwave, wildfire, cropfailure), named
         by hazard word rather than le* code. And a family having no re-issue is NOT the
         hazard having no newer data: ISIMIP3b's newest tropical-cyclone product lives in
@@ -244,7 +342,11 @@ search_results:
         conflation produced a false "no SSP TC data exists" inventory on 2026-08-11 --
         see search_results.tropical_cyclone.enumerated.
 
-        Processing status: led=DONE (2026-07-24). let=DONE, REBUILT 2026-08-11 onto the
+        Processing status: led=DONE, REBUILT 2026-08-11 onto the OUTPUT-SPEC contract --
+        pooled_mean_boolean statistic (the field is measured binary), NO smoothing (31
+        members), >=2-impact-model publication mask, two-tier percentile. The 2026-07-24
+        build was family-B. See process_led_drought.py and download_led_drought.py.
+        let=DONE, REBUILT 2026-08-11 onto the
         OUTPUT-SPEC contract -- pooled_mean_zero_inflated statistic and aggressive 5x5
         L=2.5 smoothing applied per member per YEAR (the 2026-07-24 build used L=0.7,
         which left storm tracks visible, and was family-B). See process_let_cyclone.py.
@@ -254,6 +356,16 @@ search_results:
 
     hydrologic_building_blocks:
       description: "Raw water-sector variables for computing hydrological/agricultural drought. Most are ALREADY pulled/processed in the Water Risk Index."
+      # ISIMIP3b/SSP coverage ENUMERATED 2026-08-11 (10 models probed at gfdl-esm4/future).
+      isimip3b_ssp:
+        sector: "ISIMIP3b/OutputData/water_global/{MODEL}/{gcm}/future/"
+        models_with_soilmoist: ["classic", "cwatm", "h08", "jules-es-vn6p3", "jules-w2", "lpjml5-7-10-fire", "miroc-integ-land", "web-dhm-sg", "watergap2-2e"]  # 9 of 10; VISIT publishes qtot ONLY
+        models_with_rootmoist: ["lpjml5-7-10-fire", "miroc-integ-land", "web-dhm-sg"]
+        scenarios: ["ssp126", "ssp370", "ssp585"]
+        cadence: "soilmoist is MONTHLY for all 9 (h08/watergap2-2e/miroc-integ-land also publish daily)"
+        soc_variants: "SIX per scenario -- 1850soc, 2015soc, ssp{N}soc-{adapt,noadapt}+{image,magpie}. A soc choice is REQUIRED here; contrast driedarea, which is uniform 2015soc."
+        volume: "~250 MB per monthly soilmoist file -> ~34 GB for 9 models x 5 GCMs x 3 scenarios at ONE soc variant (GCM completeness per model NOT verified)"
+        caveat: "A drought layer from these is a CONSTRUCTED INDEX (SPI/SPEI/soil-moisture percentile threshold), i.e. a modelling decision to make with the user, NOT an aggregation -- GUARDRAILS 1-2. driedarea by contrast ships the index already computed."
       variables:
         soilmoist: "Soil moisture (agricultural/soil drought). NL search parser did NOT map 'soil moisture' -> use exact code 'soilmoist'."
         rootmoist: "Root-zone soil moisture. ALREADY in Water Index (WEB-DHM-SG)."
@@ -448,6 +560,7 @@ search_results:
         path: "ISIMIP3a/SecondaryInputData/climate/tropical_cyclones_flooding/1mslr/global/storm/historical/GeoClaw/"
         variable: "fldarea, 30 arcsec, tides-max, +1 m SLR, 1950-2025 (76 annual files, 103 MB each)"
         status: "historical only; NO ISIMIP3b equivalent -- this product is observational-only"
+        verified_absent_on: "UNVERIFIED -- negative inherited from the 2026-08-11 TC inventory; the 3a path was listed but no ISIMIP3b search was run for a flooding equivalent. Re-enumerate before relying on it (GUARDRAILS 11)."
     future_delivery:
       sfcwind:
         noted: "2026-08-11 -- user decision: note for a FUTURE delivery, not this one."
@@ -556,7 +669,8 @@ search_results:
       notes: >
         BioScen1.5. SDM = stacked single-species distribution models (15496 vertebrates) summed to a
         richness proxy; MEM = macroecological model of community richness. ISIMIP2b only (no ISIMIP3b
-        biodiversity output). Refs: Biber et al. 2019 J. Biogeography; Warren et al. 2018.
+        biodiversity output -- UNVERIFIED negative, never enumerated against the 3b file server;
+        re-check before repeating it, GUARDRAILS 11). Refs: Biber et al. 2019 J. Biogeography; Warren et al. 2018.
 
   # -------------------------
   # cwood searches
@@ -868,6 +982,118 @@ search_results:
       total_datasets: 0
       notes: "Cotton NOT simulated in ISIMIP3b. No future projections available."
 
+  # -------------------------
+  # sugarcane (agriculture sector)
+  # -------------------------
+  sugarcane:
+    last_searched: "2026-08-11"
+    notes: >
+      OUTPUT crop code is 'sug' (NOT 'sgc' -- 'sgc' is the ISIMIP3b crop-calendar InputData
+      code and no 3b model publishes output for it). Enumerated exhaustively: ISIMIP3b (63
+      model x GCM future/ dirs), ISIMIP2b (4 models x 4 GCMs, future/ + historical/),
+      ISIMIP3a (13 models, gswp3-w5e5 historical/), ISIMIP2a (24 models, one forcing each;
+      all forcings for the two models that carry 'sug'). File sizes ~3.8-4.0 MB each.
+
+    isimip3b:
+      total_datasets: 0
+      notes: >
+        NO sugarcane output. 3b agriculture publishes 11 crops only
+        (bea cas mai mil pot ri1 ri2 sor soy swh wwh). 'sgc' exists solely as
+        InputData/socioeconomic/crop_calendar/{soc}/*_sgc_{firr,noirr}.nc.
+        Jaegermeyr2021 DerivedOutputData is yieldchange-{mai,ric,soy,whe} only.
+
+    isimip2b:
+      total_datasets: 44   # all sug metrics, 4 GCMs, future/ + historical/
+      sectors: ["agriculture"]
+      impact_models: ["LPJmL"]     # ONLY model with sugarcane; CLM45/GEPIC/PEPIC have none
+      climate_forcings: ["GFDL-ESM2M", "HadGEM2-ES", "IPSL-CM5A-LR", "MIROC5"]
+      bias_adjustment: ["ewembi"]
+      scenarios:
+        # CORRECTED 2026-08-11: rcp85 DOES exist in 2b agriculture -- CLM45 publishes it for
+        # mai + soy only. Sugarcane (LPJmL) genuinely has no rcp85. Scope the negative.
+        climate: ["rcp26", "rcp60", "historical", "picontrol"]   # no rcp85 for THIS crop
+        soc: ["2005soc"]
+        sensitivity: ["co2", "2005co2"]   # 2005co2 for rcp26 only
+      temporal:
+        resolution: "annual"
+        period: "2006-2099 (future), 1861-2005 (historical)"
+      spatial:
+        resolution: "0.5 degree (declared)"
+        coverage: "global"
+      variables_available:
+        - yield-sug-firr
+        - yield-sug-noirr
+        - biom-sug-{firr,noirr}
+        - aet-sug-{firr,noirr}
+        - plantday-sug-{firr,noirr}
+        - matyday-sug-{firr,noirr}
+        - pirrww-sug-firr
+      notes: >
+        4 members per scenario per irrigation regime (1 impact model x 4 GCMs) -- thin
+        ensemble. Yield files are ~3.9 MB; a rcp26+rcp60 x firr+noirr pull is 16 files
+        (~62 MB). No .json sidecars in 2b agriculture (404) -- verify by HTTP status.
+
+    isimip2a:
+      total_datasets: ~35   # sug files across LPJmL (4 forcings) + CLM-Crop (watch-wfdei)
+      sectors: ["agriculture"]
+      impact_models: ["LPJmL", "CLM-Crop"]
+      climate_forcings: ["GSWP3", "Princeton", "WATCH", "WATCH-WFDEI"]  # CLM-Crop: WATCH-WFDEI only
+      bias_adjustment: ["nobc"]
+      scenarios:
+        climate: ["hist"]
+        harmonization: ["default", "harmnon", "fullharm"]   # fullharm CLM-Crop only
+      temporal:
+        resolution: "annual"
+        period: "1971-2012 (LPJmL, varies by forcing); 1980-2012 (CLM-Crop)"
+      notes: "Historical only -- no scenarios. Useful for evaluation/baseline, not projection."
+
+  # -------------------------
+  # cassava (agriculture sector)
+  # -------------------------
+  cassava:
+    last_searched: "2026-08-11"
+    notes: >
+      Crop code 'cas'. Botanically a perennial shrub, cultivated as a rainfed tropical root
+      crop -- the closest thing ISIMIP has to a tropical smallholder perennial, though it is
+      simulated on an annual harvest cycle like every other GGCMI crop.
+
+    isimip3b:
+      total_datasets: 40   # yield only: 5 GCMs x 2 scenarios x 2 sens x 2 irrigation
+      sectors: ["agriculture"]
+      impact_models: ["LPJmL"]     # only 3b model with cassava
+      climate_forcings: ["GFDL-ESM4", "IPSL-CM6A-LR", "MPI-ESM1-2-HR", "MRI-ESM2-0", "UKESM1-0-LL"]
+      bias_adjustment: ["w5e5"]
+      scenarios:
+        # Scenario coverage is per (crop, METRIC), not per crop: yield-cas is ssp126/ssp585
+        # only, while biom-cas and nleachcum-cas DO carry ssp370. Aggregating scenarios over
+        # metrics hides the gap in the one variable the layer needs.
+        climate: ["ssp126", "ssp585"]      # yield only; biom-cas also has ssp370
+        soc: ["2015soc"]
+        sensitivity: ["default", "2015co2"]
+      temporal:
+        resolution: "annual-gs"            # growing-season annual, NOT plain 'annual'
+        period: "2015-2100"
+      spatial:
+        resolution: "0.5 degree (declared)"
+        coverage: "global"
+      variables_available:
+        - yield-cas-firr
+        - yield-cas-noirr
+      notes: >
+        5 members per scenario per irrigation regime. Missing ssp370 -- the mid-range
+        scenario other shipped 3b layers carry -- so a 3-scenario layer is not possible
+        from cassava alone.
+
+    isimip2b:
+      impact_models: ["LPJmL"]
+      scenarios: {climate: ["rcp26", "rcp60", "historical", "picontrol"], soc: ["2005soc"]}
+      temporal: {resolution: "annual", period: "2006-2099"}
+      notes: "Same LPJmL-only pattern as sugarcane in this round; 4 GCMs."
+
+    isimip2a:
+      impact_models: ["CGMS-WOFOST", "LPJ-GUESS", "LPJmL"]
+      notes: "Historical only."
+
 # -----------------------------------------------------------------------------
 # SEARCHES WITH NO/LIMITED RESULTS
 # -----------------------------------------------------------------------------
@@ -888,6 +1114,82 @@ negative_results:
     searched: "2026-01-15"
     result: "No stem volume variable in ISIMIP"
     recommendation: "Derive from cwood using carbon-to-volume conversions"
+
+  coffee:
+    searched: "2026-08-11"
+    result: "Coffee does not exist anywhere in ISIMIP. Zero files, all rounds."
+    evidence: >
+      No 'cof'/'coffee' token in: ISIMIP3b agriculture (63 model x GCM future/ listings),
+      ISIMIP2b agriculture (4 models x 4 GCMs, future/ + historical/), ISIMIP3a (13 models),
+      ISIMIP2a (24 models, one forcing sampled each). Not in the protocol either -- the
+      ISIMIP3b crop_calendar InputData vocabulary is 20 crops
+      (bar bea cas cot mai mil nut pea pot rap ri1 ri2 rye sgb sgc sor soy sun swh wwh),
+      no coffee. DerivedOutputData checked: Jaegermeyr2021 (yieldchange, 4 crops),
+      Zantout2025 (cropfailure/heatwave/wildfire), Heinicke2026, TipESM2025, Lange2020,
+      Zimmer2023 -- none crop-specific to coffee.
+    structural_reason: >
+      ISIMIP agriculture (GGCMI) simulates annual field crops on a growing-season cycle.
+      No perennial tree/shrub crop of any kind is represented (no coffee, cocoa, oil palm,
+      citrus, grape). The forestry sector covers 9 European timber species, none tropical.
+    proxies_if_needed: >
+      Nothing crop-specific. Options are generic: Zantout2025 'cropfailure' exposure
+      (3b, ssp126/370/585), biomes-sector tropical evergreen broadleaf NPP/GPP/cveg,
+      or growing-season climate diagnostics attached to another crop's calendar.
+      All require the user's framing decision -- none is a coffee yield.
+      See negative_results.perennial_crops for the c3per land-use class, which is the
+      only place coffee's harvested AREA is represented (aggregated, not coffee-specific).
+
+  perennial_crops:
+    searched: "2026-08-11"
+    result: >
+      No perennial/tree crop yield exists anywhere in ISIMIP -- not cocoa, oil palm,
+      almonds, olives, grapes, citrus, tea, rubber, banana, coconut or coffee.
+    evidence: >
+      Zero matches for any perennial crop token across every agriculture listing
+      enumerated 2026-08-11 (3b: 63 model x GCM future dirs; 2b: 4 models x 4 GCMs
+      future + historical; 3a: 13 models; 2a: 24 models). Sector lists confirm there is
+      no permanent-crop / orchard / plantation sector in any round: 2a
+      (agriculture biodiversity biomes forestry lakes marine-fishery permafrost water),
+      2b (as 2a plus health, lakes_local), 3a (agriculture biomes fire lakes peat
+      permafrost water), 3b (agriculture biomes fire lakes marine-fishery permafrost water).
+    structural_reason: >
+      GGCMI simulates annual field crops on a plant-to-harvest growing-season cycle. A
+      perennial's multi-year carbon carryover, establishment lag and orchard lifetime are
+      not represented. The forestry sector is the only tree sector and it is 9 European
+      stand SITES (bily-kriz collelongo hyytiala kroof le-bray peitz solling-beech
+      solling-spruce soro) with 10 models -- temperate/boreal, not griddable, no tree crops.
+    where_perennials_do_appear:
+      landuse_area:
+        product: "InputData/socioeconomic/landuse (LUH2-based), NOT an impact-model output"
+        variables:
+          c3per_rainfed_food: "rainfed others perennial -- cocoa, oil palm, almonds, coffee, citrus, grapes aggregated"
+          c3per_irrigated_food: "irrigated others perennial"
+          c4per_rainfed_food: "rainfed sugarcane"
+          c4per_irrigated_food: "irrigated sugarcane"
+          c3per_rainfed_bf: "rainfed bioenergy trees"
+          c4per_rainfed_bf: "rainfed bioenergy grass"
+        units: "1 (grid-cell area fraction)"
+        isimip3b: >
+          landuse-15crops, 35 variables, annual 2015-2100, ~368 MB/file. Two land-use
+          models (image, magpie) x ssp126/ssp370/ssp585 x {soc-noadapt (1 file per LU
+          model), soc-adapt (one file per GCM, 5 GCMs)}. Also histsoc 1850-2014, 2015soc.
+        isimip2b: >
+          landuse-15crops, 35 variables, annual 2006-2099, ~344 MB/file, per GCM
+          (gfdl-esm2m hadgem2-es ipsl-cm5a-lr miroc5) x {rcp26soc, rcp60soc}; plus
+          histsoc, 2005soc, 1860soc, 2100rcp26soc.
+        caveat: >
+          This is IAM land-allocation forcing, not a climate-impact response. It carries no
+          yield and no per-species detail. Verified from .json sidecars in both rounds
+          (2b sidecar names DROP the .nc4: {stem}.json, not {stem}.nc4.json).
+      cropland_aggregate_outputs:
+        sector: "biomes (ISIMIP3b), enumerated per model 2026-08-11"
+        LPJmL5-7-10-fire: "cveg/cvegag/cvegbg-crop-{cirr,noirr}, pft-crop-{cirr,noirr}, fcropharvest-total"
+        JULES-ES-VN6P3: "npp/gpp/cveg/cwood/lai/fapar-c3crop|c4crop (+N pools), fcropharvest-total"
+        CLASSIC: "npp/gpp/cveg/cwood/csoil/burntarea/ffire-c3crop|c4crop, pft-c3crop|c4crop"
+        ELM-ECA: "none"
+        VISIT: "none"
+        MC2-USFS-r87g5c1: "none (biome presence classes only)"
+        caveat: "Aggregated over ALL crops by photosynthetic pathway or irrigation regime; no perennial class."
 
   cotton_future:
     searched: "2026-01-20"
@@ -1282,3 +1584,322 @@ usage_notes:
   - "Always check multiple models within a simulation round - crop coverage varies by model"
   - "ISIMIP2a variable names include harmonization suffix: {metric}-{crop}-{irr}-{harm} (e.g., yield-cot-firr-default)"
   - "When API returns 0 results, try partial matches or check older simulation rounds (ISIMIP2a/2b)"
+
+# AUTO-GENERATED 2026-08-11. Full projection of the variable field over 150
+# agriculture directories (3b 63, 2b 16, 3a 13, 2a 58); 0 empty listings.
+# scenarios/models below are YIELD ONLY -- other metrics can differ (e.g. biom-cas
+# carries ssp370 where yield-cas does not).
+crop_availability_matrix:
+  enumerated_on: "2026-08-11"
+  method: "project $(NF-4) (+ $(NF-7) scenario) from every listing and reduce to a distinct vocabulary -- NO target-token pre-filter (GUARDRAILS 8)"
+  parse_note: "ISIMIP2a filenames have one field FEWER (bias-adjustment token, no soc), so $(NF-7) is NOT the scenario there. 2a/3a are historical-only rounds."
+  total_crop_codes: 24
+  crops:
+    whe:
+      name: "Wheat"
+      ISIMIP2b:
+        models: 3
+        scenarios: "rcp26,rcp60"
+        detail: "GEPICx4, LPJmLx4, PEPICx4"
+        other_metrics: "aet,biom,initr,matyday,matyyear,pirrww,plantday,plantyear"
+      ISIMIP2a:
+        models: 24
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, CLM-Cropx1, EPIC-BOKUx4, EPIC-BOKU-BRx4, EPIC-BOKU-HGx4, EPIC-BOKU-Px4, EPIC-BOKU-PTx4, EPIC-IIASAx2, EPIC-TAMUx2, GEPICx3, GEPIC-BRx1, GEPIC-Px1, GEPIC-PMx1, GEPIC-PTx1, LPJ-GUESSx4, LPJmLx4, ORCHIDEE-Cropx2, PEGASUSx2, PEPICx2, PRYSBI2x2, pAPSIMx2, pAPSIM-PMx2, pDSSATx2, pDSSAT-PTx2"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,initr,leach,matyday,pirrww,plantday,sco2,sn2o,sumt"
+    mai:
+      name: "Maize"
+      ISIMIP3b:
+        models: 13
+        scenarios: "ssp126,ssp370,ssp585"
+        detail: "ACEAx2, CROVERx5, CYGMA1p74x5, DSSAT-Pythiax5, EPIC-IIASAx5, ISAMx5, LDNDCx5, LPJ-GUESSx5, LPJmLx5, PEPICx5, PROMETx5, SIMPLACE-LINTUL5x5, pDSSATx5"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+      ISIMIP2b:
+        models: 4
+        scenarios: "rcp26,rcp60,rcp85"
+        detail: "CLM45x4, GEPICx4, LPJmLx4, PEPICx4"
+        other_metrics: "aet,biom,initr,matyday,matyyear,pirrww,plantday,plantyear"
+      ISIMIP3a:
+        models: 13
+        scenarios: "obsclim"
+        detail: "ACEAx1, CROVERx1, CYGMA1p74x1, DSSAT-Pythiax1, EPIC-IIASAx1, ISAMx1, LDNDCx1, LPJ-GUESSx1, LPJmLx1, PEPICx1, PROMETx1, SIMPLACE-LINTUL5x1, pDSSATx1"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+      ISIMIP2a:
+        models: 23
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, CLM-Cropx1, EPIC-BOKUx4, EPIC-BOKU-BRx4, EPIC-BOKU-HGx4, EPIC-BOKU-Px4, EPIC-BOKU-PTx4, EPIC-IIASAx2, EPIC-TAMUx2, GEPICx3, GEPIC-BRx1, GEPIC-Px1, GEPIC-PMx1, GEPIC-PTx1, LPJ-GUESSx4, LPJmLx4, ORCHIDEE-Cropx2, PEGASUSx2, PEPICx2, PRYSBI2x2, pAPSIMx2, pDSSATx2, pDSSAT-PTx2"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,initr,leach,matyday,pirrww,plantday,sco2,sn2o,sumt"
+    soy:
+      name: "Soybean"
+      ISIMIP3b:
+        models: 12
+        scenarios: "ssp126,ssp370,ssp585"
+        detail: "ACEAx2, CROVERx5, CYGMA1p74x5, EPIC-IIASAx5, ISAMx5, LDNDCx5, LPJ-GUESSx5, LPJmLx5, PEPICx5, PROMETx5, SIMPLACE-LINTUL5x5, pDSSATx5"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+      ISIMIP2b:
+        models: 4
+        scenarios: "rcp26,rcp60,rcp85"
+        detail: "CLM45x4, GEPICx4, LPJmLx4, PEPICx4"
+        other_metrics: "aet,biom,initr,matyday,matyyear,pirrww,plantday,plantyear"
+      ISIMIP3a:
+        models: 12
+        scenarios: "obsclim"
+        detail: "ACEAx1, CROVERx1, CYGMA1p74x1, EPIC-IIASAx1, ISAMx1, LDNDCx1, LPJ-GUESSx1, LPJmLx1, PEPICx1, PROMETx1, SIMPLACE-LINTUL5x1, pDSSATx1"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+      ISIMIP2a:
+        models: 22
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, CLM-Cropx1, EPIC-BOKUx4, EPIC-BOKU-BRx4, EPIC-BOKU-HGx4, EPIC-BOKU-Px4, EPIC-BOKU-PTx4, EPIC-IIASAx2, GEPICx3, GEPIC-BRx1, GEPIC-Px1, GEPIC-PMx1, GEPIC-PTx1, LPJ-GUESSx4, LPJmLx4, ORCHIDEE-Cropx2, PEGASUSx2, PEPICx2, PRYSBI2x2, pAPSIMx2, pDSSATx2, pDSSAT-PTx2"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,initr,leach,matyday,pirrww,plantday,sco2,sn2o,sumt"
+    ric:
+      name: "Rice"
+      ISIMIP2b:
+        models: 3
+        scenarios: "rcp26,rcp60"
+        detail: "GEPICx4, LPJmLx4, PEPICx4"
+        other_metrics: "aet,biom,initr,matyday,matyyear,pirrww,plantday,plantyear"
+      ISIMIP2a:
+        models: 20
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, CLM-Cropx1, EPIC-BOKUx4, EPIC-BOKU-BRx4, EPIC-BOKU-HGx4, EPIC-BOKU-Px4, EPIC-BOKU-PTx4, EPIC-IIASAx1, GEPICx3, GEPIC-BRx1, GEPIC-Px1, GEPIC-PMx1, GEPIC-PTx1, LPJ-GUESSx4, LPJmLx4, ORCHIDEE-Cropx3, PEPICx2, PRYSBI2x2, pDSSATx2, pDSSAT-PTx2"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,initr,leach,matyday,pirrww,plantday,sumt"
+    swh:
+      name: "Spring wheat"
+      ISIMIP3b:
+        models: 14
+        scenarios: "ssp126,ssp370,ssp585"
+        detail: "ACEAx2, CROVERx5, CYGMA1p74x5, DSSAT-Pythiax5, DayCentx1, EPIC-IIASAx5, ISAMx5, LDNDCx5, LPJ-GUESSx5, LPJmLx5, PEPICx5, PROMETx5, SIMPLACE-LINTUL5x5, pDSSATx5"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+      ISIMIP3a:
+        models: 13
+        scenarios: "obsclim"
+        detail: "ACEAx1, CROVERx1, CYGMA1p74x1, DSSAT-Pythiax1, EPIC-IIASAx1, ISAMx1, LDNDCx1, LPJ-GUESSx1, LPJmLx1, PEPICx1, PROMETx1, SIMPLACE-LINTUL5x1, pDSSATx1"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+    wwh:
+      name: "Winter wheat"
+      ISIMIP3b:
+        models: 13
+        scenarios: "ssp126,ssp370,ssp585"
+        detail: "ACEAx2, CROVERx5, DSSAT-Pythiax5, DayCentx1, EPIC-IIASAx5, ISAMx5, LDNDCx5, LPJ-GUESSx5, LPJmLx5, PEPICx5, PROMETx5, SIMPLACE-LINTUL5x5, pDSSATx5"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+      ISIMIP3a:
+        models: 12
+        scenarios: "obsclim"
+        detail: "ACEAx1, CROVERx1, DSSAT-Pythiax1, EPIC-IIASAx1, ISAMx1, LDNDCx1, LPJ-GUESSx1, LPJmLx1, PEPICx1, PROMETx1, SIMPLACE-LINTUL5x1, pDSSATx1"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+    ri1:
+      name: "Rice, 1st season"
+      ISIMIP3b:
+        models: 11
+        scenarios: "ssp126,ssp370,ssp585"
+        detail: "ACEAx2, CROVERx5, CYGMA1p74x5, EPIC-IIASAx5, ISAMx5, LDNDCx5, LPJ-GUESSx5, LPJmLx5, PEPICx5, PROMETx5, pDSSATx5"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+      ISIMIP3a:
+        models: 11
+        scenarios: "obsclim"
+        detail: "ACEAx1, CROVERx1, CYGMA1p74x1, EPIC-IIASAx1, ISAMx1, LDNDCx1, LPJ-GUESSx1, LPJmLx1, PEPICx1, PROMETx1, pDSSATx1"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+    ri2:
+      name: "Rice, 2nd season"
+      ISIMIP3b:
+        models: 10
+        scenarios: "ssp126,ssp370,ssp585"
+        detail: "ACEAx2, CYGMA1p74x5, EPIC-IIASAx5, ISAMx5, LDNDCx5, LPJ-GUESSx5, LPJmLx5, PEPICx5, PROMETx5, pDSSATx5"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+      ISIMIP3a:
+        models: 10
+        scenarios: "obsclim"
+        detail: "ACEAx1, CYGMA1p74x1, EPIC-IIASAx1, ISAMx1, LDNDCx1, LPJ-GUESSx1, LPJmLx1, PEPICx1, PROMETx1, pDSSATx1"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nlosscum,nupcum,pirnreqcum,plantday,plantyear,soilmoist"
+      ISIMIP2a:
+        models: 1
+        scenarios: "historical (hist)"
+        detail: "EPIC-IIASAx1"
+        other_metrics: "aet,gsprcp,initr,matyday,pirrww,plantday"
+    mil:
+      name: "Millet"
+      ISIMIP3b:
+        models: 3
+        scenarios: "ssp126,ssp370,ssp585"
+        detail: "CYGMA1p74x5, LPJ-GUESSx5, LPJmLx5"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nleachcum,pirnreqcum,plantday,plantyear"
+      ISIMIP2b:
+        models: 1
+        scenarios: "rcp26,rcp60"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,matyday,pirrww,plantday"
+      ISIMIP3a:
+        models: 2
+        scenarios: "obsclim"
+        detail: "CYGMA1p74x1, LPJ-GUESSx1"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,pirnreqcum,plantday,plantyear"
+      ISIMIP2a:
+        models: 5
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3, LPJmLx4, pDSSATx2, pDSSAT-PTx2"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    sor:
+      name: "Sorghum"
+      ISIMIP3b:
+        models: 4
+        scenarios: "ssp126,ssp370,ssp585"
+        detail: "CYGMA1p74x5, LPJ-GUESSx5, LPJmLx5, SIMPLACE-LINTUL5x5"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nupcum,pirnreqcum,plantday,plantyear"
+      ISIMIP3a:
+        models: 2
+        scenarios: "obsclim"
+        detail: "CYGMA1p74x1, LPJ-GUESSx1"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,pirnreqcum,plantday,plantyear"
+      ISIMIP2a:
+        models: 5
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3, pAPSIMx2, pDSSATx2, pDSSAT-PTx2"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,initr,leach,matyday,pirrww,plantday,sco2,sn2o,sumt"
+    cas:
+      name: "Cassava"
+      ISIMIP3b:
+        models: 1
+        scenarios: "ssp126,ssp585"
+        detail: "LPJmLx5"
+        other_metrics: "biom,harvyear,matyday,nleachcum,pirnreqcum,plantday,plantyear"
+      ISIMIP2b:
+        models: 1
+        scenarios: "rcp26,rcp60"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,matyday,pirrww,plantday"
+      ISIMIP2a:
+        models: 3
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3, LPJmLx4"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    nut:
+      name: "Groundnut"
+      ISIMIP2b:
+        models: 1
+        scenarios: "rcp26,rcp60"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,matyday,pirrww,plantday"
+      ISIMIP2a:
+        models: 3
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3, LPJmLx4"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    rap:
+      name: "Rapeseed"
+      ISIMIP2b:
+        models: 1
+        scenarios: "rcp26,rcp60"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,matyday,pirrww,plantday"
+      ISIMIP2a:
+        models: 3
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3, LPJmLx4"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    sun:
+      name: "Sunflower"
+      ISIMIP2b:
+        models: 1
+        scenarios: "rcp26,rcp60"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,matyday,pirrww,plantday"
+      ISIMIP2a:
+        models: 3
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3, LPJmLx4"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    bar:
+      name: "Barley"
+      ISIMIP2a:
+        models: 2
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    ben:
+      name: "Dry beans (2a spelling)"
+      ISIMIP2a:
+        models: 2
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    pot:
+      name: "Potato"
+      ISIMIP3b:
+        models: 1
+        scenarios: "ssp126,ssp585"
+        detail: "SIMPLACE-LINTUL5x5"
+        other_metrics: "anthday,biom,evapcum,harvyear,matyday,nincum,nleachcum,nupcum,pirnreqcum,plantday,plantyear"
+      ISIMIP2a:
+        models: 2
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    rye:
+      name: "Rye"
+      ISIMIP2a:
+        models: 2
+        scenarios: "historical (hist)"
+        detail: "CGMS-WOFOSTx1, LPJ-GUESSx3"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    sgb:
+      name: "Sugar beet"
+      ISIMIP2b:
+        models: 1
+        scenarios: "rcp26,rcp60"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,matyday,pirrww,plantday"
+      ISIMIP2a:
+        models: 2
+        scenarios: "historical (hist)"
+        detail: "LPJ-GUESSx3, LPJmLx4"
+        other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    sug:
+      name: "Sugarcane"
+      ISIMIP2b:
+        models: 1
+        scenarios: "rcp26,rcp60"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,matyday,pirrww,plantday"
+      ISIMIP2a:
+        models: 2
+        scenarios: "historical (hist)"
+        detail: "CLM-Cropx1, LPJmLx4"
+        other_metrics: "aet,biom,gsprcp,gsrsds,initr,leach,matyday,pirrww,plantday,sumt"
+    bea:
+      name: "Dry beans"
+      ISIMIP3b:
+        models: 1
+        scenarios: "ssp126,ssp585"
+        detail: "LPJ-GUESSx5"
+        other_metrics: "anthday,harvyear,matyday,plantday,plantyear"
+      ISIMIP3a:
+        models: 1
+        scenarios: "obsclim"
+        detail: "LPJ-GUESSx1"
+        other_metrics: "anthday,harvyear,matyday,plantday,plantyear"
+    cot:
+      name: "Cotton"
+      ISIMIP2a:
+        models: 1
+        scenarios: "historical (hist)"
+        detail: "CLM-Cropx1"
+        other_metrics: "aet,biom,gsprcp,gsrsds,initr,leach,matyday,pirrww,plantday,sumt"
+    mgr:
+      name: "Managed grass"
+      ISIMIP2a:
+        models: 1
+        scenarios: "historical (hist)"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+    pea:
+      name: "Field peas"
+      ISIMIP2b:
+        models: 1
+        scenarios: "rcp26,rcp60"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,matyday,pirrww,plantday"
+      ISIMIP2a:
+        models: 1
+        scenarios: "historical (hist)"
+        detail: "LPJmLx4"
+        other_metrics: "aet,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"

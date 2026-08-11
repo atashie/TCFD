@@ -73,6 +73,16 @@ smoothing, percentile tiering, or `higher_is_better` tells you nothing about thi
 follow from *this* variable's measured values, and the measurement has not happened yet at
 search time. Flag them as pending, do not pre-answer them from precedent.
 
+**If you name an alternative dataset, ENUMERATE it before offering the choice.** Naming one
+and quantifying the other is not a fair fork — it is a recommendation wearing a question
+mark, because the option with numbers is the one that sounds real. Measured 2026-08-11: the
+`led` rebuild was offered against "an SSP `driedarea` layer… a different product with a
+different ensemble", with no matrix attached, and the enumeration that came *afterwards*
+showed a complete 3 models × 5 CMIP6 GCMs × 3 SSPs = 45-file set, uniform `2015soc`, 168 MB
+— cheap to enumerate (15 listings, ~2 min) and materially different from the prose. Offering
+to enumerate "if you'd rather" pushes the cost of an informed choice onto the user. Do the
+listings first, put both matrices on the table, then stop.
+
 ## Search Catalog Reference
 
 **Before starting any ISIMIP search**, consult `config/isimip_search_catalog.yaml` to check
@@ -88,6 +98,29 @@ quality or limitations.
 under-listed ISIMIP2b biomes models (5 documented vs 11 real), and later still missed
 `CLM45` and `VEGAS` for `csoil`. **Enumerate the file server; treat the catalog as a
 starting hypothesis.**
+
+**Its NEGATIVES are the most dangerous entries in it** (GUARDRAILS §11). A positive claim
+in the catalog is self-correcting — you go to the path and either the files are there or
+they are not. A negative claim ends the search before it starts, so it is never tested. The
+drought section asserted *"ISIMIP3b/SSP version of this family NOT found (0 hits)"* from
+**2026-07-24 to 2026-08-11**, and it was false: 3b publishes `driedarea` under
+`DerivedOutputData/Heinicke2026`, a complete 3 × 5 × 3 = 45-file SSP matrix. The `led`
+drought layer shipped on rcp26/rcp60 while ssp126/370/585 sat unlisted. Worse, from
+2026-08-07 **this skill already said the re-issue existed** — the repository contradicted
+itself for four days and nobody reconciled it.
+
+So, before you rely on any negative in the catalog:
+
+- **Demand its receipt.** A negative is trustworthy only with `verified_absent_on: "<date>
+  — listed <URL>"` naming the directory actually enumerated. No receipt → treat as
+  `UNVERIFIED` and enumerate it yourself.
+- **Check whether the negative is about a CODE or about the HAZARD.** "`led` returns 0 hits
+  in 3b" is true and nearly useless: the token is 2b-only, the hazard is not. Re-issues get
+  **new names** (`driedarea`, `floodedarea`, `heatwave`, `wildfire`, `cropfailure`).
+- **If the catalog and this skill disagree, stop and enumerate**, then write the answer back
+  to *both*. Believing the skill and leaving the catalog stale is how this persisted.
+- **Never hand the user a recorded negative as fact** without saying which enumeration and
+  date it rests on.
 
 **The catalog's PFT guidance is written as recommendations, and an untested suggestion
 reads exactly like a measured fact.** Its top recommendation for temperate conifers pointed
@@ -203,9 +236,28 @@ Enumeration is ~1 HTTP request per directory plus the serial sleeps, so every di
 list and every file you store is wall time. One wildfire inventory spent 75 minutes; the
 measured waste:
 
-- **Grep the target variable *during* the harvest — never store whole sectors.** Storing all
-  86,065 filenames across three sectors left **87–93% irrelevant** (`qtot`, `snd`, `lai`,
-  `tsl`, `trans-*`…) for a question about `burntarea`.
+- **Reduce during the harvest — but project the variable FIELD, never grep a token you
+  believe in.** Storing all 86,065 filenames across three sectors left **87–93% irrelevant**
+  (`qtot`, `snd`, `lai`, `tsl`, `trans-*`…) for a question about `burntarea`. The fix is to
+  emit `$(NF-4)` (plus scenario `$(NF-7)` / sens `$(NF-5)` when you need them) and reduce to
+  a distinct **vocabulary**, then match your target against that vocabulary offline:
+
+  ```bash
+  # RIGHT — one pass, tiny output, and the vocabulary is auditable
+  curl -s "$URL" | grep -oE 'href="[^"]+\.nc4?"' | sed -E 's/href="([^"]+)"/\1/' \
+    | awk -F'_' '{print $(NF-7), $(NF-5), $(NF-4)}' | sort -u
+
+  # WRONG — a filter keyed to a token you have not yet observed
+  curl -s "$URL" | grep -E '_yield-sgc-'      # returns nothing; means NOTHING about sugarcane
+  ```
+
+  **A pre-filter can only confirm presence, never absence.** Measured 2026-08-11: a
+  sugarcane search grepped `sgc` — the code our own catalog listed for ISIMIP3b — across
+  150 directories and matched **zero** files. Published sugarcane output is `sug`, and `sgc`
+  is real only in the crop-calendar `InputData` vocabulary. The vocabulary projection running
+  alongside is the only reason the layer was found; the targeted grep alone would have
+  reported "sugarcane does not exist in ISIMIP" off a correct, complete enumeration. If you
+  ever do pre-filter, an empty result is **`UNVERIFIED`**, not a negative (GUARDRAILS §8, §11).
 - **List `future/` first; touch `historical/`/`pre-industrial/` only when the baseline or a
   specific check needs them.** 65% of 142 directory listings (93 of them) went to
   `historical/` + `pre-industrial/` and were never used by the inventory.
@@ -305,7 +357,16 @@ red flag, not a conclusion** (tropical-cyclone exposure is `let`, not the mnemon
 - **File extensions differ by round: ISIMIP2b publishes `.nc4`, ISIMIP3a/3b publish `.nc`.**
   A `*.nc` filter silently drops the **entire 2b round**. Match both.
 - **The same quantity can be named differently per round** — ISIMIP2b `csoil` vs ISIMIP3b
-  `csoil-total`.
+  `csoil-total`. Crop codes drift the same way and more often: sugarcane is `sug` (2a/2b
+  output) but `sgc` in the 3b crop calendar; beans are `ben` (2a) vs `bea` (3); wheat is one
+  code `whe` (2a/2b) but splits into `swh`/`wwh` (3a/3b); rice is `ric` (2a/2b) vs
+  `ri1`/`ri2` (3a/3b). **Never carry a crop code across rounds** — project the vocabulary
+  for the round you are in.
+- **`InputData` vocabulary ≠ `OutputData` vocabulary.** The ISIMIP3b crop calendar defines
+  20 crops (`bar bea cas cot mai mil nut pea pot rap ri1 ri2 rye sgb sgc sor soy sun swh
+  wwh`); ISIMIP3b models actually publish **11** (`bea cas mai mil pot ri1 ri2 sor soy swh
+  wwh`). A code being in the protocol says nothing about a model having run it. When
+  recording any vocabulary, record **which product you observed it in**.
 - **Watch for cross-sector duplicates.** `elm-eca` publishes csoil-total under both `biomes`
   and `permafrost`, byte-identical (same sha512). Ingesting both double-weights the model.
 - When processing one member of a family, record the **whole** family in the catalog then.

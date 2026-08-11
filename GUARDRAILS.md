@@ -187,6 +187,8 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 - **List EVERY intermediate directory level; never path-guess past one.** An enumeration that skips a level cannot support an absence claim about anything below it. Measured 2026-08-11: the walk listed `ISIMIP3b/InputData/`, saw `climate/`, and jumped straight to `climate/atmosphere/` — skipping `climate/` itself, which is where **`tropical_cyclones/`** lives. The published inventory therefore claimed no SSP tropical-cyclone product existed, when 3b ships the newest TC hazard in the repository (MIT per-storm wind footprints, Frieler et al. 2025). The user supplied the correction.
 - **Scope every absence claim to exactly the family you enumerated.** In the same review it was *correctly* established that the Lange 2020 exposure family has no ISIMIP3b re-issue — and that true finding was then allowed to stand in for "no SSP TC data exists". A family having no re-issue is not the hazard having no newer data, and newer data need not live in `DerivedOutputData/` at all.
 - **Open a directory before inferring from its name.** `ISIMIP3b/DerivedOutputData/TipESM2025/MIT/` reads like the tropical-cyclone group (MIT = Emanuel's institution) but holds **water** models (CWATM, H08, JULES-W2, MIROC-INTEG-LAND, …).
+- **Project the variable FIELD; never let a believed-in token narrow a harvest.** A correct, complete enumeration that is filtered by a token you have not yet observed produces a false negative *wearing the authority of the full walk* — the worst kind, because the receipt (150 directories listed, 0 empties) looks impeccable. Measured 2026-08-11: a sugarcane search grepped `sgc` — the code **our own catalog** listed under `crop_codes.isimip3b` — across every agriculture directory in all four rounds and matched zero files. Sugarcane output is `sug` (ISIMIP2a/2b); `sgc` exists only in the ISIMIP3b crop-calendar `InputData`. Only a parallel `$(NF-4)` vocabulary dump surfaced the real layer. **Rule**: reduce a harvest by projecting the filename's variable field to a distinct vocabulary, then match your target offline. A pre-filter can confirm presence; it can never establish absence, and its empty result is `UNVERIFIED` (§11), not a negative.
+- **Vocabulary is per (round, product) — record which one you observed.** `InputData` protocol vocabulary is a superset of what models publish: the ISIMIP3b crop calendar defines 20 crops, ISIMIP3b models publish 11. Codes also drift across rounds for the same quantity (`sug`/`sgc`, `ben`/`bea`, `whe`/`swh`+`wwh`, `ric`/`ri1`+`ri2`, `csoil`/`csoil-total`). A code inherited from another round or from `InputData` is a hypothesis, not a lookup key.
 - On `count=0` for a plausible variable: fall back to file-server enumeration (`https://files.isimip.org/{round}/...`) or query each candidate code before concluding non-existence.
 - On `count=1001`: narrow the query (by round/product/sector/model) until under the cap before drawing any conclusion about coverage.
 - **When processing one member of a known family, record the whole family in the catalog** at that time (do not leave siblings un-enumerated).
@@ -255,3 +257,54 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 - Verify with `python scripts/test_shared_baseline.py {processed_dir}` — it asserts the
   baseline panel is NaN and that no slope is finite where `median` is NaN.
 
+
+---
+
+## 11. A Recorded Negative Is a Claim, Not Evidence — Date It or Mark It Unverified
+
+**Rule**: An absence claim written in our own notes (`config/isimip_search_catalog.yaml`,
+CLAUDE.md, a skill, a module docstring) carries **no evidential weight** on its own. It is
+only as good as the enumeration behind it, and that enumeration must be **named and dated
+in the same place as the claim**. A negative without a receipt is `UNVERIFIED`, and must be
+re-enumerated before it is relied on or repeated to the user.
+
+**Why this matters** — measured, 2026-08-11:
+
+- On **2026-07-24** the drought layer shipped on rcp26/rcp60 (`edeb174`) and the catalog
+  was written the same day (`8fac010`) asserting `simulation_round: "ISIMIP2b only (NO
+  ISIMIP3b/SSP version of this family)"` and *"ISIMIP3b/SSP version of this family NOT
+  found (0 hits)"*. **Both were false.** ISIMIP3b publishes drought exposure as
+  `driedarea` under `DerivedOutputData/Heinicke2026` — a **complete** 3 models × 5 CMIP6
+  GCMs × 3 SSPs = 45-file matrix with uniform `2015soc`/`default`. Nobody had listed
+  `DerivedOutputData/`; the "0 hits" was a search for the *code* `led` in 3b, and the code
+  is 2b-only even though the hazard is not.
+- On **2026-08-07** the `/isimip-search-download` skill gained the correct fact
+  (`ac524f5`), and CLAUDE.md on **2026-08-10** (`cf335fb`). From that moment the repository
+  **contradicted itself** — skill says the re-issue exists, catalog says it does not — and
+  the contradiction sat unresolved for **4 days**, the false negative for **18 days**.
+- On **2026-08-11** the `let` rebuild (`21d8a5a`) *edited the very string* "NOT found (0
+  hits)" while fixing the tropical-cyclone notes, and left the drought false negative
+  standing one block away.
+
+**Required behavior**:
+
+- **Every negative in the catalog carries its receipt inline**: the exact path or query
+  enumerated, and the date. Use `verified_absent_on: "<date> — listed <URL>"`. If you
+  cannot state the path you listed, write `UNVERIFIED` instead of the negative.
+- **A negative about a CODE is not a negative about a HAZARD.** `led` returning 0 hits in
+  ISIMIP3b is a true statement about a controlled-vocabulary token and says nothing about
+  whether the hazard was re-issued under another name. Scope the claim to the token.
+  (Same shape as §8's "scope every absence claim to the family you enumerated".)
+- **Two of our own documents disagreeing is a STOP-AND-RESOLVE trigger, not a precedence
+  question.** Precedence (skill > CLAUDE.md > catalog) tells you which to *believe right
+  now*; it does not license leaving the loser in place to mislead the next session.
+  Resolve by enumeration and **write the result back to both**.
+- **When editing a doc region, re-read the surrounding claims about the same fact.** A
+  stale negative adjacent to the line you are fixing is the one most likely to survive.
+- **Never repeat a recorded negative to the user as fact without re-verifying it**, and
+  when you do repeat one, say which enumeration and date it rests on.
+
+**Related**: §8 (never guess codes; scope absence claims), and the skill's *"List
+`DerivedOutputData/` before concluding a product has no newer-round version"* — that rule
+already existed and was correct; what failed was that a **stale catalog negative
+contradicting it was never reconciled**.

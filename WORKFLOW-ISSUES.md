@@ -478,6 +478,93 @@ Cells beyond the limit are clamped to the endpoint colour by Plotly, never blank
 
 ---
 
+### 2026-08-11: `led` Drought Rebuilt — Mixed soc, a Mask Rule Worth 10% of Land, and a Hazard That Does Not Mean What Its Name Says
+
+**What happened**: The shipped drought layer was rebuilt onto the OUTPUT-SPEC contract. The 2026-07-24 build was family-B — it emitted the retired single `trend` (an OLS slope fitted *inside* each decade, i.e. mostly interannual noise), built the CI from the spread of per-member decadal means rather than a pooled sample, and shipped no `ols_slope` / `sen_slope` / `n_members` / `n_models` and no `members.nc`. Both raw and processed data were also gone from disk, so the layer was re-ingested from source.
+
+**The S3 trap**: `data/` was empty and the obvious explanation was the S3 store — commit `1897aae` "Redirect data storage to S3" migrated exactly these processors. It is **not on `main`**. That commit and the csoil expansion live only on `backup/origin-main-pre-force`, orphaned by a force-push, so `storage.py`, `STORAGE.md` and `layer_publish.py` do not exist on the working branch and nothing in the tree references S3. Checking `git log --all` and assuming reachability would have sent the re-ingest looking in a bucket that this branch cannot address. **Check `git merge-base --is-ancestor` before treating a commit's changes as present.**
+
+**Three things enumeration caught that assumption would have gotten wrong:**
+
+1. **soc is MIXED across the ensemble, and per-model.** `led` is `2005soc` for clm45, h08, lpjml, mpi-hm, pcr-globwb, watergap2 and `nosoc` for jules-w1, orchidee. A single hardcoded token — the natural copy from `let`, which is uniformly `nosoc` — would have 404'd on two of eight models and silently shipped a 6-model ensemble. Each model publishes exactly ONE variant, so harmonizing is not switching a token, it is dropping 2 of 8 impact models. All 31 members kept, declared in `soc_treatment`.
+2. **The gap is one pair, not two.** The catalog said "mpi-hm missing 2 GCM combos"; the real gap is `mpi-hm × hadgem2-es` alone (a genuine directory 404), absent from **both** scenarios — so composition is uniform at 31/31 and the shared 2020s baseline is valid.
+3. **`led` is binary — re-verified, not inherited.** All 62 members: exactly 2 unique values, exact-0 + exact-1 = 100.00%. The processor now *asserts* this at runtime and exits rather than proceeding if the field ever reads continuous. Its CF `long_name` ("Land area fraction exposed to drought") describes the spatial/ensemble aggregate, and taking it at face value is the classic §9 error.
+
+**The mask decision (user call, 10% of land):** the 8 models disagree on the land mask — clm45 60,695 cells, orchidee 75,438, union 75,673, all-8 intersection 60,501. On the 7,557 cells covered by exactly ONE model the 2020s frequency read **1.63×** the all-8 level (0.0594 vs 0.0365). That is an ensemble-**composition** artifact, not climate: inter-model spread on this hazard is 7.8× (h08 0.0085 → orchidee 0.0660 global-mean frequency), and orchidee reads 0.0607 on its solo cells against 0.0666 on shared ones — its own field is not elevated there, the dilution is simply missing. Resolution: publish only where **≥ 2 models** have data → 68,116 cells. Residual after the cut is 696 two-model cells at 0.0594, with **no systematic gradient** below that (5/6/7-model tiers read 0.0088/0.0396/0.0307, *lower* than the 8-model level), so it is 1% of the layer rather than a trend. Recorded in `mask_rule` and `residual_level_step`; `n_models` is emitted per cell for a stricter downstream cut.
+
+**The finding that matters most to a consumer**: **this variable is departure from preindustrial, not aridity.** The flag fires when soil moisture drops below the 2.5th percentile of the cell's *own* preindustrial distribution, so a permanently arid cell with a stable regime scores LOW, and the strongest signal appears where the climate has moved furthest. Cells above 70°N read **0.0754** mean frequency against a 0.0362 global mean (**2.08×**) — and that is real, not thin coverage: mean `n_models` there is **7.42**. Reading a high Siberian or northern-Canadian value as "arid" inverts the variable's meaning. Now carried in the layer as `interpretation_caveat`.
+
+**`sen_slope` is exactly 0 on 100.0% of cells** — the cleanest instance yet of the documented zero-inflation collapse, and a *structural* one rather than a matter of degree: on a binary field every pairwise difference is −1, 0 or +1, and same-valued pairs dominate wherever drought is uncommon, so the median pairwise slope is 0 by construction. Both estimators are still emitted per contract; **read `ols_slope` on this layer**.
+
+**A pickling bug in the parallel path**: at 31 members the final panel is ~3.9M Theil-Sen pairs per cell (~2.2 h single-core), so the slope stage was fanned across forked workers. Returning `expanding_slopes`' result from a worker fails the whole pool with `KeyError('__getstate__')` — `SlopeResult` is a `dict` subclass whose `__getattr__ = dict.__getitem__` turns pickle's probe for `__getstate__` into a KeyError instead of an AttributeError. Workers now return plain arrays. **Any processor parallelizing this module must do the same**; the shared module was left untouched.
+
+**Delivered**: 31 members/scenario × {rcp26, rcp60}, 68,116 cells, 35 min wall (4.5 CPU-hours, 8 workers). Global-mean drought frequency 0.0362 (shared 2020s) → **0.0427** rcp26 (+18%) and **0.0646** rcp60 (+78%) by the 2090s; rcp26's `ols_slope` *decays* (+3.3e-3 → +0.9e-3 dec⁻¹) while rcp60's *accelerates* (+3.5e-3 → +4.4e-3). `test_shared_baseline.py`: ALL CHECKS PASSED. Maps reviewed — the change field is the classic subtropical drying belt (Mediterranean/Middle East, Sahel, southern Africa, Australia, NE Brazil/Central America); the 31-member contact sheet shows correct coastlines, no block structure and no hemisphere flips.
+
+**Files**: `scripts/process_led_drought.py` (rewritten), `scripts/download_led_drought.py` (new), `CLAUDE.md`, `config/isimip_search_catalog.yaml` (drought section — enumerated matrix, soc mix, land masks; plus a **corrected** `simulation_round` that had claimed the Lange 2020 family has no ISIMIP3b re-issue, with a pointer to `driedarea` under Heinicke2026).
+
+---
+
+### 2026-08-11: An Unverified Negative in Our Own Catalog Outlived Its Own Correction by Four Days
+
+**What happened**: Asked to double-check whether ISIMIP3b/SSP really has no drought data, enumeration found **two** complete SSP representations. `driedarea` under `DerivedOutputData/Heinicke2026` is a **gap-free 3 impact models × 5 CMIP6 GCMs × 3 SSPs = 45-file** matrix, uniform `2015soc`/`default`, annual 2015–2100, ~168 MB, with sha512 sidecars. Separately, **9 of 10** `water_global` models publish `soilmoist` under all three SSPs. The catalog had asserted the opposite.
+
+**Precise timeline** (from `git log -S`):
+
+| date | commit | event |
+|---|---|---|
+| 2026-07-24 | `edeb174` | `led` drought layer ships on rcp26/rcp60 |
+| 2026-07-24 | `8fac010` | catalog written: `simulation_round: "ISIMIP2b only (NO ISIMIP3b/SSP version of this family)"` and *"NOT found (0 hits)"* — **both false** |
+| 2026-08-07 | `ac524f5` | the `/isimip-search-download` skill gains the CORRECT fact (Heinicke2026 `driedarea` exists) |
+| 2026-08-10 | `cf335fb` | CLAUDE.md gains the correct fact too |
+| 2026-08-11 | `21d8a5a` | the `let` rebuild edits the very string *"NOT found (0 hits)"* in the TC block — and leaves the drought false negative standing one block away |
+| 2026-08-11 | today | enumeration proves the catalog wrong; 45 files, no gaps |
+
+So the false negative survived **18 days**, and for the last **4 of them the repository openly contradicted itself** — skill and CLAUDE.md said the re-issue exists, the catalog said it does not — with no mechanism that treats a contradiction as a defect.
+
+**Root cause — negatives are never tested the way positives are.** A positive catalog claim is self-correcting: you go to the path, and the files are either there or they are not. A negative *ends the search before it starts*, so nothing ever exercises it. Compounding it:
+
+1. **The "0 hits" was real but misinterpreted.** Searching the *code* `led` in ISIMIP3b genuinely returns nothing — the token is 2b-only. That is a fact about a controlled-vocabulary string, not about the hazard, because re-issues are renamed by hazard word (`driedarea`, `floodedarea`, `heatwave`, `wildfire`, `cropfailure`). The true narrow finding was recorded as a broad one.
+2. **No receipt.** The claim named no directory and no date, so no later session could tell whether it rested on a listing of `DerivedOutputData/` (it did not) or on a code search (it did).
+3. **Precedence was treated as sufficient.** The skill outranks the catalog, so once the skill was right, the answer was reachable — and it was, which is why `driedarea` was flagged in today's readiness check before any of this. But "believe the higher authority" left the wrong text in place for the next session that consults the catalog first.
+
+**Also on me, separately from the docs**: `driedarea` was raised as an option but **not enumerated** before the fork was put to the user — described only as "a different product with a different ensemble", against a fully quantified `led`. Enumerating it costs 15 listings and ~2 minutes, and would have put 3 × 5 × 3 = 45, uniform soc, 168 MB on the table at decision time. A fork with numbers on one side only is a recommendation wearing a question mark. **Rule added to the skill**: if you name an alternative dataset, enumerate it *before* offering the choice; offering to enumerate "if you'd rather" pushes the cost of an informed choice onto the user.
+
+**Rules created**: **GUARDRAILS.md §11 — a recorded negative is a claim, not evidence.** Every negative in the catalog now must carry `verified_absent_on: "<date> — listed <URL>"` naming the directory actually enumerated, or be written as `UNVERIFIED`. A negative about a CODE is not a negative about a HAZARD. Two of our own documents disagreeing is a **stop-and-resolve trigger**, not a precedence question — enumerate, then write the result back to *both*. When editing a doc region, re-read the surrounding claims about the same fact (the `21d8a5a` near-miss). Never repeat a recorded negative to the user without saying which enumeration and date it rests on.
+
+**Applied, not just written**: all four remaining negatives in the catalog were audited — the Lange-2020-no-3b-re-issue claim now carries today's receipt (listed `ISIMIP3b/DerivedOutputData/`, exactly four publications, Heinicke2026 walked in full), and the three I did **not** enumerate (3a TC-flooding "no 3b equivalent", BioScen1.5 biodiversity, protocol-only crop codes) are now explicitly marked `UNVERIFIED` rather than left to look authoritative. The catalog header carries the convention.
+
+**Files**: `GUARDRAILS.md` (§11 new), `.claude/skills/isimip-search-download/SKILL.md` (catalog-negatives section + enumerate-before-forking rule), `config/isimip_search_catalog.yaml` (header convention, receipts, `driedarea` and `water_global` SSP matrices), `WORKFLOW-ISSUES.md`.
+
+---
+
+### 2026-08-11: A Complete Enumeration Filtered by an Unverified Token — Sugarcane Nearly Reported Absent
+
+**What happened**: Asked whether ISIMIP has coffee, and failing that sugarcane, the harvest walked the agriculture sector correctly — 63 ISIMIP3b model×GCM directories, then 2b/3a/2a — and applied a `grep -E '(sgc|cof|coffee)'` filter to each listing as it streamed. It matched **zero files in all four rounds**. Sugarcane exists: `yield-sug-{firr,noirr}`, ISIMIP2b LPJmL, 4 GCMs, rcp26/rcp60, 2006–2099. It surfaced only because the same pass *also* projected the variable field `$(NF-4)` into a distinct vocabulary, and `sug` appeared there. Had the harvest followed the skill's then-current instruction ("**grep the target variable during the harvest**") without that projection, the answer would have been "sugarcane does not exist in ISIMIP" — delivered with a receipt of 150 directories and zero empty listings.
+
+**Root cause — the filter token came from our own catalog, and was real but from the wrong product.** `crop_codes.isimip3b` listed `sgc: "Sugarcane"`. That code is genuine ISIMIP vocabulary — it is one of the 20 crops in `InputData/socioeconomic/crop_calendar/` — but **no ISIMIP3b model publishes output for it**, and the rounds that *do* publish sugarcane (2a/2b) call it `sug`. Three failure surfaces stacked:
+
+1. **`InputData` vocabulary was recorded as if it were `OutputData` vocabulary.** The protocol defines 20 crops; 3b models publish 11. Nothing in the entry said which product it had been observed in.
+2. **A pre-filter converts a good enumeration into a false negative that looks authoritative.** The walk was genuinely complete — that is what makes this failure worse than §8's original `letc` case, where the *search* was thin. Here the search was exhaustive and the **reduction** was wrong, so every quality signal (dirs listed, retries, non-empty assertions) read green.
+3. **The skill's wall-time rule pointed straight at it.** "Grep the target variable *during* the harvest" (added 2026-08-08 after a 75-minute enumeration) is a real optimisation, but as written it required knowing the answer's name before finding it. It collided with GUARDRAILS §8 and nothing said which wins.
+
+**Impact**: none delivered — the vocabulary projection caught it and the inventory that went to the user included sugarcane. But it was luck, not design, and the user asked the right question afterwards.
+
+**Two factual errors found while re-enumerating properly** (both had been written into the catalog earlier the same day):
+- *"NO rcp85 for any 2b crop"* — false. **CLM45 publishes rcp85 for `mai` and `soy`.** The observation was true of LPJmL, the one model whose listing had been read, and was generalised to the round. Sugarcane itself genuinely has no rcp85.
+- *"cassava has NO ssp370"* — true of `yield-cas`, false of the crop: `biom-cas` and `nleachcum-cas` do carry ssp370. **Scenario coverage is per (crop, metric), not per crop**, and aggregating over metrics hides the gap in exactly the variable a layer needs.
+
+**Rules created** — GUARDRAILS §8 gains two bullets, and the skill's "Harvest only what the question needs" bullet was rewritten:
+
+- **Project the variable FIELD; never let a believed-in token narrow a harvest.** Reduce with `awk -F'_' '{print $(NF-7), $(NF-5), $(NF-4)}' | sort -u` — same single pass, output is ~100 tokens instead of 86,065 filenames, and the vocabulary is auditable. Match the target against that vocabulary **offline**. A pre-filter can confirm presence; it can never establish absence, and its empty result is `UNVERIFIED` (§11), not a negative.
+- **Vocabulary is per (round, product) — record which one you observed.** Codes drift across rounds for the same quantity: `sug`/`sgc`, `ben`/`bea`, `whe`/`swh`+`wwh`, `ric`/`ri1`+`ri2`, `csoil`/`csoil-total`. An inherited code is a hypothesis, not a lookup key.
+- **`$(NF-7)` is not the scenario in every round.** ISIMIP2a filenames carry a bias-adjustment token and no soc field, so the from-the-end scenario offset differs; 2a/3a are historical-only and were labelled as such rather than reported with a mis-parsed token.
+
+**Applied**: re-enumerated all 150 agriculture directories with no target filter (0 empty listings) and wrote `crop_availability_matrix` into the catalog — 24 crop codes × round × model × GCM × scenario, yield-only with each crop's other metrics listed. The `crop_codes.isimip3b` protocol-only claim, which had been sitting as `UNVERIFIED` since the audit four days earlier, now carries its receipt.
+
+**Files**: `GUARDRAILS.md` (§8, two bullets), `.claude/skills/isimip-search-download/SKILL.md` (harvest-reduction rule rewritten with worked example; per-round code drift; InputData≠OutputData), `config/isimip_search_catalog.yaml` (`crop_availability_matrix`, `sugarcane`, `cassava`, `coffee`, `perennial_crops`, corrected rcp85/ssp370 claims), `WORKFLOW-ISSUES.md`.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:
