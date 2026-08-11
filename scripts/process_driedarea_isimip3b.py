@@ -1,93 +1,81 @@
-"""Process `led` (drought exposure) into the TCFD output contract.
+"""Process `driedarea` (ISIMIP3b/SSP drought exposure) into the TCFD output contract.
 
-`led` (Lange 2020, ISIMIP2b DerivedOutputData) is the drought member of the extreme-event
-exposure family: a cell is flagged in a year when its monthly soil moisture falls below the
-2.5th percentile of the preindustrial baseline.
+`driedarea` (Heinicke2026, ISIMIP3b DerivedOutputData) is the SSP re-issue of the Lange 2020
+drought-exposure concept, renamed by hazard word rather than `le*` code. Each cell carries a
+per-year flag for whether it was in drought.
 
-Rebuilt 2026-08-11 onto [OUTPUT-SPEC.md](../OUTPUT-SPEC.md). The 2026-07-24 version was a
-"family B" processor -- it emitted the retired single `trend` (an OLS slope fitted INSIDE
-each decade, which is mostly interannual noise), computed the CI as the spread of per-member
-decadal means rather than from a pooled sample, and shipped no `ols_slope` / `sen_slope` /
-`n_members` / `n_models` and no `{var}_members.nc`. It is fully superseded by this file.
+This is a SEPARATE LAYER from `led` (ISIMIP2b, rcp26/rcp60), not a replacement: different
+impact models, a different GCM generation, and different scenarios. Both ship.
 
-MEASURED data nature (GUARDRAILS 9 -- from the values, never the name), all 62 members:
+MEASURED data nature (GUARDRAILS 9 -- from the values, never the name), all 45 members:
 
-  * STRICTLY BINARY {0, 1}: exactly 2 unique values per member, and the exact-0 plus
-    exact-1 shares sum to 100.00% everywhere. `is_boolean_field` -> True.
-  * The CF long_name "Land area fraction exposed to drought" describes the SPATIAL/ENSEMBLE
-    aggregate, not the grid cell. Taking it at face value would be the classic §9 error.
-  * 87.28%-99.49% of finite cell-years are exact zeros, depending on member.
-  * units "1"; time "years since 1661-1-1" on a 360_day calendar, 2006-2099, 360x720,
-    latitude descending. Uniform across all 62 files.
-  * Land masks are TIME-INVARIANT per member but HETEROGENEOUS across models (see below).
-  * 31 members per scenario, composition IDENTICAL across rcp26/rcp60, so the shared 2020s
-    baseline is valid. The single gap, mpi-hm x hadgem2-es, is absent from both.
+  * STRICTLY BINARY {0,1}: exactly 2 unique values per member, exact-0 plus exact-1 = 100%.
+    `is_boolean_field` -> True, so the decadal statistic is the pooled MEAN = drought
+    FREQUENCY. Verified independently of `led`; the two agree, but that was not assumed.
+  * 75.55%-95.79% of finite cell-years are exact zeros, depending on member.
+  * `long_name` is the generic "Exposed Area Share" -- it does not even say drought, which
+    is another reason the nature had to come from values.
+  * units "1"; grid 360x720; 86 records, one per year, 2015-2100.
+  * THE MASK IS CLEAN. This mattered: the sibling `floodedarea` -- same publication, same
+    models -- is non-NaN over 94.7% of the globe INCLUDING OCEAN. `driedarea` is 20.4-22.2%,
+    i.e. genuine land only. A per-product mask assumption would have been wrong; it is
+    per-VARIABLE.
+  * Land masks are TIME-INVARIANT per member but differ BY GCM WITHIN a model (h08 spans
+    52,820-53,735 cells across its five GCMs), not merely between models.
+  * 15 members per scenario, composition IDENTICAL across ssp126/ssp370/ssp585 -- the
+    enumerated matrix is complete (3 x 5 x 3 = 45, no gaps), so the shared 2020s baseline
+    is valid. soc/sens uniformly 2015soc/default -- no harmonization compromise.
 
-Because the field is boolean, the decadal statistic is the POOLED MEAN over the
-(year x member) sample -- i.e. DROUGHT FREQUENCY, the fraction of model-years in drought --
-with the CI as mean -/+ 1 SD of that same sample. This is the contract's
-`pooled_mean_boolean` branch, taken automatically from the measured nature; it is NOT the
-declared zero-inflation deviation that `let` needed (that one applies to CONTINUOUS fields).
-A median here would collapse a Bernoulli series to 0 or 1 and destroy the layer.
+TIME DECODING: the axis is `days since 1601-01-01` on a `proleptic_gregorian` calendar --
+NOT the `years since` axis the ISIMIP2b Lange2020 files use. It is decoded with cftime via
+xarray (`decode_times=True`) and the year read off `.dt.year`; dividing days by 365 would
+drift ~0.4 years over the 400-year offset and silently mis-bin decades.
 
-THREE DECISIONS SPECIFIC TO THIS LAYER. None of them transfers to another hazard.
+TWO DECISIONS SPECIFIC TO THIS LAYER. Neither is inherited from `led`; both were measured
+here first.
 
-1. MINIMUM-MODEL MASK: a cell is published only where >= 2 impact models have data
-   (user decision 2026-08-11).
+1. NO MINIMUM-MODEL MASK -- the full union of 63,455 cells is published.
 
-   The 8 models do not share a land mask -- clm45 has 60,695 cells, orchidee 75,438 -- so
-   the union is 75,673 cells but only 60,501 carry all eight. On the 7,557 cells covered by
-   exactly ONE model (7,322 orchidee-only, 235 pcr-globwb-only) the 2020s frequency reads
-   1.63x the all-eight level:
+   The `led` layer publishes only where >= 2 of its 8 models have data, because its
+   single-model cells read 1.63x the all-model level: one high model (orchidee, 0.0660)
+   undiluted by the low ones (h08 0.0085, watergap2 0.0123) across a 7.8x inter-model
+   spread. That mechanism is ABSENT here, measured on the 2020s panel:
 
-       coverage tier    cells     2020s mean freq
-       1 model only     7,557         0.0594
-       2-4 models         696         0.0594
-       5-7 models       6,919         0.0311
-       all 8 models    60,501         0.0365
+       coverage tier    cells      2020s mean freq
+       1 model          5,396          0.0745
+       2 models         8,629          0.0599
+       3 models        49,430          0.0722
 
-   That step is an ENSEMBLE-COMPOSITION artifact, not climate. Inter-model spread on this
-   hazard is 7.8x (h08 0.0085 to orchidee 0.0660 global-mean frequency), so a cell where
-   only the high model survives sits high for a reason that has nothing to do with drought.
-   Confirming it: orchidee reads 0.0607 on its solo cells and 0.0666 on the shared ones --
-   its own field is not elevated there; the dilution is simply missing.
+   The step is 1.03x, inter-model spread is only 2.69x (h08 0.0582, jules-w2 0.1118,
+   watergap2-2e 0.0416), and the single-model cells are split across all three models
+   (1,130 / 2,968 / 1,298) rather than dominated by one outlier. There is no composition
+   artifact to remove, so a mask would cost 5,396 cells (8.5% of the union) and buy nothing.
+   `--min-models` remains available, and `n_models` is emitted per cell either way.
 
-   `>= 2` removes the artifact for 10% of union coverage, leaving 68,116 cells of which only
-   696 rest on fewer than 5 models. `n_models` is still emitted per cell so a consumer can
-   filter harder.
+   CAVEAT recorded rather than masked: a 1-model cell still carries NO inter-model
+   uncertainty in its CI, whatever its level. Filter on `n_models` if that matters.
 
-2. NO SPATIAL SMOOTHING. 31 members x 10 years = up to 310 Bernoulli draws per cell-decade,
-   which is ample to estimate a frequency; there is no sparse-track problem of the kind that
-   forced a kernel onto the 4-member `let` layer. Smoothing here would blur real
-   climatological boundaries (aridity gradients) for no variance benefit.
+2. NO SPATIAL SMOOTHING. 15 members x 10 years = up to 150 Bernoulli draws per cell-decade.
+   This is a broad, spatially coherent field -- not the one-cell-wide storm tracks that
+   forced an aggressive kernel onto the 4-member `let` layer -- so smoothing would blur real
+   aridity and permafrost gradients for no variance benefit.
 
-3. MIXED soc, ALL 31 MEMBERS KEPT. `led` is published as `2005soc` by clm45, h08, lpjml,
-   mpi-hm, pcr-globwb and watergap2, and as `nosoc` by jules-w1 and orchidee. Each model
-   publishes exactly ONE variant, so this is not a choice between variants -- it is keep-all
-   versus drop 2 of the 8 impact models. All 31 are kept and the mix is declared in
-   `soc_treatment`. `sens` IS uniform (`co2`) across all 62 files.
+Percentile: ranked against the shared 2020s land distribution, `higher_is_worse`. Tier mode
+is chosen from the MEASURED zero-fraction of that baseline, not assumed.
 
-Percentile: ranked against the shared 2020s land distribution, `higher_is_worse` (more
-drought = more risk), so it is NOT inverted. The tier mode is chosen from the MEASURED
-zero-fraction of that baseline rather than assumed.
-
-Expect `sen_slope` to collapse toward exactly 0 over most of the domain: on a binary field
-every pairwise difference is -1, 0 or +1, and same-valued pairs dominate, so the median
-pairwise slope is 0 by construction wherever drought is uncommon. That is the documented
-zero-inflation failure mode and exactly why both estimators are emitted. READ `ols_slope`
-ON THIS LAYER.
+Expect `sen_slope` to collapse to exactly 0 across the domain: on a binary field every
+pairwise difference is -1, 0 or +1 and same-valued pairs dominate. READ `ols_slope`.
 
 Usage:
-    python scripts/process_led_drought.py [--scenarios rcp26] [--skip-slopes]
-                                          [--limit-cells N] [--members-only]
-                                          [--jobs N] [--min-models K]
+    python scripts/process_driedarea_isimip3b.py [--scenarios ssp126] [--skip-slopes]
+                                                 [--limit-cells N] [--members-only]
+                                                 [--jobs N] [--min-models K]
 """
 
 import argparse
 import glob
 import multiprocessing as mp
 import os
-import re
 import sys
 import time
 import warnings
@@ -103,38 +91,34 @@ from utils.decadal_stats import (  # noqa: E402
     pooled_decadal_stat,
 )
 
-VAR = "led"
-OUT_VAR = "led"
-LAYER_ID = "drought_led_annual"
-DECADES = [2010, 2020, 2030, 2040, 2050, 2060, 2070, 2080, 2090]
+VAR = "driedarea"
+OUT_VAR = "driedarea"
+LAYER_ID = "drought-isimip3b_driedarea_annual"
+#: ISIMIP3b starts in 2015, so the baseline decade IS decade index 0 -- unlike the ISIMIP2b
+#: `led`/`let` layers, which carry a full 2010s panel first. 2015-2019 cannot form a decade.
+DECADES = [2020, 2030, 2040, 2050, 2060, 2070, 2080, 2090]
 BASELINE_DECADE = 2020
 WINDOW_YEARS = 10
-#: Source files span 2006-2099; 2006-2009 cannot form a full 2010s decade and are unused.
-MIN_YEAR, MAX_YEAR = 2010, 2099
+MIN_YEAR, MAX_YEAR = 2020, 2099
 
-#: The decadal value is a FREQUENCY (fraction of model-years in drought), so it is bounded
-#: by [0, 1] exactly -- unlike burnt area, which may exceed its nominal ceiling on reburn.
+#: The decadal value is a FREQUENCY (fraction of model-years in drought), bounded by [0, 1].
 CI_FLOOR, CI_CAP = 0.0, 1.0
 TWO_TIER_ZERO_THRESHOLD = 0.02
 HIGHER_IS_BETTER = False          # more drought = worse -> percentile NOT inverted
 SLOPE_PER_DECADE = 10.0
 
-#: Publish a cell only where at least this many impact models have data. See decision 1.
-#: Changing it changes the published coverage AND the level of the retained periphery --
-#: it is a product decision, not a tuning knob.
-MIN_MODELS = 2
+#: See decision 1 -- measured, not inherited from `led`. 1 == publish the full union.
+MIN_MODELS = 1
 
 #: Measured boolean -> the contract's `pooled_mean_boolean` branch (mean +/- 1 SD).
 STAT_NAME = "pooled_mean_boolean"
 
-#: All eight are distinct models, not configurations of one code (contrast
-#: orchidee/orchidee-dgvm in the timber layer), so family == model and n_models counts 8.
+#: Three distinct models, no two configurations of one code, so family == model.
 MODEL_FAMILY = {}
 
 SLOPE_MEM_BUDGET_BYTES = 400 * 1024**2
 
-#: Set in the parent before forking the slope pool; workers inherit it copy-on-write
-#: rather than pickling a ~760 MB cube per task.
+#: Set in the parent before forking the slope pool; workers inherit it copy-on-write.
 _CUBE = None
 
 
@@ -147,46 +131,37 @@ def family_of(model):
 
 
 def parse_name(fpath):
-    """(model, gcm, scenario, soc, sens, member) from a Lange 2020 filename.
+    """(model, gcm, scenario, soc, sens, member) from a Heinicke2026 filename.
 
-    e.g. lange2020_watergap2_miroc5_ewembi_rcp60_2005soc_co2_led_global_annual_2006_2099.nc4
+    e.g. h08_gfdl-esm4_w5e5_ssp126_2015soc_default_driedarea_global_annual_2015_2100.nc
 
-    DerivedOutputData filenames carry a LEADING PUBLICATION TOKEN (`lange2020_`) that
-    shifts every forward index by one relative to OutputData names. The variable and
-    cadence are therefore read from the END, which is index-stable either way.
+    NOTE these filenames carry NO leading publication token, unlike ISIMIP2b's
+    `lange2020_...`. DerivedOutputData grammar is per-PUBLICATION, so the fields are read
+    from the END, which is index-stable under either convention.
     """
     p = os.path.basename(fpath).split("_")
-    return dict(model=p[1], gcm=p[2], scenario=p[4], soc=p[5], sens=p[6],
-                variable=p[-5], cadence=p[-3], member=f"{p[1]}_{p[2]}")
-
-
-def years_from_time(ds):
-    """Integer calendar years from the CF axis ('years since 1661-1-1', 360_day)."""
-    t = ds.time
-    units = t.attrs.get("units", "")
-    cal = t.attrs.get("calendar", "360_day")
-    m = re.search(r"(years|days|months)\s+since\s+(\d+)", units)
-    if not m:
-        raise ValueError(f"cannot parse time units {units!r}")
-    step, base = m.group(1), int(m.group(2))
-    vals = t.values.astype("float64")
-    if step == "years":
-        yrs = base + vals
-    elif step == "months":
-        yrs = base + vals / 12.0
-    else:
-        dpy = 360.0 if "360" in cal else 365.0 if "365" in cal else 365.25
-        yrs = base + vals / dpy
-    return np.floor(yrs + 1e-6).astype(int)
+    info = dict(model=p[-11], gcm=p[-10], forcing=p[-9], scenario=p[-8], soc=p[-7],
+                sens=p[-6], variable=p[-5], cadence=p[-3])
+    info["member"] = f"{info['model']}_{info['gcm']}"
+    if info["variable"] != VAR:
+        raise ValueError(f"{os.path.basename(fpath)}: parsed variable "
+                         f"{info['variable']!r} != {VAR!r} -- filename grammar changed")
+    return info
 
 
 def load_member(fpath):
-    """Load one member as (years, (year, lat, lon), land_mask2d), NaN over ocean."""
-    ds = xr.open_dataset(fpath, decode_times=False, decode_cf=False)
+    """Load one member as (years, (year, lat, lon), land_mask2d), NaN over ocean.
+
+    Time is decoded with cftime through xarray rather than by days-per-year arithmetic:
+    the axis is `days since 1601-01-01` (proleptic_gregorian), and dividing by 365 drifts
+    by ~0.4 yr over that offset, which is enough to push a January stamp into the wrong
+    decade bin.
+    """
+    ds = xr.open_dataset(fpath)                    # decode_times=True
     da = ds[VAR]
-    fill = da.attrs.get("_FillValue", da.attrs.get("missing_value", None))
-    yrs = years_from_time(ds)
+    yrs = ds.time.dt.year.values.astype(int)
     vals = da.values.astype("float32")
+    fill = da.attrs.get("_FillValue", da.attrs.get("missing_value", None))
     ds.close()
 
     if fill is not None:
@@ -206,11 +181,10 @@ def load_member(fpath):
 def make_pct_fn(baseline_flat, higher_is_better=HIGHER_IS_BETTER):
     """Percentile-of-score against the shared 2020s baseline land distribution.
 
-    Two-tier when the baseline is materially zero-inflated (>2% exact zeros): a cell that
-    never enters drought in 310 pooled model-years is the LOWEST drought risk, so it maps to
-    1 and positives rank against the NON-ZERO baseline into [2,100]. Ranking the zeros
-    inside the full distribution would hand every never-drought cell a middling percentile
-    and compress the real gradient. The mode is chosen from the measured share, not assumed.
+    Two-tier when the baseline is materially zero-inflated (>2% exact zeros): a cell never
+    in drought across 150 pooled model-years is the LOWEST risk, so it maps to 1 and
+    positives rank against the NON-ZERO baseline into [2,100]. Mode is chosen from the
+    measured share, not assumed.
     """
     frac_zero = float(np.mean(baseline_flat == 0.0))
     two_tier = frac_zero >= TWO_TIER_ZERO_THRESHOLD
@@ -269,18 +243,13 @@ def slope_chunk_cells(n_members, n_years, max_pairs):
 
 
 def _slope_block(task):
-    """Worker: expanding slopes for one contiguous block of land cells.
-
-    Reads `_CUBE` inherited through fork -- 31 x 90 x 68,116 float32 is ~760 MB and must not
-    be pickled per task. Workers only read it, so it stays shared copy-on-write.
-    """
+    """Worker: expanding slopes for one contiguous block of land cells."""
     s, e, years, decade, baseline, window, chunk, max_pairs = task
     res = expanding_slopes(_CUBE[:, :, s:e], years, decade, baseline,
-                           window_years=window, chunk_cells=chunk,
-                           max_pairs=max_pairs)
-    # Return plain arrays, NOT the SlopeResult itself: it is a dict subclass whose
+                           window_years=window, chunk_cells=chunk, max_pairs=max_pairs)
+    # Return plain arrays, NOT the SlopeResult: it is a dict subclass whose
     # `__getattr__ = dict.__getitem__` turns pickle's probe for `__getstate__` into a
-    # KeyError instead of an AttributeError, so returning it fails the whole pool.
+    # KeyError instead of an AttributeError, which kills the whole pool.
     return s, e, res["ols_slope"], res["sen_slope"]
 
 
@@ -290,11 +259,9 @@ def compute_slopes(cube, years, decade, chunk, max_pairs, jobs, n_land):
         return expanding_slopes(cube, years, decade, BASELINE_DECADE,
                                 window_years=WINDOW_YEARS, chunk_cells=chunk,
                                 max_pairs=max_pairs)
-    # Blocks of ~8 per worker so a straggler cannot hold the barrier alone.
     n_blocks = max(jobs * 8, 1)
     edges = np.linspace(0, n_land, n_blocks + 1).astype(int)
-    tasks = [(int(a), int(b), years, decade, BASELINE_DECADE, WINDOW_YEARS,
-              chunk, max_pairs)
+    tasks = [(int(a), int(b), years, decade, BASELINE_DECADE, WINDOW_YEARS, chunk, max_pairs)
              for a, b in zip(edges[:-1], edges[1:]) if b > a]
     ols = np.full(n_land, np.nan, np.float32)
     sen = np.full(n_land, np.nan, np.float32)
@@ -315,10 +282,10 @@ def main():
     ap.add_argument("--max-pairs", type=int, default=None)
     ap.add_argument("--members-only", action="store_true")
     ap.add_argument("--skip-slopes", action="store_true")
-    ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2),
-                    help="forked workers for the Theil-Sen stage")
+    ap.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     ap.add_argument("--min-models", type=int, default=MIN_MODELS,
-                    help="publish a cell only where this many impact models have data")
+                    help="publish a cell only where this many impact models have data; "
+                         "1 = full union (this layer's measured default, see docstring)")
     args = ap.parse_args()
 
     root = Path(__file__).parent.parent
@@ -326,7 +293,7 @@ def main():
     out_dir = root / "data" / "processed" / LAYER_ID
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    files = sorted(glob.glob(str(raw_dir / f"*_{VAR}_global_annual_*.nc4")))
+    files = sorted(glob.glob(str(raw_dir / f"*_{VAR}_global_annual_*.nc")))
     if not files:
         log(f"ERROR: no {VAR} files in {raw_dir}")
         return 2
@@ -340,11 +307,11 @@ def main():
         return 2
 
     log("=" * 74)
-    log(f"led (drought exposure) -> TCFD output contract [{LAYER_ID}]")
+    log(f"driedarea (ISIMIP3b/SSP drought exposure) -> TCFD contract [{LAYER_ID}]")
     log("=" * 74)
     log(f"{len(files)} files | scenarios {scenarios} | writing {write_scenarios}")
 
-    with xr.open_dataset(files[0], decode_times=False, decode_cf=False) as ds0:
+    with xr.open_dataset(files[0]) as ds0:
         lats, lons = ds0["lat"].values, ds0["lon"].values
     LAT, LON = len(lats), len(lons)
 
@@ -363,13 +330,11 @@ def main():
     socs = sorted({meta[f]["soc"] for f in files})
     senss = sorted({meta[f]["sens"] for f in files})
 
-    # ---- Pass 1: per-MODEL land masks -> the minimum-model publication mask ---- #
-    # Done before loading any values so the land set is fixed once and every later array
-    # is packed against it. Masks are time-invariant (asserted in load_member).
+    # ---- Pass 1: per-MODEL land masks -> publication mask -------------------- #
     t0 = time.time()
     model_mask = {m: np.zeros((LAT, LON), bool) for m in models}
     for f in files:
-        with xr.open_dataset(f, decode_times=False, decode_cf=False) as ds:
+        with xr.open_dataset(f) as ds:
             da = ds[VAR]
             fill = da.attrs.get("_FillValue", da.attrs.get("missing_value", None))
             v = da.values.astype("float32")
@@ -387,9 +352,7 @@ def main():
         if c:
             log(f"  exactly {k} model(s): {c:>7,}")
     log(f"  union {int(union.sum()):,} -> publishing >= {args.min_models} models: "
-        f"{int(keep2d.sum()):,} cells "
-        f"({100 * keep2d.sum() / max(union.sum(), 1):.1f}% of union); "
-        f"dropped {int((union & ~keep2d).sum()):,}")
+        f"{int(keep2d.sum()):,} cells; dropped {int((union & ~keep2d).sum()):,}")
 
     land_idx = np.flatnonzero(keep2d.ravel())
     if args.limit_cells and args.limit_cells < land_idx.size:
@@ -397,11 +360,9 @@ def main():
                                         args.limit_cells).astype(int)]
     n_land = land_idx.size
 
-    # ---- Pass 2: pack (member, year, land_cell) per scenario ------------------ #
-    annual = {}
-    for s in scenarios:
-        annual[s] = np.full((len(members_by_scen[s]), n_years, n_land),
-                            np.nan, np.float32)
+    # ---- Pass 2: pack (member, year, land_cell) per scenario ----------------- #
+    annual = {s: np.full((len(members_by_scen[s]), n_years, n_land), np.nan, np.float32)
+              for s in scenarios}
     slot = {s: {m: i for i, m in enumerate(members_by_scen[s])} for s in scenarios}
     for f in files:
         info = meta[f]
@@ -413,7 +374,7 @@ def main():
             if yi is not None:
                 annual[s][slot[s][m], yi] = flat[k, land_idx]
         del cube, flat
-        log(f"  loaded {info['model']:<11} {info['gcm']:<13} {info['scenario']}  "
+        log(f"  loaded {info['model']:<14} {info['gcm']:<15} {s}  "
             f"{int(mask2d.sum()):,} land cells  [{time.time() - t0:.0f}s]")
     log(f"Packed {len(files)} members over {n_land:,} cells "
         f"({sum(a.nbytes for a in annual.values()) / 1024**3:.2f} GB resident)")
@@ -423,8 +384,8 @@ def main():
     log(f"\nField nature: {'BOOLEAN {0,1}' if boolean else 'CONTINUOUS'} "
         f"-> is_boolean_field={boolean}")
     if not boolean:
-        log("  ERROR: `led` must be binary {0,1}. A continuous read means the inputs "
-            "changed upstream -- re-run the value check before processing.")
+        log("  ERROR: `driedarea` measured BINARY at ingest 2026-08-11. A continuous read "
+            "means the inputs changed -- re-run the value check before processing.")
         return 3
     fin0 = annual[scenarios[0]][np.isfinite(annual[scenarios[0]])]
     log(f"  annual cell-year exact-zero fraction: {float((fin0 == 0).mean()):.2%}")
@@ -472,11 +433,10 @@ def main():
             "member_field": (f"drought frequency over the {BASELINE_DECADE}s baseline "
                              "decade (mean of the binary annual flag), pooled across "
                              "scenarios"),
-            "note": ("Diagnostic only -- not part of the OUTPUT-SPEC contract. Consumed by "
-                     "scripts/generate_maps.py to render the Members tab. Inter-model "
-                     "spread on this hazard is large (global-mean frequency h08 0.0085 to "
-                     "orchidee 0.0660, 7.8x), so members are EXPECTED to differ in level; "
-                     "look for spatial-pattern outliers, not level agreement."),
+            "note": ("Diagnostic only -- not part of the OUTPUT-SPEC contract. Inter-model "
+                     "spread is 2.69x (watergap2-2e 0.0416, h08 0.0582, jules-w2 0.1118), "
+                     "so members are expected to differ in level; look for spatial-pattern "
+                     "outliers and mask differences, not level agreement."),
         },
     )
     mem_path = out_dir / f"{OUT_VAR}_members.nc"
@@ -549,7 +509,7 @@ def main():
                 warnings.filterwarnings("ignore", message="Mean of empty slice")
                 warnings.filterwarnings("ignore", message="All-NaN slice encountered")
                 if d <= BASELINE_DECADE:
-                    slope_txt = "slopes=NaN (at/before baseline)"
+                    slope_txt = "slopes=NaN (baseline)"
                 else:
                     slope_txt = (f"ols={np.nanmean(out['ols_slope'][i]):+.3e} "
                                  f"sen={np.nanmean(out['sen_slope'][i]):+.3e} /dec")
@@ -562,8 +522,7 @@ def main():
             if d <= BASELINE_DECADE:
                 assert np.all(np.isnan(out["ols_slope"][i])), \
                     f"ols must be NaN at {d}s (no elapsed period from the baseline)"
-                assert np.all(np.isnan(out["sen_slope"][i])), \
-                    f"sen must be NaN at {d}s"
+                assert np.all(np.isnan(out["sen_slope"][i])), f"sen must be NaN at {d}s"
                 continue
             med_finite = np.isfinite(out["median"][i])
             for k in ("ols_slope", "sen_slope"):
@@ -595,31 +554,28 @@ def main():
                 "field_nature": "boolean",
                 "value_note": (
                     "median = MEAN over the pooled (year x member) sample inside the decade "
-                    f"window, across {len(mem)} members (8 GHM/land models x 4 CMIP5 GCMs), "
-                    "i.e. the DROUGHT FREQUENCY: the fraction of model-years in which the "
-                    "cell's monthly soil moisture fell below the 2.5th percentile of the "
-                    "preindustrial baseline. The raw ISIMIP field is a BINARY {0,1} annual "
-                    "flag per cell (measured: exactly 2 unique values in all 62 members); "
-                    "the CF long_name 'land area fraction' describes the spatial/ensemble "
-                    "aggregate, NOT the grid cell."),
+                    f"window, across {len(mem)} members (3 GHM x 5 CMIP6 GCMs), i.e. the "
+                    "DROUGHT FREQUENCY: the fraction of model-years the cell was flagged as "
+                    "in drought. The raw ISIMIP field is a BINARY {0,1} annual flag "
+                    "(measured: exactly 2 unique values in all 45 members). Its published "
+                    "long_name is the generic 'Exposed Area Share', which names neither the "
+                    "hazard nor the per-cell nature -- both were taken from the values."),
                 "ci_definition": (
                     "lower_ci/upper_ci = MEAN -/+ 1 standard deviation of the same pooled "
                     f"(year x member) sample, clamped to [{CI_FLOOR}, {CI_CAP}] since the "
-                    "value is a frequency. The band carries interannual variability, "
-                    "inter-GCM spread AND inter-model spread; the last dominates -- "
-                    "global-mean frequency runs from 0.0085 (h08) to 0.0660 (orchidee), "
-                    "a 7.8x range."),
+                    "value is a frequency. Carries interannual, inter-GCM AND inter-model "
+                    "spread; inter-model is 2.69x here (watergap2-2e 0.0416, h08 0.0582, "
+                    "jules-w2 0.1118 global-mean frequency)."),
                 "slope_definition": (
                     "ols_slope = least-squares slope; sen_slope = Theil-Sen slope. Both "
                     "fitted over an EXPANDING window from the start of the 2020s baseline "
                     "through the end of the target decade, stacking every (year, member) "
-                    "observation as an independent point. The 2010s and 2020s panels are "
-                    "NaN (no elapsed period from the baseline). The estimators fail in "
-                    "OPPOSITE regimes, so disagreement means a cell's trend is not robust. "
-                    "This field is BINARY, so every pairwise difference is -1, 0 or +1 and "
-                    "same-valued pairs dominate wherever drought is uncommon: sen_slope is "
-                    f"exactly 0 on {sen_zero:.1%} of finite cells in the final panel. "
-                    "READ ols_slope ON THIS LAYER."),
+                    "observation as an independent point. The 2020s panel is NaN (no "
+                    "elapsed period). The estimators fail in OPPOSITE regimes, so "
+                    "disagreement means a cell's trend is not robust. This field is BINARY, "
+                    "so every pairwise difference is -1, 0 or +1 and same-valued pairs "
+                    f"dominate: sen_slope is exactly 0 on {sen_zero:.1%} of finite cells in "
+                    "the final panel. READ ols_slope ON THIS LAYER."),
                 "slope_units": "1 decade-1",
                 "percentile_baseline": (
                     f"{pct_mode}: each cell's decadal frequency ranked against the shared "
@@ -636,69 +592,81 @@ def main():
                 "n_members": len(mem),
                 "impact_models": ",".join(models),
                 "gcms": ",".join(gcms),
-                "soc_treatment": (
-                    f"MIXED {','.join(socs)} -- 2005soc for clm45,h08,lpjml,mpi-hm,"
-                    "pcr-globwb,watergap2 and nosoc for jules-w1,orchidee. Each model "
-                    "publishes exactly ONE variant for `led`, so harmonizing would mean "
-                    "dropping 2 of the 8 impact models rather than switching a token. All "
-                    "31 members are kept (user decision 2026-08-11)."),
+                "soc_treatment": f"UNIFORM {','.join(socs)} -- no compromise needed",
                 "co2_treatment": f"UNIFORM {','.join(senss)}",
                 "normalization": (
                     "none -- every member reports the same dimensionless binary exposure "
-                    "flag, so there are no scales to reconcile. The large inter-model level "
-                    "spread is genuine structural uncertainty, not a unit mismatch, and "
-                    "belongs in the CI."),
+                    "flag. The inter-model level spread is structural uncertainty, not a "
+                    "unit mismatch, and belongs in the CI."),
                 "spatial_smoothing": (
-                    "none -- 31 members x 10 years gives up to 310 Bernoulli draws per "
-                    "cell-decade, ample to estimate a frequency. Smoothing would blur real "
-                    "aridity gradients for no variance benefit. (Contrast the 4-member "
-                    "`let` layer, where a kernel was unavoidable.)"),
+                    "none -- 15 members x 10 years gives up to 150 Bernoulli draws per "
+                    "cell-decade, and this is a broad spatially coherent field rather than "
+                    "the one-cell-wide storm tracks that forced a kernel onto `let`. "
+                    "Smoothing would blur real aridity and permafrost gradients."),
                 "minimum_models": args.min_models,
                 "mask_rule": (
-                    f"A cell is published only where >= {args.min_models} impact models "
-                    f"have data: {int(keep2d.sum()):,} of {int(union.sum()):,} union land "
-                    "cells. The 8 models disagree on the land mask (clm45 60,695 to "
-                    "orchidee 75,438); on the 7,557 single-model cells the 2020s frequency "
-                    "reads 1.63x the all-8 level (0.0594 vs 0.0365), which is an ensemble-"
-                    "COMPOSITION artifact -- orchidee undiluted by the low models h08 and "
-                    "watergap2 -- not a climate signal. User decision 2026-08-11. "
-                    "n_models is emitted per cell for consumers wanting a stricter cut."),
+                    f"Publishing where >= {args.min_models} impact model(s) have data: "
+                    f"{int(keep2d.sum()):,} of {int(union.sum()):,} union land cells. "
+                    "MEASURED on the 2020s panel, the single-model cells show NO level "
+                    "step -- 1 model 0.0745 (n=5,396), 2 models 0.0599 (n=8,629), 3 models "
+                    "0.0722 (n=49,430), a ratio of 1.03x -- because inter-model spread is "
+                    "only 2.69x and the solo cells are split across all three models "
+                    "(1,130/2,968/1,298), not dominated by one outlier. So no minimum-model "
+                    "cut is applied. This DIFFERS from the ISIMIP2b `led` layer, which "
+                    "masks at >= 2 models because its solo cells read 1.63x across a 7.8x "
+                    "inter-model spread; the rule was re-measured here, not inherited. "
+                    "Caveat: a 1-model cell still carries no inter-model uncertainty in its "
+                    "CI regardless of level -- filter on n_models if that matters."),
                 "interpretation_caveat": (
-                    "THIS IS DEPARTURE FROM PREINDUSTRIAL, NOT ARIDITY. The flag fires "
-                    "when monthly soil moisture falls below the 2.5th percentile of the "
-                    "cell's own PREINDUSTRIAL distribution, so it measures how far a cell "
-                    "has moved from its own baseline -- a permanently arid cell with a "
-                    "stable regime scores LOW. Consequence, measured on the 2020s panel: "
-                    "cells above 70N read 0.0754 mean frequency against a 0.0362 global "
-                    "mean (2.08x), on full 8-model coverage (mean n_models 7.42), so this "
-                    "is genuine model signal and NOT thin-ensemble noise -- high latitudes "
-                    "warm fastest and their soil-moisture distribution has shifted most. "
-                    "Reading a high Siberian or northern-Canadian value as 'arid' inverts "
-                    "the variable's meaning."),
-                "residual_level_step": (
-                    "After the >= 2-model mask, 696 cells rest on exactly 2 models and "
-                    "still read high (0.0594 vs 0.0365 at 8 models). Below that there is "
-                    "NO systematic gradient -- the 5/6/7-model tiers read 0.0088/0.0396/"
-                    "0.0307, i.e. lower than the 8-model level -- so the residual is 1% of "
-                    "the layer rather than a trend. Filter on n_models to exclude it."),
+                    "THIS IS DEPARTURE FROM A FIXED REFERENCE, NOT ARIDITY. The exposure "
+                    "flag is a soil-moisture threshold relative to a fixed historical "
+                    "reference distribution, so a permanently arid cell with a stable "
+                    "regime scores LOW while a wet cell whose regime has shifted scores "
+                    "HIGH. Do not read this layer as a dryness map."),
+                "coverage_geography": (
+                    "THIN COVERAGE CONCENTRATES IN THE ARID BELT. The 1- and 2-model cells "
+                    "sit at a median |latitude| of 34 and 33 degrees, against 46 for the "
+                    "3-model cells: hydrological models disagree about desert cells (no "
+                    "runoff, no soil column), so the subtropical dry zone is where they "
+                    "drop out. Mean n_models by region on the 2020s panel -- Sahara 1.57, "
+                    "Arabian 1.87, Gobi/central Asia 2.10, Australian interior 2.28, "
+                    "against Amazon 3.00, Europe/Mediterranean 2.77, global 2.69. "
+                    "Reassuringly the LARGEST projected changes land on the best-covered "
+                    "cells (ssp585 2090s minus 2020s: Amazon +0.436 at n_models 3.00, "
+                    "Europe/Med +0.323 at 2.77) while the thin arid cells barely move "
+                    "(Sahara +0.034, Australian interior +0.024, Arabian -0.017). So the "
+                    "headline signal does not rest on thin coverage -- but a site-level "
+                    "query in a desert should read n_members/n_models before the value."),
+                "single_model_dominance": (
+                    "THE HIGH-LATITUDE SIGNAL IS LARGELY ONE MODEL. In the 60-80N band the "
+                    "2020s frequency reads jules-w2 0.2397, watergap2-2e 0.0453, h08 0.0272 "
+                    "-- an 8.8x spread against a 2.69x global one -- so the ensemble's "
+                    "0.1028 there is jules-w2 carrying the band. Above 60N jules-w2 is "
+                    "2.14x the ensemble mean, versus 1.52x globally. This is visible as a "
+                    "bright Arctic band in that model's panels on the Members tab. It is "
+                    "structural model disagreement, not a defect, and the CI widens "
+                    "accordingly -- but do not report a boreal drought trend from this "
+                    "layer without saying it is one model of three."),
                 "ensemble_note": (
-                    "8 impact models x 4 CMIP5 GCMs, 31 members per scenario (mpi-hm x "
-                    "hadgem2-es does not exist upstream and is absent from BOTH scenarios, "
-                    "so scenario symmetry is preserved). All 8 are distinct models rather "
-                    "than configurations of one code, so n_models counts up to 8."),
+                    "3 impact models x 5 CMIP6 GCMs = 15 members per scenario, COMPLETE "
+                    "(3 x 5 x 3 = 45 files enumerated 2026-08-11, no missing combination). "
+                    "Land masks differ BY GCM WITHIN a model, not only between models "
+                    "(h08 spans 52,820-53,735 cells across its five GCMs), which is why "
+                    "n_members is emitted per cell alongside n_models."),
                 "source_dataset": (
-                    "ISIMIP2b DerivedOutputData/Lange2020 -- 8 GHM/land models. `led` is "
-                    "rcp26/rcp60 only: there is no rcp85 and no SSP re-issue of `led` "
-                    "itself. ISIMIP3b publishes drought exposure as `driedarea` under "
-                    "DerivedOutputData/Heinicke2026 (H08, JULES-W2, WaterGAP2-2e), a "
-                    "different product with a different ensemble -- not a drop-in newer "
-                    "version of these files."),
+                    "ISIMIP3b DerivedOutputData/Heinicke2026 -- the SSP re-issue of the "
+                    "Lange 2020 drought-exposure concept, named by hazard word rather than "
+                    "le* code. SEPARATE LAYER from the ISIMIP2b `led` drought layer "
+                    "(8 models x 4 CMIP5 GCMs, rcp26/rcp60), not a replacement: different "
+                    "models, GCM generation and scenarios. Sibling `floodedarea` in this "
+                    "same publication has a broken land mask (non-NaN over 94.7% of the "
+                    "globe including ocean); `driedarea` was checked and is clean."),
                 "description": (
-                    "Drought exposure frequency processed to the TCFD output contract "
-                    "(OUTPUT-SPEC.md) with a shared 2020s baseline; "
-                    f"{len(mem)}-member 8-model x 4-GCM ensemble, pooled-mean boolean "
-                    f"decadal statistic, no smoothing, >= {args.min_models}-model mask, "
-                    f"{pct_mode} percentile, higher_is_worse."),
+                    "ISIMIP3b/SSP drought exposure frequency processed to the TCFD output "
+                    "contract (OUTPUT-SPEC.md) with a shared 2020s baseline; "
+                    f"{len(mem)}-member 3-model x 5-GCM CMIP6 ensemble, pooled-mean boolean "
+                    f"decadal statistic, no smoothing, full-union mask, {pct_mode} "
+                    "percentile, higher_is_worse."),
             },
         )
 

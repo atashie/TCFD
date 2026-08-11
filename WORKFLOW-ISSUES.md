@@ -565,6 +565,32 @@ So the false negative survived **18 days**, and for the last **4 of them the rep
 
 ---
 
+### 2026-08-11: `driedarea` — the ISIMIP3b/SSP Drought Layer the Catalog Said Did Not Exist
+
+**What happened**: Built the ISIMIP3b/SSP drought layer from `driedarea` (Heinicke2026), the dataset a stale catalog negative had hidden for 18 days (see the entry above). It ships **alongside** `led`, not instead of it: 3 impact models × 5 CMIP6 GCMs × 3 SSPs versus `led`'s 8 models × 4 CMIP5 GCMs × 2 RCPs. Deeper ensemble against newer scenarios — neither supersedes the other.
+
+**What the §9 value-check caught that assumption would not have:**
+
+1. **The mask defect is per-VARIABLE, not per-product.** `driedarea`'s sibling `floodedarea` — same publication, same three models — is non-NaN over 94.7% of the globe *including ocean*. `driedarea` is 20.4–22.2%, i.e. genuine land. Had the known-bad sibling been used to infer the product, this layer would have been rejected or "fixed" for a defect it does not have.
+2. **Time is `days since 1601-01-01` on `proleptic_gregorian`**, not the `years since` axis the ISIMIP2b Lange2020 files use. Decoded with cftime through xarray; days ÷ 365 drifts ~0.4 yr over a 400-year offset, enough to push a January-stamped record into the wrong decade bin.
+3. **The `long_name` is the generic "Exposed Area Share"** — it names neither the hazard nor the per-cell nature. Binary {0,1} was established from values (exactly 2 unique values, exact-0 + exact-1 = 100% in all 45 members), independently of `led`. The two agree; that was verified, not assumed.
+4. **Filename grammar is per-PUBLICATION, not per-product.** Heinicke2026 files carry **no** leading publication token (`h08_gfdl-esm4_w5e5_ssp126_…`) while Lange2020's do (`lange2020_lpjml_…`). Both live under `DerivedOutputData/`. Parsing from the end is what makes one parser work for both.
+
+**The mask rule was re-measured, not inherited — and came out the other way.** `led` publishes only where ≥2 of 8 models have data because its solo cells read **1.63×** the all-model level across a **7.8×** inter-model spread, one high model undiluted. Measured here, that mechanism is absent: the step is **1.03×** (1 model 0.0745 / 2 models 0.0599 / 3 models 0.0722), inter-model spread is **2.69×**, and solo cells are split across all three models (1,130 / 2,968 / 1,298) rather than dominated by an outlier. So the full union is published — 63,455 cells — and masking would have cost 8.5% of coverage to remove an artifact that is not there. **Two sibling layers of the same hazard legitimately resolve the same knob differently; that is the rule working, not an inconsistency.**
+
+**Two findings from looking at the maps** (neither is an algebraic failure; the contract test passed before and after):
+
+- **Thin coverage concentrates in the arid belt.** 1- and 2-model cells sit at median |lat| 34°/33° against 46° for 3-model cells — hydrological models disagree about desert cells. Mean `n_models`: Sahara 1.57, Arabian 1.87, Gobi 2.10, Australian interior 2.28, versus Amazon 3.00, Europe/Med 2.77. Crucially the **largest changes land on the best-covered cells** (ssp585 2090s−2020s: Amazon **+0.436** at n_models 3.00, Europe/Med **+0.323** at 2.77) while thin arid cells barely move (Sahara +0.034, Arabian −0.017), so the headline signal does not rest on thin coverage. A desert site-level query should still read `n_models` first.
+- **The high-latitude signal is largely one model.** In the 60–80°N band: jules-w2 **0.2397**, watergap2-2e 0.0453, h08 0.0272 — an **8.8×** spread against a 2.69× global one. Above 60°N jules-w2 is **2.14×** the ensemble. Visible as a bright Arctic band on the Members tab. Do not report a boreal drought trend from this layer without saying it is one model of three.
+
+Both are recorded as `coverage_geography` and `single_model_dominance` global attributes, patched onto the written files header-only with the data verified bit-identical (netCDF4 append mode), so the 26-minute slope run was not repeated.
+
+**Delivered**: 15 members/scenario × {ssp126, ssp370, ssp585}, 63,455 cells, 26 min wall (8 workers). Shared 2020s baseline **0.0707** → **0.0936** ssp126 (+32%), **0.1687** ssp370 (+139%), **0.1920** ssp585 (+172%) by the 2090s, with `ols_slope` decaying under ssp126 (+7.6e-03 → +3.2e-03 dec⁻¹) and holding steady under ssp585 (~+1.75e-02). `test_shared_baseline.py`: ALL CHECKS PASSED. Maps reviewed — 15-member contact sheet structurally clean; the ssp585 change field is the CMIP6 drying pattern with a markedly stronger Amazon signal than the CMIP5-based `led` layer shows. `sen_slope` is exactly 0 on 100.0% of final-panel cells, the same structural binary-field collapse as `led` — **read `ols_slope`**.
+
+**Files**: `scripts/process_driedarea_isimip3b.py` (new), `scripts/download_driedarea_isimip3b.py` (new), `CLAUDE.md` (shipped-layers table + the sibling-layers note), `config/isimip_search_catalog.yaml`.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:
