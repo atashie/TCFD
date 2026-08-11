@@ -269,6 +269,22 @@ red flag, not a conclusion** (tropical-cyclone exposure is `let`, not the mnemon
   `pe{d,r,w,c,h,t}` = **population** fraction exposed twin. Hazards are `d` drought, `r`
   river flood, `w` wildfire, `c` crop failure, `h` heatwave, `t` tropical cyclone. Also:
   `lew` has **no rcp85** (rcp26/rcp60 only).
+- **List EVERY intermediate directory level. Never path-guess past one.** An enumeration
+  that skips a level cannot support an absence claim about anything below it. Measured
+  cost (2026-08-11): listing `ISIMIP3b/InputData/` returned `climate/`, then the walk
+  jumped straight to `climate/atmosphere/` because that was the obvious next hop —
+  skipping `climate/` itself, which is where **`tropical_cyclones/`** lives. That directory
+  holds the newest TC hazard in the repository (MIT per-storm wind footprints, Frieler et
+  al. 2025, ssp126/370/585), and the inventory went out saying no SSP tropical-cyclone
+  product existed. The user had to supply the correction.
+- **A verified negative about one product family is NOT a negative about the hazard.** In
+  the same review it was correctly established that the Lange 2020 exposure family has no
+  ISIMIP3b re-issue — and that true finding was then allowed to stand in for "no SSP TC
+  data exists". Scope every absence claim to exactly the family you enumerated.
+- **Beware publication-directory name collisions.** `ISIMIP3b/DerivedOutputData/TipESM2025/MIT/`
+  looks like the tropical-cyclone group (MIT = Emanuel's institution) and is **water models**
+  (CWATM, H08, JULES-W2, MIROC-INTEG-LAND, …). The real TC data is under
+  `InputData/climate/tropical_cyclones/MIT/`. Open the directory; do not infer from the name.
 - **List `DerivedOutputData/` before concluding a product has no newer-round version.** A
   product can be re-issued in a later round under a different publication directory with
   different variable names. Lange 2020's exposure concept *was* re-issued for ISIMIP3b,

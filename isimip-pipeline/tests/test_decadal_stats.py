@@ -102,6 +102,55 @@ def test_all_nan_cell_stays_nan():
     assert np.isnan(stat[0]) and np.isnan(lo[0]) and np.isnan(hi[0])
 
 
+# --- the third branch: central="mean" on a CONTINUOUS field ------------------
+# See OUTPUT-SPEC.md "The third branch: extreme zero-inflation". Used by `let`,
+# which is 97.84% exact-zero and whose pooled median is 0 on 96% of land.
+
+def test_central_mean_overrides_the_continuous_default():
+    """Same continuous input, both branches, verifiably different estimators."""
+    annual = np.arange(10, dtype=np.float32).reshape(1, 10, 1)
+    med, _, _ = pooled_decadal_stat(annual, np.arange(2020, 2030), 2020,
+                                    central="median")
+    mean, lo, hi = pooled_decadal_stat(annual, np.arange(2020, 2030), 2020,
+                                       central="mean")
+    assert med[0] == pytest.approx(4.5)          # median of 0..9
+    assert mean[0] == pytest.approx(4.5)         # mean coincides on a uniform ramp
+    sd = float(np.std(np.arange(10)))
+    assert lo[0] == pytest.approx(4.5 - sd, abs=1e-5)   # but the CI does NOT
+    assert hi[0] == pytest.approx(4.5 + sd, abs=1e-5)
+
+
+def test_central_mean_rescues_a_zero_inflated_field():
+    """The regime the branch exists for: median collapses to 0, mean does not.
+
+    9 of 10 cell-years are exactly 0 and one is 0.5 -- the shape of `let`.
+    """
+    vals = np.zeros((1, 10, 1), dtype=np.float32)
+    vals[0, 7, 0] = 0.5
+    med, _, _ = pooled_decadal_stat(vals, np.arange(2020, 2030), 2020, central="median")
+    mean, _, _ = pooled_decadal_stat(vals, np.arange(2020, 2030), 2020, central="mean")
+    assert med[0] == 0.0                          # erases the cell
+    assert mean[0] == pytest.approx(0.05)         # retains it
+
+
+def test_central_defaults_preserve_the_boolean_flag():
+    """Existing callers pass boolean=; omitting central must not change them."""
+    vals = np.array([1, 1, 1, 1, 1, 1, 0, 0, 0, 0], dtype=np.float32).reshape(1, 10, 1)
+    yrs = np.arange(2020, 2030)
+    for flag in (True, False):
+        a = pooled_decadal_stat(vals, yrs, 2020, boolean=flag)
+        b = pooled_decadal_stat(vals, yrs, 2020,
+                                central="mean" if flag else "median")
+        for x, y in zip(a, b):
+            assert x[0] == pytest.approx(y[0])
+
+
+def test_central_rejects_an_unknown_estimator():
+    annual = np.zeros((1, 10, 1), dtype=np.float32)
+    with pytest.raises(ValueError, match="central"):
+        pooled_decadal_stat(annual, np.arange(2020, 2030), 2020, central="mode")
+
+
 def test_window_mask_is_ten_years_inclusive():
     m = decade_window_mask(YEARS, 2030)
     assert YEARS[m].min() == 2030 and YEARS[m].max() == 2039 and m.sum() == 10

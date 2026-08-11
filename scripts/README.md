@@ -43,16 +43,30 @@ python scripts/process_led_drought.py
 **Input**: `data/raw/drought_led_annual/*_2006_2099.nc4`
 **Output**: `data/processed/drought_led_annual/led_{rcp26,rcp60}_processed.nc`
 
-### process_let_cyclone.py
+### process_let_cyclone.py — **the shipped tropical-cyclone layer**
 
-Processes `let` tropical-cyclone exposure (Lange 2020, ISIMIP2b) into the TCFD 6-value-class format. Unlike `led`, `let` is a **continuous fraction** [0,1) per cell (area of the cell exposed to TCs), so the decadal **mean** is the expected annual exposed-area fraction. Because the ensemble is thin (1 impact model `ke-tg-meanfield` × 4 GCMs = 4 members), it applies **5×5 exponential-decay spatial smoothing** (L=0.7, cos(lat)-scaled, non-NaN-normalized) to each per-member decadal map, and a **two-tier percentile** for the zero-inflated field (zeros→1; non-zeros ranked vs the non-zero 2020s baseline → [2,100]). See WORKFLOW-ISSUES.md 2026-07-24.
+Processes `let` tropical-cyclone exposure (Lange 2020, ISIMIP2b `DerivedOutputData/KE-TG-meanfield`) into the TCFD output contract. Ensemble = **4 members/scenario**: 1 impact model (`ke-tg-meanfield`, an Emanuel kinetic-energy wind model) × 4 CMIP5 GCMs × {rcp26, rcp60}. **Rebuilt 2026-08-11** onto `utils/decadal_stats.py`; the 2026-07-24 version was a family-B processor (retired single `trend`, no `ols_slope`/`sen_slope`/`n_members`/`n_models`, no `members.nc`) and is fully superseded. Value-checked (see WORKFLOW-ISSUES.md 2026-08-11):
+
+- `let` is a **continuous fraction** of each cell's land area exposed to TC winds — measured [0, 0.952], never exactly 1, `is_boolean_field` → False. Land mask identical across all 8 files (68,249 cells) and time-invariant.
+- **The decadal statistic is the pooled MEAN, a declared deviation from OUTPUT-SPEC's median default.** At **97.84% annual exact-zero**, the median branch leaves 2,684 exposed cells vs 15,122 under the mean — 93% of exposed land erased — and the two-tier percentile then puts 96% of land in tier 1. `let` is the continuous analogue of `led`, which the spec already grants the mean. Declared as `decadal_statistic: pooled_mean_zero_inflated`; CI = mean ± 1 SD, clamped to [0,1]. Contrast `burntarea` at 29.2% zeros, which takes the median branch fine.
+- **Aggressive 5×5 smoothing, L=2.5**, applied to each member's **annual** map before any pooling. Raw `let` is sparse one-cell-wide storm tracks and 4 members cannot average them out. The previous L=0.7 kernel kept 32.1% of weight on the centre and left tracks visible; L=2.5 puts 8.1% there, cutting roughness 0.389 raw / 0.142 previous → **0.044**, while adding **no** newly exposed cell. Radius 2 = 111 km ≈ the hurricane-force wind radius; do not widen past 3 cells. Mass conserved to +3.1%.
+- **Read `ols_slope`, not `sen_slope`** — on baseline-exposed land Sen is exactly 0 on 96.9% of cells vs OLS's 1.8%, and they agree in sign only 4.9% of the time.
+- Single impact model → `n_models` is 1 everywhere and the CI is **inter-GCM spread only**; there is no structural impact-model uncertainty in this layer. soc/sens uniformly `nosoc`/`co2`.
+- Layer starts at the **2010s** (source spans 2006–2099), so the baseline sits at decade index **1**, not 0.
 
 ```bash
-python scripts/process_let_cyclone.py
+python scripts/download_let_cyclone.py    # 8 files, 58.9 MiB, resumable + sha512-verified
+python scripts/process_let_cyclone.py     # ~3 min including exact Theil-Sen
+python scripts/test_shared_baseline.py data/processed/cyclone_let_annual
+python scripts/generate_maps.py let data/processed/cyclone_let_annual reports/maps
 ```
 
-**Input**: `data/raw/drought_let_annual/*_2006_2099.nc4`
-**Output**: `data/processed/cyclone_let_annual/let_{rcp26,rcp60}_processed.nc`
+**Input**: `data/raw/cyclone_let_annual/*_let_global_annual_2006_2099.nc4`
+**Output**: `data/processed/cyclone_let_annual/let_{rcp26,rcp60}_processed.nc` (+ `let_members.nc`)
+
+### download_let_cyclone.py
+
+Fetches the 8 `let` files (4 GCMs × rcp26/rcp60, 58.9 MiB). Resumable via Range, and **verified by sha512** against each file's `.json` sidecar — ISIMIP2b publishes `size` *and* `checksum` per file, unlike ISIMIP3b `biomes`, so this checks more than byte count. Writes `download_provenance.csv`. Serial by design: parallel requests to `files.isimip.org` get rate-limited into empty responses.
 
 ### process_burntarea_isimip3b.py — **the shipped wildfire layer**
 

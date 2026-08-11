@@ -133,7 +133,8 @@ def _expanding_mask(years: np.ndarray, baseline_decade: int, decade: int,
 # ---------------------------------------------------------------------------
 
 def pooled_decadal_stat(annual: np.ndarray, years: np.ndarray, decade: int,
-                        boolean: bool, window_years: int = 10):
+                        boolean: bool = False, window_years: int = 10,
+                        central: str | None = None):
     """Central value and CI for one decade, pooling year x member into one sample.
 
     Parameters
@@ -146,16 +147,58 @@ def pooled_decadal_stat(annual: np.ndarray, years: np.ndarray, decade: int,
     decade
         Decade start, e.g. ``2030``.
     boolean
-        From :func:`is_boolean_field`. Selects mean/SD instead of median/IQR.
+        From :func:`is_boolean_field`. Selects mean/SD instead of median/IQR. Ignored
+        when ``central`` is given explicitly.
     window_years
         Window length; 10 for a standard decade.
+    central
+        ``"median"`` (median + IQR) or ``"mean"`` (mean +/- 1 SD), overriding the
+        ``boolean`` inference. Exists for the third branch described below; a layer
+        that passes it MUST declare ``decadal_statistic`` accordingly.
 
     Returns
     -------
     (stat, lower, upper)
         Each shaped like ``annual.shape[2:]``. All-NaN cells give NaN, not 0.
+
+    Notes
+    -----
+    **The third branch: extreme zero-inflation.** The boolean/continuous split is a
+    proxy for the real question -- is the decade pool's distribution degenerate at
+    zero? For most fields the proxy holds. It fails when a *continuous* field is so
+    zero-inflated that its median is 0 almost everywhere, and then the median/IQR
+    branch does not merely lose precision, it erases the layer.
+
+    Measured on ``let`` (tropical-cyclone exposure) 2026-08-11, 2020s panel after
+    spatial smoothing:
+
+        ==========================  ==============  ==================
+        branch                      exposed cells   exact-zero land
+        ==========================  ==============  ==================
+        pooled median + IQR              2,684            96.07%
+        pooled mean +/- 1 SD            15,122            77.84%
+        ==========================  ==============  ==================
+
+    93% of exposed land reads exactly 0 under the median, and the two-tier percentile
+    then assigns tier 1 to 96% of land. ``let`` is 97.84% exact-zero at annual
+    resolution -- against 29.2% for ``burntarea``, which the median branch handles
+    fine -- so this is a regime, not a slippery slope.
+
+    ``let`` is the continuous analogue of ``led``: both estimate an EXPECTED ANNUAL
+    EXPOSED FRACTION, and the spec already grants ``led`` the mean because a median of
+    Bernoulli draws is meaningless. Passing ``central="mean"`` extends that same
+    treatment to the continuous case (user decision 2026-08-11).
+
+    This is a DECLARED deviation, not a silent one: such layers set
+    ``decadal_statistic: pooled_mean_zero_inflated`` so a reader can tell which
+    estimator produced the panel. Do NOT reach for it to "improve contrast" on an
+    ordinary field -- measure the median's exact-zero share first, and record it.
     """
     annual = np.asarray(annual)
+    if central is None:
+        central = "mean" if boolean else "median"
+    if central not in ("mean", "median"):
+        raise ValueError(f"central must be 'mean' or 'median'; got {central!r}")
     mask = decade_window_mask(years, decade, window_years)
     if not mask.any():
         nan = np.full(annual.shape[2:], np.nan, np.float32)
@@ -172,7 +215,7 @@ def pooled_decadal_stat(annual: np.ndarray, years: np.ndarray, decade: int,
     with np.errstate(invalid="ignore"), warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="All-NaN slice encountered")
         warnings.filterwarnings("ignore", message="Mean of empty slice")
-        if boolean:
+        if central == "mean":
             stat = np.nanmean(pooled, axis=0)
             sd = np.nanstd(pooled, axis=0)
             lower, upper = stat - sd, stat + sd

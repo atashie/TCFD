@@ -41,15 +41,46 @@ observations — see [Known consequences](#known-consequences).
 
 `median` keeps its name for backward compatibility even though it holds a **mean** on
 boolean layers. The layer must declare which branch was taken via the
-`decadal_statistic` global attribute (`pooled_median` or `pooled_mean_boolean`).
+`decadal_statistic` global attribute (`pooled_median`, `pooled_mean_boolean`, or
+`pooled_mean_zero_inflated`).
 
 ### Boolean detection
 
 Taken from the **values**, never the name (GUARDRAILS §9). A field is boolean only if
 every finite value is exactly 0 or 1. `led` is binary; `let` is a continuous fraction in
 [0,1) despite the sibling naming. A *zero-inflated* continuous field is **not** boolean
-and takes the median/IQR branch. The scan is exhaustive — a sampled scan can step over a
-rare continuous tail and silently switch the published statistic.
+and takes the median/IQR branch — unless it is zero-inflated to the degenerate degree
+described next. The scan is exhaustive — a sampled scan can step over a rare continuous
+tail and silently switch the published statistic.
+
+### The third branch: extreme zero-inflation
+
+The boolean/continuous split is a *proxy* for the real question: **is the decade pool's
+distribution degenerate at zero?** The proxy holds for almost every field. It fails when
+a continuous field is so zero-inflated that its median is 0 nearly everywhere, and there
+the median branch does not lose precision — it erases the layer.
+
+Measured on `let` (tropical-cyclone exposure), 2020s panel after smoothing:
+
+| branch | exposed cells | exact-zero land |
+|---|---|---|
+| pooled median + IQR | 2,684 | 96.07% |
+| pooled mean ± 1 SD | 15,122 | 77.84% |
+
+93% of exposed land reads exactly 0 under the median, and the two-tier percentile then
+assigns tier 1 to 96% of land. `let` is 97.84% exact-zero at annual resolution; for
+contrast `burntarea` is 29.2% and takes the median branch without difficulty.
+
+A layer in this regime may take **mean ± 1 SD** — the same treatment the spec already
+grants boolean fields, for the same reason: `let` and `led` both estimate an *expected
+annual exposed fraction*, and a median of near-Bernoulli draws is meaningless. Such a
+layer passes `central="mean"` to `pooled_decadal_stat` and **must** declare
+`decadal_statistic: pooled_mean_zero_inflated` plus a
+`decadal_statistic_rationale` attribute carrying the measured numbers.
+
+This is a **declared** deviation, never a silent one. Do not reach for it to improve
+contrast on an ordinary field: measure the median branch's exact-zero share first, and
+record it. Only `let` qualifies today (user decision 2026-08-11).
 
 ### `percentile`
 
@@ -70,7 +101,7 @@ Both are emitted because **they fail in opposite regimes**, and neither alone is
 | Regime | `ols_slope` | `sen_slope` | Read |
 |---|---|---|---|
 | Well-behaved continuous field | correct | correct | either |
-| **Zero-inflated hazard** (`led`, `driedarea`) | correct | **collapses to exactly 0** — most year-pairs are 0→0; measured at 91.3% of `driedarea` ssp126 cells | `ols_slope` |
+| **Zero-inflated hazard** (`led`, `driedarea`, `let`) | correct | **collapses to exactly 0** — most year-pairs are 0→0; measured at 91.3% of `driedarea` ssp126 cells and **96.9% of `let`'s exposed land** | `ols_slope` |
 | **Unbalanced members with level offsets** | **biased** — measured +40% (0.70 vs true 0.50) when masking is uneven | correct | `sen_slope` |
 | Outliers / a single wild year | pulled off | robust | `sen_slope` |
 
@@ -86,6 +117,15 @@ trends equal zero.
 A slope is fitted from each cell's own finite observations — a cell need not be present
 in every member. Cells with fewer than 3 finite observations, or with all observations
 in a single year, get NaN rather than a spurious trend.
+
+**Judge slope agreement on ACTIVE cells only.** A cell that is permanently 0 — never
+burns, never sees a cyclone — has a genuinely zero slope under *both* estimators, so
+including it inflates apparent agreement and dilutes the Sen zero-fraction. On `let` the
+all-cell view reads 73% sign agreement / 99.2% Sen-zero while the active-cell view
+(either slope non-zero) reads **3.0% / 97.0%** — opposite conclusions from the same
+array. `test_shared_baseline.py` reports the active-cell figure and the all-cell figure
+in parentheses. This is the same dilution that once turned a `sen_slope == 0` share of
+66–76% into a reported 20.7% by counting ocean.
 
 ## Shared 2020s baseline
 

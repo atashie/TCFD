@@ -164,6 +164,10 @@ Each goes in the output's global attrs:
   democracy"); robust z-score only when scales genuinely differ. **Compare the statistic you
   actually pool with**: medians can agree within 1.8× while means differ 2.6×.
 - `spatial_smoothing` — 5×5 exponential-decay for thin ensembles; `none` for thick ones.
+  Record the **decay length and the centre weight**, not just "5×5": `L` is a per-layer
+  measurement and changes the result completely (`L=0.7` → 32.1% on the centre, sparse
+  structure survives; `L=2.5` → 8.1%, it dissolves). Also record whether it was applied to
+  ANNUAL member maps (correct — the CI and `sen_slope` depend on it) or to decadal means.
 - `percentile_direction` — `higher_is_worse` (hazards) or `higher_is_better` (assets like
   stored carbon, where the risk is *loss* and the percentile is **inverted**).
 - `baseline_decade`, `baseline_source` — see Shared 2020s Baseline above.
@@ -358,7 +362,14 @@ cells to keep that affordable.
 Three things it does that are easy to omit and must not be:
 
 - **Classify the field from its VALUES** with `is_boolean_field`, and record the branch in
-  `decadal_statistic` / `field_nature`. §9 — never from the name.
+  `decadal_statistic` / `field_nature`. §9 — never from the name. There are **three**
+  branches, not two: continuous → `pooled_median`, boolean → `pooled_mean_boolean`, and
+  extreme zero-inflation → `pooled_mean_zero_inflated` (pass `central="mean"`). The third
+  exists because the boolean/continuous test is only a proxy for "is the decade pool
+  degenerate at zero" — on `let` (97.84% annual zeros) the median branch erased 93% of
+  exposed land. It is a **declared** deviation: measure the median's exact-zero share,
+  put the numbers in `decadal_statistic_rationale`, and do not take it to improve
+  contrast. `burntarea` at 29.2% zeros does not qualify; only `let` does today.
 - **Assert the slope and median masks agree** after assembly. A bare `np.zeros()` for the
   baseline panel makes the entire ocean a finite zero, and the QA report does *not* catch
   it (it only checks that *finite* baseline trends equal zero). The reference
@@ -373,12 +384,23 @@ python scripts/test_shared_baseline.py {processed_dir}
 
 Exits non-zero on any contract violation. It checks the shared 2020s baseline is
 bit-identical across scenarios *and* that later decades diverge, CI ordering, percentile
-bounds and orientation, that baseline slopes are NaN rather than 0, that no slope is
-finite where `median` is NaN, and ensemble-depth sanity. It prints `[SKIP] … NOT TESTED`
-rather than silently passing when only one scenario exists.
+bounds and orientation, that every panel through the baseline has NaN slopes rather than
+0, that no slope is finite where `median` is NaN, and ensemble-depth sanity. It prints
+`[SKIP] … NOT TESTED` rather than silently passing when only one scenario exists.
+
+**The baseline is not always decade index 0.** Layers sourced from ISIMIP3b start at 2020
+(baseline == index 0); ISIMIP2b layers such as `let`/`led` carry a full 2010s panel first,
+so the baseline sits at index 1. The test locates it from the declared `baseline_decade`
+attribute — it used to assume index 0 and reported a spurious baseline failure on `let`
+(2026-08-11). If you write a new verification check, key it off the attribute too.
 
 It also reports `sen exactly zero on X% of cells` — when that is high the layer is
-zero-inflated and `ols_slope` is the field to read.
+zero-inflated and `ols_slope` is the field to read. **That figure is quoted over ACTIVE
+cells** (either slope non-zero), with the all-cell figure in parentheses: a permanently-
+zero cell has a genuinely zero slope under both estimators, so including it inflates
+agreement and dilutes the Sen zero-share. On `let` the two views read 3.0%/97.0% versus
+73%/99.2% — opposite conclusions from one array. Same dilution family as the ocean-diluted
+`sen_slope == 0` misreport of 2026-08-10.
 
 ## Tooling status
 

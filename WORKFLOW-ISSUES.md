@@ -436,6 +436,48 @@ Cells beyond the limit are clamped to the endpoint colour by Plotly, never blank
 
 ---
 
+### 2026-08-11: Tropical-Cyclone Inventory Missed the Newest Dataset by Path-Guessing; `let` Rebuilt With a Third Statistic Branch
+
+**What happened (the miss)**: Asked to review ISIMIP for tropical-cyclone data, I delivered an inventory that concluded "there is no SSP tropical-cyclone product." That was **wrong**. ISIMIP3b ships `InputData/climate/tropical_cyclones/MIT/` — per-storm wind footprints (Frieler et al. 2025), the newest and most direct TC hazard in the repository. The user had to tell me it existed.
+
+**Root cause**: I listed `ISIMIP3b/InputData/` (which returned `climate/`, `composition_atmosphere/`, `geo_conditions/`, `socioeconomic/`) and then **jumped straight to `climate/atmosphere/`** without ever listing `climate/`. `tropical_cyclones/` sits at exactly that skipped level. Every other branch I walked was enumerated properly; this one I path-guessed because "atmosphere" was the obvious next hop.
+
+**Why the absence claim was doubly unsafe**: I *did* correctly establish that the Lange 2020 exposure family has no 3b re-issue, then let that true finding stand in for the broader claim that no SSP TC data exists. A verified negative about one product family is not a negative about a hazard.
+
+**Rules created**: GUARDRAILS.md §8 — *list every intermediate directory level, never path-guess past one*; *scope every absence claim to exactly the family enumerated*; *open a directory before inferring from its name*. Also recorded in `config/isimip_search_catalog.yaml` → `tropical_cyclone.enumerated` and in the `/isimip-search-download` skill. GUARDRAILS §8 was additionally corrected while here: it described the Lange 2020 family as "exactly six", contradicting CLAUDE.md and the skill — it is **twelve**, six `le*` land-exposed codes each paired with a `pe*` population-exposed twin.
+
+**Also found on the corrected pass**: `ISIMIP3b/DerivedOutputData/TipESM2025/MIT/` is a **name collision** — it holds water models (CWATM, H08, JULES-W2, …), not tropical cyclones. I had flagged it as promising on the first pass purely because MIT is Emanuel's institution.
+
+**Two decisions on the rebuilt `let` layer** (both user calls, both measured first):
+
+1. **The decadal statistic is the pooled MEAN — a declared deviation from OUTPUT-SPEC.** `let` is 97.84% exact-zero at annual resolution, far past anything shipped (`burntarea` is 29.2%). The spec's median/IQR branch left **2,684** exposed cells against **15,122** under the mean — 93% of exposed land erased — with `lower_ci` 98.7% zero and the two-tier percentile assigning tier 1 to 96% of land. Smoothing does not rescue it (2,684 → still 96% zero). Resolution: a **third branch**, `pooled_mean_zero_inflated`, added to `decadal_stats.py` via a new `central=` parameter and documented in OUTPUT-SPEC.md. The justification is not convenience — the boolean/continuous split is a *proxy* for "is the decade pool degenerate at zero", and `let` is the continuous analogue of `led`, which the spec already grants the mean.
+
+2. **The smoothing kernel was the problem, not the window.** Raw `let` renders as one-cell-wide storm tracks, not an impact field. The existing 5×5 kernel is `L=0.7` — labelled "sharp" in its own code — and keeps **32.1%** of the weight on the centre cell, removing only 63% of the track structure. Measured roughness (mean |cell − 4-neighbour mean| over exposed land, normalized):
+
+   | kernel | centre wt | roughness | exposed cells |
+   |---|---|---|---|
+   | none (raw) | 100.0% | 0.389 | 10,794 |
+   | 5×5 L=0.7 (previous) | 32.1% | 0.142 | 15,122 |
+   | 5×5 **L=2.5** (chosen) | 8.1% | **0.044** | 15,122 |
+   | 7×7 L=2.0 | 6.8% | 0.035 | 16,664 |
+
+   `L=2.5` was chosen over widening because it costs **no extra spatial reach** — it adds no newly exposed cell, whereas every radius increase asserts that land further from any track is exposed. Radius is physically anchored: 2 cells = 111 km ≈ the hurricane-force wind radius. Applied per member per **year** before pooling.
+
+**Two bugs found and fixed in the verification tooling** (neither in the layer):
+
+- **`test_shared_baseline.py` hardcoded decade index 0 as the baseline.** True for 3b-sourced layers that start at 2020, false for `let`/`led`, which carry a full 2010s panel first. It read the 2010s panel — which legitimately differs across scenarios — and reported a spurious "2020s panel bit-identical" FAILURE. Fixed to locate the baseline from the declared `baseline_decade` attribute. The wildfire layer re-verifies unchanged.
+- **The slope-agreement INFO line was diluted by permanently-zero cells.** A cell that never sees a cyclone has a genuinely zero slope under *both* estimators, so counting it inflates agreement. All-cell view: 73% sign agreement, 99.2% Sen-zero. Active-cell view (either slope non-zero): **3.0% and 97.0%** — opposite conclusions from the same array. Same dilution family as the earlier ocean-diluted `sen_slope == 0` misreport. The test now prints the active-cell figure with the all-cell figure in parentheses.
+
+**Delivered**: 4 members/scenario × {rcp26, rcp60}, 68,249 land cells. Global-mean exposed fraction 0.004274 → **0.005116** (rcp26, +19.7%) and 0.004001 → **0.006068** (rcp60, +51.7%) by the 2090s. `test_shared_baseline.py`: ALL CHECKS PASSED. Dashboard 38 MB (wildfire was 69 MB). **Read `ols_slope`** — on baseline-exposed land Sen is exactly 0 on 96.9% of cells vs OLS's 1.8%.
+
+**Known limitation, recorded not hidden**: a single impact model means `n_models` is 1 everywhere and the CI carries **inter-GCM spread only** — this layer represents no structural impact-model uncertainty.
+
+**Rules created for the statistics half**: GUARDRAILS.md §9 — the third decadal-statistic branch; *the smoothing decay length `L` is a per-layer measurement, not a constant*; *prefer re-weighting inside the existing footprint over widening it*; *judge slope agreement on ACTIVE cells only*. OUTPUT-SPEC.md gains "The third branch: extreme zero-inflation".
+
+**Files**: `scripts/process_let_cyclone.py` (rewritten), `scripts/download_let_cyclone.py` (new), `scripts/utils/decadal_stats.py` (`central=`), `scripts/test_shared_baseline.py` (two fixes), `isimip-pipeline/tests/test_decadal_stats.py` (+4 tests for the branch), `OUTPUT-SPEC.md`, `GUARDRAILS.md`, `CLAUDE.md`, `config/isimip_search_catalog.yaml`, `scripts/README.md`, both skills.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

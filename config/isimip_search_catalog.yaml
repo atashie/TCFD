@@ -202,7 +202,7 @@ search_results:
         lew: {hazard: "wildfire",        datasets: 134, impact_models: "5 DGVM/fire (caraib,lpj-guess,lpjml,orchidee,visit) x 4 GCMs; future rcp26=31/rcp60=19; data_nature UNVERIFIED. NOTE: this is the EXPOSURE member -- distinct from the direct 'burntarea' burnt-area-fraction fire output, which was the one actually processed (see search_results.wildfire)."}
         lec: {hazard: "crop failure",    datasets: 90,  impact_models: "gepic"}
         leh: {hazard: "heatwave",        datasets: 30,  impact_models: "hwmid-humidex (derived index)"}
-        let: {hazard: "tropical cyclone", datasets: 28, impact_models: "ke-tg-meanfield (Emanuel KE wind model, derived)", data_nature: "FRACTIONAL area [0,1) per cell (verified 2026-07-24, NOT binary); 1 impact model x 4 GCMs = thin ensemble -> spatial smoothing applied"}
+        let: {hazard: "tropical cyclone", datasets: 28, impact_models: "ke-tg-meanfield (Emanuel KE wind model, derived)", data_nature: "FRACTIONAL area [0,1) per cell (re-verified 2026-08-11: max 0.952, NEVER exactly 1, is_boolean_field=False, 97.84% of finite cell-years EXACTLY ZERO); 1 impact model x 4 GCMs = thin ensemble -> aggressive 5x5 L=2.5 smoothing + pooled_mean_zero_inflated statistic. See search_results.tropical_cyclone."}
       not_real: ["letc", "lecdd", "letr"]  # guessed codes; each returns 0 hits
       common_coverage:  # identical across all six members
         product: "DerivedOutputData"
@@ -233,9 +233,21 @@ search_results:
         Most "drought-specific" off-the-shelf product in ISIMIP, and the whole family
         (led/ler/lew/lec/leh/let) shares the same structure so any member is processable
         with an adapted process_led_drought.py. All ISIMIP2b (EWEMBI, RCP, CMIP5 GCMs),
-        annual, rcp26/rcp60 only. ISIMIP3b/SSP version of this family NOT found (0 hits).
-        Processing status: led=DONE, let=DONE (2026-07-24; let uses 5x5 spatial
-        smoothing + two-tier zero-inflated percentile, see process_let_cyclone.py).
+        annual, rcp26/rcp60 only.
+
+        NO ISIMIP3b/SSP re-issue of THIS FAMILY under its own codes -- but read that
+        narrowly. The exposure CONCEPT was carried into 3b, split across Heinicke2026
+        (driedarea, floodedarea) and Zantout2025 (heatwave, wildfire, cropfailure), named
+        by hazard word rather than le* code. And a family having no re-issue is NOT the
+        hazard having no newer data: ISIMIP3b's newest tropical-cyclone product lives in
+        InputData/climate/tropical_cyclones/MIT, outside DerivedOutputData entirely. That
+        conflation produced a false "no SSP TC data exists" inventory on 2026-08-11 --
+        see search_results.tropical_cyclone.enumerated.
+
+        Processing status: led=DONE (2026-07-24). let=DONE, REBUILT 2026-08-11 onto the
+        OUTPUT-SPEC contract -- pooled_mean_zero_inflated statistic and aggressive 5x5
+        L=2.5 smoothing applied per member per YEAR (the 2026-07-24 build used L=0.7,
+        which left storm tracks visible, and was family-B). See process_let_cyclone.py.
         ler/lew/lec/leh remaining -- value-check binary-vs-fractional before each.
         For WILDFIRE the direct 'burntarea' fire output (NOT the lew exposure member)
         was chosen and processed 2026-07-24 -- see search_results.wildfire.
@@ -387,6 +399,84 @@ search_results:
       finite cells (zero-inflated) -> read ols_slope. See WORKFLOW-ISSUES.md 2026-08-10.
     chosen: "[SUPERSEDED 2026-08-10 by chosen_2026_08_08 above -- user decision: the ISIMIP3b SSP layer replaces this one as the shipped wildfire hazard. Kept for provenance only.] burntarea, ISIMIP2b, annual, 3 models x 4 GCMs x {rcp26,rcp60,rcp85} = 36 members. Raw %, NO normalization (same unit), NO spatial smoothing (12/scenario is thick), baseline-anchored trend."
     processed: "[SUPERSEDED 2026-08-10] 2026-07-24 -> TCFD layer. scripts/process_burntarea_fire.py; data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc. Verified: global-mean burnt% flat rcp26, +6.6% rcp60, +14.8% rcp85 by 2090s. See memory project_burntarea_fire_layer, WORKFLOW-ISSUES.md 2026-07-24, GUARDRAILS §9-§10."
+
+  # -------------------------
+  # tropical cyclone searches
+  # -------------------------
+  tropical_cyclone:
+    last_searched: "2026-08-11"
+    description: "Intense winds due to tropical cyclones. FOUR distinct representations; only one is a global gridded annual projection."
+    enumerated: |
+      2026-08-11, walked serially: OutputData/ + DerivedOutputData/ + InputData/ +
+      SecondaryInputData/ for ISIMIP2a/2b/3a/3b.
+      METHOD BUG THAT HID THE BEST DATASET, recorded so it is not repeated: the first
+      pass listed InputData/ and then jumped straight to climate/atmosphere/ WITHOUT
+      listing climate/ itself, which is where tropical_cyclones/ lives. List EVERY
+      intermediate level; do not path-guess past one.
+    no_dedicated_sector: |
+      There is NO tropical-cyclone sector in OutputData in any round. TC lives in
+      DerivedOutputData (2b exposure) and InputData/climate (3a/3b storm footprints).
+    representations:
+      let_exposure_2b:
+        path: "ISIMIP2b/DerivedOutputData/Lange2020/KE-TG-meanfield/{gcm}/future/"
+        variable: "let (land area fraction exposed) + pet (population exposed twin)"
+        ensemble: "1 impact model (ke-tg-meanfield) x 4 CMIP5 GCMs = 4 members/scenario"
+        scenarios: "rcp26, rcp60 (+picontrol, historical 1861-2005, pre-industrial 1661-1860). NO rcp85."
+        timestep: "annual, 0.5deg gridded, 2006-2099"
+        volume: "7.2 MB/file; 58 MB for the 8 projection `let` files"
+        soc_sens: "uniformly nosoc / co2 -- no harmonization compromise needed"
+        status: "THE ONLY ready-to-use gridded annual TC product. Chosen 2026-08-11."
+      mit_storm_footprints_3b:
+        path: "ISIMIP3b/InputData/climate/tropical_cyclones/MIT/global/storm/{scenario}/{wind_model}/{GCM}/"
+        variables: "windlifetimemax (lifetime max 1-min sustained wind, m s-1), maxrain"
+        reference: "Frieler et al. 2025, doi:10.5194/egusphere-2025-2103 (PIK)"
+        wind_models: "ER11-wind (Emanuel & Rotunno 2011) and H08-wind (Holland 2008). The sibling ER11/ and H08/ dirs (no -wind) exist but are EMPTY placeholders at every scenario x GCM probed."
+        structure: "NOT a gridded annual time series -- per-STORM footprints, dims (storm<=1500, lat=2160, lon=4320) at 5 arcmin, indexed by IBTrACS serial ID, time(storm)."
+        coverage_ragged: |
+          historical: 1850-2014 all 5 GCMs EXCEPT mri-esm2-0 which starts 1950.
+          ssp126: GFDL-ESM4 ABSENT; other 4 GCMs 2061-2100 ONLY (no 2020s baseline).
+          ssp370: GFDL-ESM4 ABSENT; other 4 GCMs 2015-2100.
+          ssp585: GFDL-ESM4 2061-2100; other 4 GCMs 2015-2100.
+          Both wind models have identical coverage.
+        volume: "305 MB/yr-file windlifetimemax, 189 MB maxrain; ~26.2 GB per GCM-scenario-windmodel; ~542 GB for windlifetimemax across all three SSPs and both wind models"
+        status: "NOT PROCESSED. Blocked on: (a) the annual statistic must be DEFINED not aggregated (per-cell annual max? storm count over a Saffir-Simpson threshold? integrated wind energy?), (b) regridding 5arcmin -> 0.5deg is a second explicit choice, (c) ssp126 has no 2020s so the shared-baseline contract is not constructible as published."
+      obsclim_3a:
+        path: "ISIMIP3a/InputData/climate/tropical_cyclones/obsclim/"
+        contents: "global/storm/historical/{ER11,H08}-wind windlifetimemax+maxrain 1950-2021 (~45 MB/file); global/hourly per-storm-ID files (~15,900 nc); tracks/3hr/historical single IBTrACS tracks file 1950-2021"
+        status: "historical only -- cannot produce a decadal projection panel"
+      tc_coastal_flooding_3a:
+        path: "ISIMIP3a/SecondaryInputData/climate/tropical_cyclones_flooding/1mslr/global/storm/historical/GeoClaw/"
+        variable: "fldarea, 30 arcsec, tides-max, +1 m SLR, 1950-2025 (76 annual files, 103 MB each)"
+        status: "historical only; NO ISIMIP3b equivalent -- this product is observational-only"
+    future_delivery:
+      sfcwind:
+        noted: "2026-08-11 -- user decision: note for a FUTURE delivery, not this one."
+        path: "ISIMIP3b/InputData/climate/atmosphere/bias-adjusted/global/daily/{scenario}/{GCM}/"
+        variable: "sfcwind, daily MEAN near-surface wind, m s-1"
+        ensemble: "5 CMIP6 GCMs (GFDL-ESM4, IPSL-CM6A-LR, MPI-ESM1-2-HR, MRI-ESM2-0, UKESM1-0-LL) x ssp126/ssp370/ssp585, 2015-2100"
+        volume: "9 nc chunks per GCM-scenario, 1.71 GB (2015-2020) + 2.84 GB per 10-yr chunk = ~24 GB per GCM-scenario, ~366 GB for all 15"
+        caveats: |
+          NO sfcwindmax is published in ISIMIP3b -- only the daily MEAN. Daily-mean wind
+          at 0.5deg does not resolve a cyclone eyewall, and this field is ALL winds, not
+          TC-attributed. An 'intense wind' layer from it is a CONSTRUCTED INDEX (annual
+          max of daily means, days over a threshold, block maxima) and that choice is a
+          modelling decision to make with the user, not an aggregation (GUARDRAILS 1-2).
+    negative_findings: |
+      * The Lange 2020 TC EXPOSURE family was NOT re-issued for ISIMIP3b. The exposure
+        concept was carried over but split across Heinicke2026 (driedarea, floodedarea)
+        and Zantout2025 (heatwave, wildfire, cropfailure). ke-tg-meanfield appears in NO
+        3a or 3b publication directory. There is no SSP TC-exposure product.
+      * ISIMIP3b/DerivedOutputData/TipESM2025/MIT/ is a NAME COLLISION -- it holds WATER
+        models (CLASSIC, CWATM, H08, JULES-W2, MIROC-INTEG-LAND, WATERGAP2-2E,
+        WEB-DHM-SG), not tropical cyclones.
+      * No tropical_cyclones_flooding branch exists in ISIMIP3b (3a only).
+    chosen_2026_08_11: |
+      `let` (representation 1) -- user decision. Rebuilt onto the OUTPUT-SPEC contract;
+      the 2026-07-24 layer was family-B (emitted the retired single `trend`, mean +/- 1 SD
+      CI, no ols_slope/sen_slope/n_members/n_models, no members.nc).
+      MEASURED data nature 2026-08-11 (GUARDRAILS 9): continuous [0, 0.952], NEVER exactly
+      1, is_boolean_field=False, 97.84% of finite cell-years EXACTLY ZERO, land mask
+      identical across all 8 files (68,249 cells).
 
   # -------------------------
   # soil / subsurface carbon searches (biomes sector)

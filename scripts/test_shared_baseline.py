@@ -85,15 +85,26 @@ def main():
     check("percentile_direction declared", "percentile_direction" in d0.attrs,
           d0.attrs.get("percentile_direction", ""))
 
-    print("\nShared 2020s baseline")
+    # The baseline is NOT always decade index 0. Layers sourced from ISIMIP3b start at
+    # 2020 (baseline == index 0), but ISIMIP2b layers such as `let`/`led` carry a full
+    # 2010s panel first. Locate it from the declared attribute; assuming index 0 reads
+    # the 2010s panel, which legitimately DIFFERS across scenarios, and reports a
+    # spurious failure.
+    decades = list(d0["decade"].values)
+    b_dec = int(d0.attrs.get("baseline_decade", decades[0]))
+    b_i = decades.index(b_dec) if b_dec in decades else 0
+    post = range(b_i + 1, len(decades))          # panels with an elapsed period
+    pre = range(0, b_i + 1)                      # baseline and anything before it
+
+    print(f"\nShared {b_dec}s baseline (decade index {b_i})")
     base_ok = True
     for a in scen:
         for b in scen:
             for v in ("median", "lower_ci", "upper_ci", "percentile"):
                 if v in d0.data_vars and not np.array_equal(
-                        ds[a][v].values[0], ds[b][v].values[0], equal_nan=True):
+                        ds[a][v].values[b_i], ds[b][v].values[b_i], equal_nan=True):
                     base_ok = False
-    check("2020s panel bit-identical across scenarios", base_ok)
+    check(f"{b_dec}s panel bit-identical across scenarios", base_ok)
     check("baseline_source recorded",
           d0.attrs.get("baseline_source") == "shared_across_all_scenarios",
           d0.attrs.get("baseline_source", "<absent>"))
@@ -123,7 +134,7 @@ def main():
           and p.max() <= 100 + 1e-4, f"min {p.min():.2f} max {p.max():.2f}")
 
     direction = d0.attrs.get("percentile_direction", "higher_is_worse")
-    m0, p0 = d0["median"].values[0], d0["percentile"].values[0]
+    m0, p0 = d0["median"].values[b_i], d0["percentile"].values[b_i]
     f = np.isfinite(m0) & np.isfinite(p0)
     r = float(np.corrcoef(m0[f], p0[f])[0, 1]) if f.sum() > 2 else float("nan")
     want_neg = direction == "higher_is_better"
@@ -131,40 +142,52 @@ def main():
           (r < 0) if want_neg else (r > 0), f"corr(median, percentile) = {r:+.3f}")
 
     print("\nSlopes")
-    b_nan = all(np.all(np.isnan(ds[s][k].values[0]))
-                for s in scen for k in ("ols_slope", "sen_slope"))
-    check("baseline panel slopes are NaN (not 0)", b_nan,
+    # Every panel AT OR BEFORE the baseline has no elapsed period, so all of them must
+    # be NaN -- not just the baseline itself.
+    b_nan = all(np.all(np.isnan(ds[s][k].values[i]))
+                for s in scen for k in ("ols_slope", "sen_slope") for i in pre)
+    check(f"panels through {b_dec}s have NaN slopes (not 0)", b_nan,
           "a finite 0 here makes the whole ocean a finite zero" if not b_nan else "")
 
-    later = all(np.isfinite(ds[s][k].values[1:]).any()
+    later = all(np.isfinite(ds[s][k].values[list(post)]).any()
                 for s in scen for k in ("ols_slope", "sen_slope"))
-    check("non-baseline slopes are populated", later)
+    check("post-baseline slopes are populated", later)
 
     leak = 0
     for s in scen:
-        for i in range(1, ds[s].sizes["decade"]):
+        for i in post:
             mf = np.isfinite(ds[s]["median"].values[i])
             for k in ("ols_slope", "sen_slope"):
                 leak += int((np.isfinite(ds[s][k].values[i]) & ~mf).sum())
     check("no slope finite where median is NaN", leak == 0, f"{leak} cells (ocean leak)")
 
     for s in scen:
-        o = ds[s]["ols_slope"].values[1:]
-        se = ds[s]["sen_slope"].values[1:]
+        o = ds[s]["ols_slope"].values[list(post)]
+        se = ds[s]["sen_slope"].values[list(post)]
         f = np.isfinite(o) & np.isfinite(se)
         if not f.any():
             continue
-        agree = float((np.sign(o[f]) == np.sign(se[f])).mean())
-        zero_sen = float((se[f] == 0).mean())
-        print(f"  [INFO] {s}: ols/sen sign agreement {agree:.1%}, "
-              f"sen exactly zero on {zero_sen:.1%} of cells")
-        if zero_sen > 0.5:
-            print("         -> zero-inflated field: read ols_slope, not sen_slope")
+        # Report on ACTIVE cells -- those where at least one estimator is non-zero.
+        # A cell that is permanently 0 (never burns, never sees a cyclone) has a
+        # genuinely zero slope under BOTH estimators, so including it inflates
+        # "agreement" toward 100% and dilutes the sen zero-fraction. On `let` the
+        # all-cell view reads 73% agreement / 99.2% sen-zero, while the active-cell
+        # view reads 4.9% / 96.9% -- opposite conclusions from the same array.
+        act = f & ((o != 0) | (se != 0))
+        zero_sen_all = float((se[f] == 0).mean())
+        if act.any():
+            agree = float((np.sign(o[act]) == np.sign(se[act])).mean())
+            zero_sen = float((se[act] == 0).mean())
+            print(f"  [INFO] {s}: over ACTIVE cells ({act.sum():,} of {f.sum():,}) "
+                  f"ols/sen sign agreement {agree:.1%}, sen exactly zero {zero_sen:.1%} "
+                  f"({zero_sen_all:.1%} over all finite cells)")
+            if zero_sen > 0.5:
+                print("         -> zero-inflated field: read ols_slope, not sen_slope")
 
     if "n_members" in d0.data_vars:
         print("\nEnsemble depth")
-        nm = d0["n_members"].values[1:]
-        nmod = d0["n_models"].values[1:]
+        nm = d0["n_members"].values
+        nmod = d0["n_models"].values
         check("n_members >= 1 where finite", np.nanmin(nm) >= 1,
               f"range {np.nanmin(nm):.0f}-{np.nanmax(nm):.0f}")
         check("n_models <= n_members", np.nanmax(nmod - nm) <= 0,
