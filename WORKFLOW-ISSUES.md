@@ -591,6 +591,78 @@ Both are recorded as `coverage_geography` and `single_model_dominance` global at
 
 ---
 
+### 2026-08-11: Sugarcane Layers WITHDRAWN — The Model Does Not Grow Cane in the Cane Belt, and the Contract Test Passed Anyway
+
+**Outcome first**: the two layers below were built, passed every contract check, were mapped — and are **invalid**. The user asked one question about the maps ("why are there higher yields in the American Midwest than in Florida?") and the answer turned out to be an upstream data defect that no check in this repository was looking for.
+
+**What the data does**: ISIMIP2b LPJmL's `yield-sug-*` reads exactly 0 across the entire real sugarcane belt — São Paulo, Uttar Pradesh, Guangxi, Thailand, Pakistan Punjab, Veracruz, KwaZulu-Natal, Cauca, Queensland, Florida, Louisiana. Those cells carry a sentinel signature in the companions: `biom-sug` pinned at exactly **0.267 t ha-1** and **`plantday = matyday = 1`** — planted and matured on day 1, i.e. no season was simulated. 12,966 land cells (19.2%) carry it and **0%** of them have a non-zero yield. The mask is near-identical across all 8 members (Jaccard 0.98–0.998), so it is static, not climate-driven crop failure. Maize from the same model, GCM and run *is* simulated in those cells (Florida 5.65, São Paulo 1.64 t ha-1) — the cells are live cropland; only cane is missing.
+
+**The same model gets it right in ISIMIP2a**, which is what makes this a defect rather than a model quirk:
+
+| region | 2a cells / mean t ha-1 | 2b cells / mean t ha-1 |
+|---|---|---|
+| Florida | 84 / **19.49** | 0 / 0.00 |
+| Gulf LA-TX | 200 / 12.77 | 3 / 6.04 |
+| São Paulo | 140 / 11.69 | 0 / 0.00 |
+| Uttar Pradesh | 157 / 8.33 | 0 / 0.00 |
+| Queensland | 193 / 7.17 | 2 / 12.63 |
+| US Midwest | 276 / 10.61 | 307 / **13.35** |
+
+75.2% of the cells where the 2a run grows cane are zero in 2b; 90.3% of 2b's sentinel cells are 2a cane land (mean 10.57 there). Both rounds report marginal *potential* yield in temperate cells — LPJmL simulates a crop wherever it can, not only where it is farmed, and that part is a model property, not the bug. The bug is that deleting the real belt promotes those marginal temperate cells to the visible maximum, which is exactly the inversion the user spotted.
+
+**Root cause of MISSING IT — every check we ran was about form, not meaning.** `test_shared_baseline.py` verified schema, shared baseline, CI ordering, percentile range and orientation, slope masks, ensemble depth — and passed both layers cleanly, because all of that was true. GUARDRAILS §9 made me measure the data's *nature* (continuous, t ha-1, zero-inflated) and I did, carefully, and even wrote a paragraph rationalising the 87% zeros as "structural — LPJmL grows no sugarcane there". That sentence was **literally true and completely wrong about what it implied**: I checked *how many* zeros and *whether they moved*, never *where they were*. A single question — "does the non-zero mask contain the places this crop is actually grown?" — would have caught it in one minute.
+
+**Rule created — GUARDRAILS §12, plausibility of PLACE, not just of value.** For any layer describing a thing with a known real-world geography (a crop, a biome, a fishery, an industry), verify the field is non-trivial **in a named list of reference locations where that thing demonstrably exists**, before processing and again before shipping. Record the sites and values in the processor docstring. Where a second round or a second model publishes the same quantity, spot-check the same sites in both: a cross-round contradiction of this size (Florida 19.49 vs 0.00) is visible in two lookups. A layer can satisfy every line of OUTPUT-SPEC.md and still be about nothing.
+
+**Disposition**: both processed layers and both map sets retained on disk as evidence, each carrying `INVALID-DO-NOT-USE.md`. CLAUDE.md's shipped-layers row marked WITHDRAWN. The catalog carries a `DATA_DEFECT` block with the measurements. **No usable future-scenario sugarcane yield exists in ISIMIP**: 2b LPJmL is the only scenario-bearing source and it is defective, ISIMIP3b publishes no sugarcane, and the correct ISIMIP2a run is historical-only.
+
+The build record below is kept because the framing work and the parse bug are still worth having.
+
+---
+
+### 2026-08-11: Sugarcane Yield Layers Built (superseded by the withdrawal above) — Structural Zeros, and a From-the-END Offset That Merged Two Scenarios
+
+**Delivered**: two layers from ISIMIP2b LPJmL, `yield-sug-noirr` (rainfed) and `yield-sug-firr` (fully irrigated), each 4 members (1 impact model × 4 CMIP5 GCMs) × {rcp26, rcp60}, annual 2010–2099, uniform `2005soc`/`co2`, units **t ha-1 yr-1** (read from the file, not inferred). 16 raw files / 61.6 MiB, all sha512-verified. `test_shared_baseline.py`: **ALL CHECKS PASSED** on both layers. LPJmL is the only sugarcane source with future scenarios anywhere in ISIMIP; there is no SSP version, because ISIMIP3b publishes no sugarcane at all.
+
+**Bug caught before delivery — awk offsets used as Python indices.** `parse_name` documented itself as parsing from the END (correctly) and then used `p[-7]` for the scenario, transcribing awk's 1-based `$(NF-7)`. Python's `p[-7]` is one field further right, so `2005soc` was read as the scenario, `co2` as the soc token, and the variable name as the sens token. The run completed cleanly and wrote a single plausible-looking `yield-sug-noirr_2005soc_processed.nc`: because members are keyed by `{model}_{gcm}`, rcp26 and rcp60 collided on the same four keys and **last-write-won**, so the "8 member" file was silently rcp60 only. Nothing failed — the log said `Members: 8 | scenarios: ['2005soc']`, which is the only visible tell. Correct offsets are `[-8]=scenario [-7]=soc [-6]=sens [-5]=variable`; awk's `$(NF-4)` and Python's `p[-5]` are the same field. The processor now **asserts** the parsed scenario matches `(rcp|ssp)\d{2,3}|historical|picontrol` and the variable starts with `yield-`, so the offsets cannot silently shift again.
+
+**Framing decisions, each measured first:**
+
+- **Statistic = ordinary `pooled_median`, not the third branch.** The field is 87.3% exact-zero, which looks like `let` territory, but the zeros are STRUCTURAL: 87.0% of land is zero in *every* one of the 94 years — LPJmL grows no sugarcane there. The OUTPUT-SPEC test is whether the median *erases* a signal, and it does not: median-branch exact-zero land 87.27% vs mean-branch 86.94%, a **0.33 pp** gap (`let`'s is 18 pp). Inside the growing region the median is a real yield — positive for 97.45% (noirr) / 99.78% (firr) of cells that ever grow.
+- **Percentile = two-tier + `higher_is_better`**, giving the convention the user asked for: zero-yield → **100 (highest risk)**, growing cells ranked against the non-zero baseline over [1, 99]. Measured consequence, stated up front: **87.3% of land reads percentile 100**, so that field is a suitability map first and a risk gradient second. `median` and both slopes are unaffected.
+- **NO spatial smoothing — a declared deviation** from the thin-ensemble default. The structure here is a hard cropland mask; a 5×5 kernel would bleed yield into cells that grow none, converting structural zeros into small positives and moving them off percentile 100. The noise smoothing would suppress is inter-GCM spread, which the IQR already carries.
+- **`2005co2` sensitivity excluded**: rcp26 publishes it, rcp60 does not, so including it would make the two scenarios experimentally asymmetric.
+
+**Results** (2020s → 2090s, over growing cells): irrigated rcp60 **−15.0%** with 99.5% of cells declining — with water limitation removed the residual signal is heat, and it is nearly unanimous. Rainfed rcp60 is **−0.2% net** but strongly dipolar (Brazil −5.1%, SE Asia −5.8%, US-Gulf −10.6% against Africa +14.2%, Australia +13.4%), i.e. a rainfall-plus-CO₂ signal rather than a uniform one. Rainfed rcp26 (−2.2%) declines *more* than rcp60 in the global mean, consistent with less CO₂ fertilization in the low-forcing scenario. Slope agreement over active cells: 81.6–89.2% (noirr), 95.7–98.3% (firr).
+
+**Files**: `scripts/download_sug_sugarcane.py` (new), `scripts/process_sug_sugarcane.py` (new), `CLAUDE.md` (shipped-layers row), `config/isimip_search_catalog.yaml`, `WORKFLOW-ISSUES.md`.
+
+---
+
+### 2026-08-12: Temperate Conifer NPP Layer — A Measured Denominator, a Per-Scenario Variable-Name Drift, and a Time-Varying Presence Mask
+
+**Delivered**: `npp-tempnle`, temperate needleleaf evergreen (conifer) stand productivity from ISIMIP2b `biomes` — CLM45 + ORCHIDEE + LPJmL × 4 CMIP5 GCMs × {rcp26, rcp60, rcp85}, `2005soc`/`co2`, annual 2010–2099, emitted in **g C m-2 yr-1**. 53 raw files / 454 MiB, all sha512-verified. `test_shared_baseline.py`: **ALL CHECKS PASSED**. Ported from the pre-spec `process_loblolly_npp.py` onto `decadal_stats`.
+
+**Three defects found and fixed, none of which the contract test would have caught:**
+
+1. **The denominator is not shared across models — measured, not assumed.** `corr(cover, npp)`: ORCHIDEE **+0.279** (per-tile), LPJmL **+0.898** (cover-scaled per grid cell); across cover quintiles LPJmL's NPP rises ~2,300× against ORCHIDEE's 2.7×. CLM45 publishes **no `pft-` fraction for any PFT** and reports only on its own tile. Median over 2,488 common cells: raw **586 / 471 / 162** (3.62× spread), per-tile **586 / 471 / 696** (**1.48×**), per-gridcell impossible for CLM45 (4.49× for the other two). The layer therefore ships on the **per-tile basis** — NPP per unit conifer-stand area — with LPJmL divided by its cover and a **2% minimum-cover presence mask**: unthresholded, LPJmL's per-tile p99 reaches **160,203 g C m-2 yr-1**, at 2% it is 5,200. Also confirmed the documented lying-units trap: ORCHIDEE's `pft-tendev` declares `units='%'` and stores a **fraction** (max 0.618) while LPJmL stores true **percent** (max 95) — the scale is decided from the values, never the attribute.
+
+2. **The variable name changes separator BY SCENARIO within one model.** LPJmL writes `npp-temperate-needleleaved-evergreen-tree` (hyphens) in rcp26/rcp60 and `npp_temperate_needleleaved_evergreen_tree` (**underscores**) in rcp85 — same model, same PFT, same run. Building the variable name from the filename crashed on exactly those 8 of 53 files. `resolve_var()` now tries the exact name, then the underscore form, then the single 3-D data variable. Checked across all 53 files: isolated to LPJmL rcp85.
+
+3. **A time-varying presence mask breaks slope/median mask agreement.** The cover threshold is applied per year, so a cell can carry observations inside the *expanding* slope window (2020–2039) yet none inside the decade window itself — finite slope, NaN median. The contract's mask-agreement assertion fired on the first run (`ols_slope finite where median is NaN at 2030s`). That is not an ocean leak; it is stands appearing and retreating. Slopes are now masked to the decade's own median mask, with the count logged (53 cells at rcp26 2030s rising to 374 by 2090s). The masked cells were the artifacts: removing 53 of 25,821 moved the rcp26 2030s mean slope from **−1.89 to +0.64**, because a stand vanishing mid-window produces a wild per-tile trend.
+
+**Also**: slopes are now computed across forked workers (`--jobs`, mirroring `process_driedarea_isimip3b`). Single-threaded, the 2090s panel stacks 10 members × 80 years = 800 observations → 319,600 exact Theil-Sen pairs per cell over 27,377 cells, and one scenario took ~1 h.
+
+**Ensemble is deliberately ragged.** CLM45 publishes only **7 files** for this PFT across all future scenarios and **no GCM of its own in all three RCPs** (rcp26 hadgem2-es+miroc5, rcp60 ipsl-cm5a-lr, rcp85 gfdl-esm2m+hadgem2-es), so composition is scenario-dependent: 10 / 9 / 10 members. Per user decision the shared 2020s baseline pools **all 29 member-scenario series**, so the panel stays bit-identical across scenarios; `members_by_scenario` records identity. `n_members` 1–10 and `n_models` 1–3 vary by cell.
+
+**Results** (2020s → 2090s over ~25,400 stand cells): rcp26 **−0.2%** (46% of cells increasing, median `sen_slope` −0.25/dec); rcp60 **+32.6%** (91% increasing, +14.2/dec); rcp85 **+40.3%** (90% increasing, +17.6/dec). Reference sites 2020s→2090s rcp85: PNW Oregon 355→449, Georgia 502→663, Bavaria 590→683, Japan 560→863, NZ 1697→1743.
+
+**Interpretive caveat, recorded because it will mislead otherwise**: under `higher_is_better` a rising NPP reads as *falling* risk, so this layer's rcp85 percentile map is greener than rcp26's almost everywhere. That is the CO₂-fertilization plus growing-season response of DGVMs run with transient CO₂ (`co2`), a well-known high-uncertainty regime — nutrient limitation is incompletely represented. The layer measures **stand productivity only**: it contains no drought mortality, fire, pest, or windthrow risk, and productivity is not timber value. The `2005co2` fixed-CO₂ runs exist for all three models and are the natural sensitivity test if the fertilization response needs isolating.
+
+**Files**: `scripts/download_tempnle_npp.py` (new), `scripts/process_tempnle_npp.py` (new), `CLAUDE.md`, `config/isimip_search_catalog.yaml`, `WORKFLOW-ISSUES.md`.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

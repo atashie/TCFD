@@ -118,6 +118,15 @@ A slope is fitted from each cell's own finite observations — a cell need not b
 in every member. Cells with fewer than 3 finite observations, or with all observations
 in a single year, get NaN rather than a spurious trend.
 
+**A layer whose mask is time-varying must mask its slopes to each decade's median mask.**
+The slope window *expands* from the baseline while the median window is the decade alone,
+so a cell with observations early in the window but none inside the decade gets a finite
+slope against a NaN median — which the mask-agreement check rejects, correctly: a trend
+over a decade the subject was absent from is not a trend. Measured on `npp-tempnle`
+(a 2%-cover conifer presence mask): 53 such cells at the 2030s rising to 374 by the 2090s,
+and they were the artifacts — dropping 53 of 25,821 moved the mean slope from **−1.89 to
++0.64**, because a stand vanishing mid-window produces a wild trend.
+
 **Judge slope agreement on ACTIVE cells only.** A cell that is permanently 0 — never
 burns, never sees a cyclone — has a genuinely zero slope under *both* estimators, so
 including it inflates apparent agreement and dilutes the Sen zero-fraction. On `let` the
@@ -147,6 +156,20 @@ implies, so nobody rediscovers it as a bug:
   that is what biases `ols_slope`.
 - On `csoil-total` the between-member level offset measured **68.7×** the interannual SD,
   so this is a live regime, not a hypothetical.
+
+## This contract is about FORM, not meaning
+
+`test_shared_baseline.py` passing means the file is *shaped* right — schema, shared
+baseline, CI ordering, percentile range and orientation, slope masks, ensemble depth. It
+cannot tell you the input is about what its name says.
+
+Measured 2026-08-11: both sugarcane layers passed every check and were meaningless —
+ISIMIP2b LPJmL simulates no sugarcane in the sugarcane belt, so the layer was zero across
+São Paulo, Uttar Pradesh, Queensland and Florida while marginal temperate cells read as the
+maximum. Once a layer passes this contract, the entire remaining risk sits in the input.
+Check it per **GUARDRAILS §12** — verify the field is non-trivial at named reference
+locations where the subject demonstrably exists, and record those sites and values in the
+processor docstring.
 
 ## Performance
 

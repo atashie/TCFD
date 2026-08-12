@@ -29,6 +29,8 @@ Processes ISIMIP data into annualized decadal statistics for physical climate ri
 | **Wildfire (burnt area)** | `burntarea-total` | 3b `fire`+`biomes`, ssp126/370/585 | `process_burntarea_isimip3b.py` |
 | ~~Wildfire, ISIMIP2b~~ — **SUPERSEDED 2026-08-10** | `burntarea` | 2b `biomes`, rcp26/60/85 | ~~`process_burntarea_fire.py`~~ |
 | Soil / subsurface carbon | `csoil-total` | 3b `biomes`, ssp126/370/585 | `process_csoil_soilcarbon.py` |
+| **Temperate conifer productivity** | `npp-tempnle` | 2b `biomes` CLM45+ORCHIDEE+LPJmL, rcp26/60/85 | `process_tempnle_npp.py` (new 2026-08-12) — per-**tile** denominator (measured), 2% cover presence mask, ragged CLM45 coverage |
+| ~~Sugarcane yield~~ — **WITHDRAWN 2026-08-11, upstream data defect** | `yield-sug-noirr`, `yield-sug-firr` | 2b `agriculture` LPJmL, rcp26/60 | ~~`process_sug_sugarcane.py`~~ — the 2b run does not simulate cane in the cane belt (São Paulo, UP India, Queensland, Florida all sentinel-zero); passes the contract, means nothing. No ISIMIP source supports a scenario-bearing sugarcane layer. |
 | Timber, fisheries, health, … | various | — | `process_*.py` |
 
 - **The two drought layers are siblings, not versions.** `led` (2b, 8 models × 4 CMIP5 GCMs, rcp26/60) and `driedarea` (3b, 3 models × 5 CMIP6 GCMs, ssp126/370/585) are both shipped and both current. Deeper ensemble versus newer scenarios — pick per delivery; neither supersedes the other. They also resolve the **minimum-model mask differently on measured evidence** (`led` ≥2, `driedarea` full union), which is the intended behaviour: re-measure the rule per layer, never inherit it.

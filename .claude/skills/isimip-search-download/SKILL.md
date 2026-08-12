@@ -93,6 +93,27 @@ API queries and contextualizes new results. When a new search yields useful info
 already there, update the file with the search date, dataset counts, and any notes on data
 quality or limitations.
 
+**Check `repository_structure_cache` FIRST — it may answer the question with zero requests.**
+Added 2026-08-12, it records what 59 ISIMIP3b + 30 ISIMIP2b listings established: the model
+and GCM roster per sector, the **complete PFT/class vocabulary per model** (verified
+identical across sectors and GCMs, not sampled), which sectors are byte-identical
+republications of each other, and measured wall-clock per listing. Unlike the `variables:`
+lists below, this block was built by projecting the variable field over *every* listing, so
+it is exhaustive for the sectors it names — biomes, fire, permafrost (3b) and biomes (2b).
+It is still a cache: re-verify anything you are about to ship on, and extend it rather than
+re-deriving it.
+
+**Two rules it encodes, both learned the hard way:**
+
+- **Count coverage PER GCM, never pooled.** A metric published for one GCM of five reads as
+  full coverage in a pooled view. Measured 2026-08-12: `npp-tene` / `gpp-tene` /
+  `fapar-tene` exist in the 3b `fire` sector for **ukesm1-0-ll only** — pooled, that looks
+  like "the fire sector adds NPP and GPP"; per GCM it is a 1-of-5 fragment that cannot
+  carry an ensemble.
+- **Walk one sector, ingest one sector.** 3b `fire` and `permafrost` republish `biomes`
+  files identically — `cveg-tene` ssp370 matched on Content-Length **and** ETag across
+  biomes/fire. Walking all three cost ~2 h and added one single-GCM fragment.
+
 **But the catalog is opportunistic, not authoritative for coverage.** Its per-model
 `variables:` lists were compiled for earlier searches. It has been wrong more than once: it
 under-listed ISIMIP2b biomes models (5 documented vs 11 real), and later still missed
@@ -362,6 +383,14 @@ red flag, not a conclusion** (tropical-cyclone exposure is `let`, not the mnemon
   code `whe` (2a/2b) but splits into `swh`/`wwh` (3a/3b); rice is `ric` (2a/2b) vs
   `ri1`/`ri2` (3a/3b). **Never carry a crop code across rounds** — project the vocabulary
   for the round you are in.
+- **A dataset existing is not a dataset being usable — sugarcane is the standing example.**
+  ISIMIP2b LPJmL `yield-sug-{noirr,firr}` is the only scenario-bearing sugarcane source in
+  the repository, and it is **defective**: yield is exactly 0 across the entire cane belt
+  (São Paulo, UP India, Guangxi, Queensland, Florida, Louisiana…) with sentinel companions
+  (`biom-sug` = 0.267 constant, `plantday = matyday = 1`) on 19.2% of land, while the same
+  model's ISIMIP2a run gives Florida 19.49 and São Paulo 11.69 t ha-1. Do not re-propose it
+  without re-reading `search_results.sugarcane.DATA_DEFECT` in the catalog. Verified
+  2026-08-11; ISIMIP3b publishes no sugarcane at all, so no SSP alternative exists.
 - **`InputData` vocabulary ≠ `OutputData` vocabulary.** The ISIMIP3b crop calendar defines
   20 crops (`bar bea cas cot mai mil nut pea pot rap ri1 ri2 rye sgb sgc sor soy sun swh
   wwh`); ISIMIP3b models actually publish **11** (`bea cas mai mil pot ri1 ri2 sor soy swh

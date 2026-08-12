@@ -188,6 +188,7 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 - **Scope every absence claim to exactly the family you enumerated.** In the same review it was *correctly* established that the Lange 2020 exposure family has no ISIMIP3b re-issue — and that true finding was then allowed to stand in for "no SSP TC data exists". A family having no re-issue is not the hazard having no newer data, and newer data need not live in `DerivedOutputData/` at all.
 - **Open a directory before inferring from its name.** `ISIMIP3b/DerivedOutputData/TipESM2025/MIT/` reads like the tropical-cyclone group (MIT = Emanuel's institution) but holds **water** models (CWATM, H08, JULES-W2, MIROC-INTEG-LAND, …).
 - **Project the variable FIELD; never let a believed-in token narrow a harvest.** A correct, complete enumeration that is filtered by a token you have not yet observed produces a false negative *wearing the authority of the full walk* — the worst kind, because the receipt (150 directories listed, 0 empties) looks impeccable. Measured 2026-08-11: a sugarcane search grepped `sgc` — the code **our own catalog** listed under `crop_codes.isimip3b` — across every agriculture directory in all four rounds and matched zero files. Sugarcane output is `sug` (ISIMIP2a/2b); `sgc` exists only in the ISIMIP3b crop-calendar `InputData`. Only a parallel `$(NF-4)` vocabulary dump surfaced the real layer. **Rule**: reduce a harvest by projecting the filename's variable field to a distinct vocabulary, then match your target offline. A pre-filter can confirm presence; it can never establish absence, and its empty result is `UNVERIFIED` (§11), not a negative.
+- **Count coverage PER GCM, never pooled — and check the structure cache before walking.** Pooling members before counting makes a variable published for one GCM of five look like a full ensemble: measured 2026-08-12, `npp-tene`/`gpp-tene`/`fapar-tene` exist in the ISIMIP3b `fire` sector for **ukesm1-0-ll only**. Report `models × GCMs × scenarios` as a matrix, not as a set union. Before enumerating, read `repository_structure_cache` in `config/isimip_search_catalog.yaml` — it holds the verified model/GCM roster and the complete per-model class vocabulary for the 3b vegetation sectors and 2b biomes, and it records that `fire` and `permafrost` are byte-identical republications of `biomes` (matching Content-Length **and** ETag), so walking all three costs hours and adds nothing.
 - **Vocabulary is per (round, product) — record which one you observed.** `InputData` protocol vocabulary is a superset of what models publish: the ISIMIP3b crop calendar defines 20 crops, ISIMIP3b models publish 11. Codes also drift across rounds for the same quantity (`sug`/`sgc`, `ben`/`bea`, `whe`/`swh`+`wwh`, `ric`/`ri1`+`ri2`, `csoil`/`csoil-total`). A code inherited from another round or from `InputData` is a hypothesis, not a lookup key.
 - On `count=0` for a plausible variable: fall back to file-server enumeration (`https://files.isimip.org/{round}/...`) or query each candidate code before concluding non-existence.
 - On `count=1001`: narrow the query (by round/product/sector/model) until under the cap before drawing any conclusion about coverage.
@@ -308,3 +309,26 @@ re-enumerated before it is relied on or repeated to the user.
 `DerivedOutputData/` before concluding a product has no newer-round version"* — that rule
 already existed and was correct; what failed was that a **stale catalog negative
 contradicting it was never reconciled**.
+
+---
+
+## 12. Verify the Layer Is Non-Trivial WHERE THE THING ACTUALLY EXISTS
+
+**Rule**: For any layer describing something with a known real-world geography — a crop, a biome, a fishery, an industry, a hazard with a known footprint — check the field is non-trivial at a **named list of reference locations where that thing demonstrably exists**, before processing and again before shipping. Record the sites and their values in the processor docstring. §9 asks *what the values are*; this asks *where they are*, and the two failures are independent.
+
+**Why this matters** — measured 2026-08-11, the sugarcane layers:
+
+- ISIMIP2b LPJmL `yield-sug-*` reads exactly **0 across the entire sugarcane belt** — São Paulo, Uttar Pradesh, Guangxi, Thailand, Pakistan Punjab, Veracruz, KwaZulu-Natal, Cauca, Queensland, Florida, Louisiana — with sentinel companions (`biom-sug` pinned at exactly 0.267 t ha-1, `plantday = matyday = 1`, i.e. no season simulated) on 19.2% of land, 0% of which has a non-zero yield. The same model's ISIMIP2a run gives Florida **19.49** and São Paulo **11.69** t ha-1.
+- Two layers were built from it, and **`test_shared_baseline.py` passed every check on both** — schema, shared baseline, CI ordering, percentile range and orientation, slope masks, ensemble depth. All of that was true. Contract conformance is a statement about form and says nothing about whether the input means what its name says.
+- The §9 data-nature check was run properly and still missed it: the 87% zero fraction was measured, classified as *structural*, and written up as "LPJmL grows no sugarcane there" — a true sentence whose implication was backwards. Counting zeros and testing whether they move over time does not locate them.
+- The defect surfaced only because a **user looked at a map** and asked why the US Midwest out-yielded Florida.
+
+**Required behavior**:
+
+- Keep an explicit reference-site list per layer (5–10 places, named, with lat/lon) and print the value at each during processing. For a crop, use its top producing regions; for a hazard, its known footprint.
+- **A zero at a reference site is a STOP**, not a data point to rationalise. Investigate before writing any output.
+- **Cross-check the same sites in a second round or second model publishing the same quantity.** A contradiction of this size (Florida 19.49 vs 0.00) costs two lookups.
+- Inspect the companion variables for sentinel signatures — a constant repeated across unrelated cells (0.267 everywhere), or degenerate phenology (`plantday == matyday`), means the model did not run there, whatever the primary variable says.
+- **Do not let a contract PASS stand in for a sanity check.** When a layer passes cleanly, the remaining risk is entirely in whether the input is about what you think; spend the two minutes there.
+
+**Related**: §9 (measure data nature, never infer it) — necessary and, as shown here, not sufficient.

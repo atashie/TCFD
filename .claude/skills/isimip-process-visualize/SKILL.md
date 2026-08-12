@@ -145,6 +145,32 @@ Traps that have actually occurred:
 | **A mask defect that is per-VARIABLE, not per-product** | the same `floodedarea` is non-NaN over **94.7% of the globe including ocean**, while `driedarea` — same product, same model — is correctly land-masked |
 | **A sharp step on a round latitude** | `fldfrc` halves across one 0.5° row at exactly **60.0°N** (1.87×) because CaMa-Flood changes DEM at the SRTM/HydroSHEDS limit. Confirm against the **native** data, then declare it in `known_latitude_seams` |
 | **An additive decomposition that is actually containment** | "1-in-100 extent = `none` + `100yr`" fails: `100yr` is a **subset** of `none`. Caught by a **dimensional** check — the sum exceeds 100% of a cell — not by plausibility |
+| **Variable name changes separator BY SCENARIO** | ISIMIP2b LPJmL writes `npp-temperate-needleleaved-evergreen-tree` (hyphens) in rcp26/rcp60 and `npp_temperate_needleleaved_evergreen_tree` (**underscores**) in rcp85 — same model, same PFT, same run. Building the variable name from the filename crashes on 8 of 53 files. Resolve: exact name → underscore form → the single 3-D data variable |
+| **Models publish the same quantity on DIFFERENT denominators** | temperate-NLE `npp`: `corr(cover, npp)` is **+0.898** for LPJmL (cover-scaled, per grid cell) but **+0.279** for ORCHIDEE (per-tile), and CLM45 publishes **no `pft-` fraction at all**. Raw pooling spread 3.62×; per-tile 1.48×. Test it by binning NPP against the cover fraction — a cover-scaled field rises ~2300× across cover quintiles, a per-tile one ~2.7× |
+| **A time-varying presence mask desynchronises slope and median** | when a cover threshold is applied per year, a cell can carry observations inside the **expanding** slope window yet none inside the decade window — finite slope, NaN median, and the mask-agreement assertion fires. Not an ocean leak: stands advance and retreat. Mask slopes to each decade's own median mask and log the count; those cells are artifacts (dropping 53 of 25,821 moved a mean slope from −1.89 to +0.64) |
+| **The model did not run where the thing exists** | ISIMIP2b LPJmL `yield-sug` is **exactly 0 across the whole sugarcane belt** (São Paulo, UP India, Queensland, Florida, Louisiana…), with sentinel companions `biom-sug = 0.267` constant and `plantday = matyday = 1`. 19.2% of land carries that signature, 0% of it has a yield. Maize from the same run IS simulated there. Both layers built from it passed `test_shared_baseline.py` in full. See §12 below |
+
+### Reference sites: check the layer is non-trivial WHERE THE THING EXISTS (GUARDRAILS §12)
+
+Before processing and again before shipping, print the value at **5–10 named locations
+where the subject demonstrably exists** — a crop's top producing regions, a species' range,
+a hazard's known footprint — and record the sites and values in the processor docstring.
+
+**A zero at a reference site is a STOP, not a data point to rationalise.** Measured
+2026-08-11: the sugarcane layers were built after a correct §9 value-check that measured
+87% zeros, classified them as *structural*, and wrote "LPJmL grows no sugarcane there" — a
+true sentence with a backwards implication. Counting zeros and testing whether they move
+over time does not tell you **where** they are. The defect surfaced only when a user looked
+at a map and asked why the US Midwest out-yielded Florida.
+
+- Where a **second round or second model** publishes the same quantity, spot-check the same
+  sites in both. The contradiction here (Florida 19.49 in ISIMIP2a vs 0.00 in ISIMIP2b,
+  same model) costs two lookups.
+- Inspect **companion variables for sentinel signatures**: a constant repeated across
+  unrelated cells, or degenerate phenology (`plantday == matyday`), means the model did not
+  run there whatever the primary variable says.
+- **A contract PASS is not a sanity check.** Once a layer passes, the entire remaining risk
+  is whether the input is about what you think it is.
 
 **Checking `ds.sizes` proves nothing about resolution.** Test the *values*: exact-tie
 fraction between adjacent cells **at both offsets** (an aligned-only 2×2 test misses an

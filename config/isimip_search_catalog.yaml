@@ -1031,7 +1031,42 @@ search_results:
       notes: >
         4 members per scenario per irrigation regime (1 impact model x 4 GCMs) -- thin
         ensemble. Yield files are ~3.9 MB; a rcp26+rcp60 x firr+noirr pull is 16 files
-        (~62 MB). No .json sidecars in 2b agriculture (404) -- verify by HTTP status.
+        (~62 MB). Sidecars DO exist -- the name drops the extension ({stem}.json, NOT
+        {stem}.nc4.json, which 404s) and carries size + sha512 + parsed specifiers but
+        no netcdf_header, so units are a download-time measurement.
+      DATA_DEFECT: >
+        *** DO NOT USE THIS DATASET FOR A YIELD LAYER. Measured 2026-08-11. ***
+        The ISIMIP2b LPJmL `sug` run does not simulate sugarcane in the sugarcane belt.
+        Sao Paulo, Uttar Pradesh, Guangxi, Thailand, Pakistan Punjab, Veracruz, KZN,
+        Cauca, Queensland, Florida and Louisiana ALL read yield = 0, with sentinel
+        companions: biom-sug pinned at exactly 0.267 t ha-1 and plantday = matyday = 1
+        (no season simulated). 12,966 land cells (19.2%) carry that signature and 0% of
+        them have a non-zero yield. The mask is near-identical across all 8 members
+        (Jaccard 0.98-0.998), so it is static, not climate-driven crop failure. Maize
+        from the same model/GCM/run IS simulated in those cells (Florida 5.65,
+        Sao Paulo 1.64 t ha-1), so the cells are live cropland.
+        CONTRAST ISIMIP2a, same model: Florida 19.49, Sao Paulo 11.69, UP 8.33,
+        Queensland 7.17 t ha-1 -- sensible -- while 2b gives 0 for all four and leaves
+        the US Midwest (13.35) as the global-looking maximum. 75.2% of the cells where
+        the 2a run grows cane are zero in 2b; 90.3% of 2b's sentinel cells are 2a cane
+        land. Both LPJmL rounds do report marginal POTENTIAL yield in temperate cells
+        (2a Midwest 10.61) -- that part is a model property, not the defect.
+      processed: >
+        WITHDRAWN 2026-08-11 (same day it was built). Two layers were produced and
+        passed test_shared_baseline.py in full -- data/processed/sugarcane_yield-sug-
+        {noirr,firr}_annual via scripts/process_sug_sugarcane.py -- and are retained ONLY
+        as evidence, each carrying INVALID-DO-NOT-USE.md. Contract conformance says
+        nothing about whether the input means what its name says (GUARDRAILS 9 checks the
+        data NATURE; nothing checked the data's SPATIAL PLAUSIBILITY until the user asked
+        why the US Midwest out-yielded Florida).
+      raw_deleted: >
+        2026-08-12 -- data/raw/sugarcane_yield-sug-{noirr,firr}_annual removed. The URLs
+        and sha512 of all 16 files survive in download_provenance.csv, now kept alongside
+        the retained (INVALID) processed layers.
+      conclusion: >
+        No usable future-scenario sugarcane yield exists in ISIMIP: 2b LPJmL is the only
+        scenario-bearing source and it is defective; ISIMIP3b publishes no sugarcane;
+        ISIMIP2a is correct but historical-only.
 
     isimip2a:
       total_datasets: ~35   # sug files across LPJmL (4 forcings) + CLM-Crop (watch-wfdei)
@@ -1490,23 +1525,156 @@ pft_equivalences:
     description: "Temperate zone evergreen conifers (pines, firs, Douglas fir)"
     example_species: ["loblolly pine", "Douglas fir", "ponderosa pine", "longleaf pine"]
     climate_zone: "Humid subtropical to warm temperate (25-45N latitude)"
-    model_codes:
-      CLASSIC: "evgndltr"  # WARNING: includes ALL needleleaf, not just temperate
-      CLM45: "needleleaf-evergreen-tree-temperate"
-      LPJmL: "temperate-needleleaved-evergreen-tree"
-      MC2-USFS:
-        - "mesictemperateneedleleafforest"      # Humid temperate - BEST for loblolly
-        - "subtropicalevergreenneedleleafforest" # SE US coastal - also good for loblolly
-        - "drytemperateneedleleafforest"        # Dry temperate
-        - "maritimeevergreenneedleleafforest"   # Coastal
-    best_for_loblolly_pine:
-      first_choice: "MC2-USFS subtropicalevergreenneedleleafforest or mesictemperateneedleleafforest"
-      with_future_scenarios: "CLM45 ISIMIP2b needleleaf-evergreen-tree-temperate"
-      generic_fallback: "CLASSIC evgndltr (but includes boreal data)"
+    enumerated_on: "2026-08-12 -- full variable-field projection of the biomes sector,
+      ISIMIP2b (11 models) + ISIMIP3b (6 models), then all GCMs of every model carrying a
+      temperate needleleaf class. 30 directory listings, 0 empty."
+
+    # ---- MEASURED matrix. Metrics are per-PFT unless noted. ------------------
+    scenario_bearing_options:
+      ISIMIP2b:
+        CLM45:
+          pft_code: "needleleaf-evergreen-tree-temperate"
+          gcms: 4          # gfdl-esm2m, hadgem2-es, ipsl-cm5a-lr, miroc5
+          scenarios: [rcp26, rcp60, rcp85]
+          soc: [2005soc]
+          sens: [co2, 2005co2]
+          metrics_annual: [cveg, gpp, lai, npp]
+          metrics_monthly: [trans]
+          caveat: "publishes NO pft- cover fraction, so tile-area harmonization has no
+            in-model denominator"
+        ORCHIDEE:
+          pft_code: "tendev"
+          gcms: 4
+          scenarios: [rcp26, rcp60, rcp85]
+          soc: [2005soc, rcp26soc, rcp60soc]
+          sens: [co2, 2005co2]
+          metrics_annual: [cveg, gpp, lai, npp, pft]
+        ORCHIDEE-DGVM:
+          pft_code: "tendev"
+          gcms: 2          # gfdl-esm2m, ipsl-cm5a-lr
+          scenarios: [rcp26, rcp60]
+          metrics_annual: [cveg, gpp, lai, npp, pft]
+          caveat: "same PFT scheme as ORCHIDEE -- one MODEL FAMILY, must not each get a vote"
+        LPJmL:
+          pft_code: "temperate-needleleaved-evergreen-tree"
+          gcms: 4
+          scenarios: [rcp26, rcp60, rcp85]
+          soc: [2005soc, rcp26soc, rcp60soc]
+          metrics_annual: [gpp, npp, pft]
+          caveat: "NO per-PFT cveg -- a cveg ensemble and an npp ensemble differ in members"
+        CARAIB:
+          pft_codes: [ndevtecdt, ndevteclt, ndevtedtt, ndevtedttht]
+          gcms: 4
+          scenarios: [rcp26, rcp60]      # no rcp85
+          metrics_annual: [cveg, gpp, lai, npp, pft, ra]
+          caveat: "*** CLASS NAME IS NOT TRUSTWORTHY *** `ndevtecdt` carries 'te' but was
+            measured peaking at 55-70N -- it is BOREAL. Verify each CARAIB class
+            geographically (GUARDRAILS 12) before admitting it to a temperate ensemble."
+      ISIMIP3b:
+        LPJmL5-7-10-fire:
+          pft_code: "tene"
+          gcms: 5
+          scenarios: [ssp126, ssp370, ssp585]
+          soc: [2015soc, 2015soc-from-histsoc, 1850soc, nat]
+          sens: [default, 2015co2, ssp585ndep]
+          metrics_annual: [cveg, cvegag, cvegbg, pft]
+          note: "the ONLY temperate-specific needleleaf class in ISIMIP3b -- confirmed
+            EXHAUSTIVELY, see verified_complete below. `cvegag` (above-ground) is
+            available, which `cwood` would otherwise be wanted for."
+          npp_gpp_caveat: "the `fire` sector publishes npp-tene / gpp-tene / fapar-tene,
+            but for ONE GCM ONLY (ukesm1-0-ll). Pooled across GCMs that looks like extra
+            metrics; per GCM it is a 1-of-5 fragment and cannot carry an ensemble."
+          cross_sector_duplicate: "`fire` and `permafrost` republish the SAME tene files as
+            `biomes` -- cveg-tene ssp370 matched on BOTH Content-Length (7,616,747) and
+            ETag (6a54d8a3-7438eb) across biomes/fire. Ingest ONE sector only or the model
+            is double-weighted."
+
+    verified_complete:
+      date: "2026-08-12"
+      claim: "No ISIMIP3b temperate evergreen needleleaf PFT exists beyond LPJmL5-7-10-fire
+        `tene` (plus the generic evgndltr / ndlevg classes)."
+      evidence: >
+        Projected the variable field over EVERY model x EVERY GCM of the three ISIMIP3b
+        sectors that can carry vegetation PFTs -- biomes (27 dirs), fire (22), permafrost
+        (10) = 59 listings, 0 empty, 0 retries, 6,035 distinct (sector, model, gcm,
+        variable) rows. The class vocabulary is identical per model across sectors and
+        GCMs: CLASSIC 10, JULES-ES-VN6P3 22, LPJmL5-7-10-fire 21, MC2-USFS 38,
+        ELM-ECA 1 (total only), VISIT 1 (total only). DerivedOutputData listed one level
+        in: Heinicke2026 = water models (H08, JULES-W2, WaterGAP2-2e), Jaegermeyr2021 =
+        crop models, TipESM2025 = MIT, Zantout2025 = the exposure publication -- none
+        vegetation/PFT-resolved.
+      mc2_needleleaf_classes_are_pft_only: >
+        MC2-USFS carries five needleleaf-named classes -- mesictemperateneedleleafforest,
+        temperateevergreenneedleleafwoodland, maritimeevergreenneedleleafforest,
+        subtropicalevergreenneedleleafforest/woodland (+ subalpineforest) -- with the
+        metric `pft` ONLY, on all 5 GCMs. Presence flags, no carbon or productivity.
+      jules_has_no_temperate_split: >
+        JULES-ES-VN6P3 splits broadleaf evergreen into bdlevgtemp / bdlevgtrop but
+        publishes a SINGLE needleleaf evergreen class `ndlevg` -- no temperate/boreal
+        separation.
+    generic_needleleaf_evergreen_for_contrast:
+      note: "boreal + temperate COMBINED -- climate specificity traded for cwood and depth"
+      CLASSIC:
+        pft_code: "evgndltr"
+        gcms: 2
+        scenarios: [ssp126, ssp370, ssp585]
+        metrics: "cwood, cveg, cvegag, cvegbg, cleaf, croot, csoil, npp/gpp/lai (monthly), burntarea"
+      JULES-ES-VN6P3:
+        pft_code: "ndlevg"
+        gcms: 5
+        scenarios: [ssp126, ssp370, ssp585]
+        metrics: "cwood, cveg, cvegag, cvegbg, cleaf, croot, npp/gpp (annual + monthly), lai"
+
+    WITHDRAWN_RECOMMENDATION:
+      what: "MC2-USFS mesictemperate/subtropicalevergreen needleleaf forest was listed here
+        as `first_choice` for loblolly pine. It is NOT USABLE and the recommendation is
+        withdrawn."
+      why: "MC2-USFS publishes those 38 biome classes with the metric `pft` ONLY -- they are
+        0/100 presence flags, not carbon or productivity. Re-confirmed 2026-08-12 by
+        projecting its full variable vocabulary in both rounds: 3b MC2 carries `pft-` for
+        the biome classes and carbon/npp only on `-total`/`-tree`/`-grass`; 2b MC2 has just
+        `grass`/`tree` with npp. `pft-maritimeevergreenneedleleafforest` is additionally
+        identically zero in every run. `drytemperateneedleleafforest` does not exist as a
+        published class at all."
+      rule: "Before relaying a catalog recommendation, confirm the variable it names exists
+        at the resolution it claims. This entry sat wrong for months."
+
+    PROCESSED_2026_08_12:
+      layer: "conifer-temperate_npp-tempnle_annual (npp-tempnle) -- scripts/process_tempnle_npp.py"
+      members: "CLM45 + ORCHIDEE + LPJmL x 4 CMIP5 GCMs, 2005soc/co2, rcp26/60/85;
+        10/9/10 per scenario (CLM45 coverage is ragged -- no GCM of its own in all three)"
+      denominator: >
+        PER-TILE basis, measured: corr(cover,npp) orchidee +0.279 (per-tile), lpjml +0.898
+        (cover-scaled), clm45 publishes no pft- fraction at all. LPJmL divided by cover;
+        2% minimum-cover presence mask (unthresholded its per-tile p99 hits 160,203
+        g C m-2 yr-1). Median spread across models: raw 3.62x -> per-tile 1.48x.
+      gotchas: >
+        (1) orchidee pft- declares units='%' but stores a FRACTION (max 0.618); lpjml
+        stores true percent (max 95) -- decide scale from values.  (2) LPJmL names the
+        variable with HYPHENS in rcp26/rcp60 and UNDERSCORES in rcp85, same model/PFT/run.
+        (3) the presence mask is time-varying, so slopes must be masked to each decade's
+        own median mask or the contract's mask-agreement assertion fires.
+      results: "2020s->2090s over ~25,400 stand cells: rcp26 -0.2%, rcp60 +32.6%,
+        rcp85 +40.3%; test_shared_baseline ALL CHECKS PASSED"
+      caveat: "productivity only -- no drought mortality, fire, pest or windthrow; the
+        strong rcp85 increase is the transient-CO2 fertilization response of these DGVMs.
+        The 2005co2 fixed-CO2 runs exist for all three models as the sensitivity test."
+
+    open_decisions: >
+      Variable (cveg stock vs cvegag above-ground vs npp flux), round (2b: up to 4 models
+      x 4 GCMs across 3 RCPs, climate-zone specific but CMIP5; 3b: 1 model x 5 GCMs across
+      3 SSPs), whether CARAIB's classes survive a geographic check, soc/sens harmonization,
+      and the per-tile vs per-gridcell question below. All are user decisions.
+    pooling_constraint: >
+      MEASURED PREVIOUSLY on `timber_*-tempnle`: ORCHIDEE and CLM45 report on the PFT's OWN
+      TILE AREA while LPJmL and CARAIB are cover-scaled. Pooling raw gave a 10.5x / 177x
+      spread; harmonizing to a common denominator gave 2.35x / 1.83x. CLM45 publishes no
+      `pft-` fraction, so its denominator must come from elsewhere. Any multi-model
+      temperate-NLE ensemble must resolve this BEFORE pooling.
     notes: |
-      CLASSIC combines ALL needleleaf into single 'evgndltr' category.
-      For temperate-specific analysis, prefer CLM45, LPJmL, or MC2-USFS.
-      MC2-USFS provides most detailed subdivision (mesic/dry/maritime/subtropical).
+      CLASSIC and JULES-ES-VN6P3 combine ALL needleleaf evergreen into one class
+      (evgndltr / ndlevg): more metrics (including the only per-PFT cwood in ISIMIP) and,
+      for JULES, 5 GCMs -- but no temperate/boreal separation.
 
   boreal_needleleaf_evergreen:
     description: "Boreal zone evergreen conifers (spruce, fir)"
@@ -1855,6 +2023,7 @@ crop_availability_matrix:
         other_metrics: "aet,anthday,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
     sug:
       name: "Sugarcane"
+      WARNING: "ISIMIP2b output is DEFECTIVE -- see search_results.sugarcane.DATA_DEFECT" 
       ISIMIP2b:
         models: 1
         scenarios: "rcp26,rcp60"
@@ -1903,3 +2072,72 @@ crop_availability_matrix:
         scenarios: "historical (hist)"
         detail: "LPJmLx4"
         other_metrics: "aet,biom,gsprcp,gsrsds,matyday,pirrww,plantday,sumt"
+
+# ---------------------------------------------------------------------------
+# REPOSITORY STRUCTURE CACHE  (generated 2026-08-12)
+# Consult this BEFORE walking the file server. It records what 59 ISIMIP3b +
+# 30 ISIMIP2b directory listings established, so the walk need not be repeated.
+# Depth is uniform in OutputData: {ROUND}/OutputData/{SECTOR}/{MODEL}/{GCM}/{future|historical}/
+# ---------------------------------------------------------------------------
+repository_structure_cache:
+  generated_on: "2026-08-12"
+  method: "variable-field projection ($(NF-4)) over every listing; no target-token pre-filter"
+  isimip3b_vegetation_sectors:
+    note: "biomes, fire and permafrost share models AND republish identical files -- see cross_sector_duplication"
+    biomes:
+      CLASSIC: {gcms: 2, list: [gfdl-esm4, ukesm1-0-ll]}
+      ELM-ECA: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+      JULES-ES-VN6P3: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+      LPJmL5-7-10-fire: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+      MC2-USFS-r87g5c1: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+      VISIT: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+    fire:
+      CLASSIC: {gcms: 2, list: [gfdl-esm4, ukesm1-0-ll]}
+      ELM-ECA: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+      JULES-ES-VN6P3: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+      LPJmL5-7-10-fire: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+      VISIT: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+    permafrost:
+      ELM-ECA: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+      LPJmL5-7-10-fire: {gcms: 5, list: [gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll]}
+  isimip3b_pft_class_vocabulary:
+    note: "identical per model across sectors and GCMs -- verified, not sampled"
+    CLASSIC: {n: 10, classes: [c3crop, c3grass, c4crop, c4grass, dcdcldbdltr, dcddrybdltr, dcdndltr, evgbdltr, evgndltr, total]}
+    ELM-ECA: {n: 1, classes: [total]}
+    JULES-ES-VN6P3: {n: 22, classes: [bdldcd, bdlevgtemp, bdlevgtrop, bio, c3crop, c3grass, c3pasture, c4crop, c4grass, c4pasture, dpm, hum, ice, lake, ndldcd, ndlevg, rpm, shrubdcd, shrubevg, soil, total, urban]}
+    LPJmL5-7-10-fire: {n: 21, classes: [bare, bobs, bone, bons, crop-cirr, crop-noirr, fast, past-cirr, past-noirr, poh, reservoir, slow, tebe, tebs, teh, tene, total, trbe, trbr, trh, water]}
+    MC2-USFS-r87g5c1: {n: 38, classes: [borealdeciduousforest, borealneedleleafforest, borealwoodland, c3grass, c3shrub, c4grass, c4shrub, coldbarren, coolmixedforest, grass, maritimeevergreenneedleleafforest, mesictemperateneedleleafforest, subalpineforest, subtropicaldeciduousbroadleafforest, subtropicaldeciduousbroadleafwoodland, subtropicaldesert, subtropicalevergreenbroadleafwoodland, subtropicalevergreenneedleleafforest, subtropicalevergreenneedleleafwoodland, subtropicalmixedforest, subtropicalmixedwoodland, temperatecoolmixedwoodland, temperatedeciduousbroadleafforest, temperatedeciduousbroadleafwoodland, temperatedesert, temperateevergreenneedleleafwoodland, temperatewarmmixedforest, temperatewarmmixedwoodland, total, tree, tropicaldeciduouswoodland, tropicaldesert, tropicalevergreenbroadleafforest, tropicalgrassland, tropicalsavanna, tropicalshrubland, tundra, warmevergreenbroadleafforest]}
+    VISIT: {n: 1, classes: [total]}
+  isimip2b_biomes_pft_class_vocabulary:
+    CARAIB: {n: 44, gcms: 4, classes: [brevdtt, brevdttht, brevstdit, brevtecds, brevtewms, brevtrt, brevxs, brrgtrt, brsuas, brsutecds, brsutecdt, brsuteclt, brsutewms, brsutewmt, c3dh, c3hh, c3p, c4h, c4p, cerealtec, cerealtrc, maizetec, maizetrc, ndevstdit, ndevtecdt, ndevteclt, ndevtedtt, ndevtedttht, ndsustswt, ndsutecdt, oilgroundnutc, oilrapeseedc, othertec, othertrc, pulsestec, pulsestrc, ricec, roottec, roottrc, sds, soybeanc, sugarcanec, sunflowerc, trs]}
+    CLM45: {n: 25, gcms: 4, classes: [broadleaf-deciduous-shrub-boreal, broadleaf-deciduous-shrub-temperate, broadleaf-deciduous-tree-boreal, broadleaf-deciduous-tree-temperate, broadleaf-deciduous-tree-tropical, broadleaf-evergreen-shrub-temperate, broadleaf-evergreen-tree-temperate, broadleaf-evergreen-tree-tropical, c3-arctic-grass, c3-crop-irrigated, c3-crop-rainfed, c3-non-arctic-grass, c4-grass, corn-irrigated, corn-rainfed, needleleaf-deciduous-tree-boreal, needleleaf-evergreen-tree-boreal, needleleaf-evergreen-tree-temperate, not-vegetated, soybean-irrigated, soybean-rainfed, spring-cereal-temperate-irrigated, spring-cereal-temperate-rainfed, winter-cereal-temperate-irrigated, winter-cereal-temperate-rainfed]}
+    LPJ-GUESS: {n: 14, gcms: 0, classes: [bine, bne, bns, c3g, c3g-agr, c4g, c4g-agr, ibs, tebe, tebs, total, trbe, trbr, tribe]}
+    LPJmL: {n: 44, gcms: 4, classes: [bare-ground, biograss-irrigated, biograss-rainfed, biotree-irrigated, biotree-rainfed, boreal-broadleaved-summergreen-tree, boreal-needleleaved-evergreen-tree, c3-perennial-grass, c4-perennial-grass, cas-irrigated, cas-rainfed, lakesrivers, mai-irrigated, mai-rainfed, mgr-irrigated, mgr-rainfed, mil-irrigated, mil-rainfed, nut-irrigated, nut-rainfed, others-irrigated, others-rainfed, pea-irrigated, pea-rainfed, rap-irrigated, rap-rainfed, reservoir, ric-irrigated, ric-rainfed, sgb-irrigated, sgb-rainfed, soy-irrigated, soy-rainfed, sug-irrigated, sug-rainfed, sun-irrigated, sun-rainfed, temperate-broadleaved-evergreen-tree, temperate-broadleaved-summergreen-tree, temperate-needleleaved-evergreen-tree, tropical-broadleaved-evergreen-tree, tropical-broadleaved-raingreen-tree, whe-irrigated, whe-rainfed]}
+    MC2-USFS-r87g5c1: {n: 2, gcms: 0, classes: [grass, tree]}
+    ORCHIDEE: {n: 17, gcms: 4, classes: [bare, bobrsu, bondev, bondsu, c3gra, c3pas, c3sum, c3win, c4gra, c4mai, c4oth, c4pas, tebrev, tebrsu, tendev, trbrev, trbrrg]}
+    ORCHIDEE-DGVM: {n: 17, gcms: 2, classes: [bare, bobrsu, bondev, bondsu, c3gra, c3pas, c3sum, c3win, c4gra, c4mai, c4oth, c4pas, tebrev, tebrsu, tendev, trbrev, trbrrg]}
+  cross_sector_duplication:
+    measured: "2026-08-12"
+    finding: >
+      ISIMIP3b `fire` and `permafrost` republish the SAME files as `biomes` for the models
+      they share. lpjml5-7-10-fire cveg-tene ssp370 matched on BOTH Content-Length
+      (7,616,747) and ETag (6a54d8a3-7438eb) across biomes and fire. Walk ONE sector and
+      ingest ONE sector; the others neither add members nor change coverage.
+    known_pairs:
+      - "biomes == fire == permafrost for LPJmL5-7-10-fire, CLASSIC, JULES-ES-VN6P3, ELM-ECA, VISIT"
+      - "biomes == permafrost for elm-eca csoil-total (byte-identical, same sha512)"
+    exception: >
+      `fire` publishes a few variables `biomes` does not (npp/gpp/fapar for LPJmL5 PFT
+      classes) -- but for ukesm1-0-ll ONLY. Check per-GCM before treating it as coverage.
+  per_gcm_not_pooled:
+    rule: >
+      Coverage claims must be made PER GCM. Pooling GCMs before counting makes a metric
+      published for 1 of 5 GCMs look like a full ensemble. Measured 2026-08-12:
+      npp-tene / gpp-tene / fapar-tene appear in the `fire` sector for ukesm1-0-ll only,
+      which reads as "the fire sector adds npp and gpp" in a pooled view and as a
+      1-of-5 fragment in a per-GCM view.
+  wall_clock_notes:
+    biomes_listing: "~3,000 files per {model}/{gcm}/future/ dir for LPJmL5/JULES/CLASSIC; 2-4 min each"
+    small_models: "ELM-ECA ~123 files, VISIT ~168, MC2-USFS ~216 -- seconds"
+    full_3b_vegetation_sweep: "59 listings across biomes+fire+permafrost; budget ~2 h serial"
+    agriculture_sweep: "150 listings across all four rounds; ~25 min serial"
