@@ -226,6 +226,14 @@ IFRS S2 spine with a CDP / ESRS E1-9 / California SB 261 mapping appendix.
 **Fully deterministic** — no narrative, no researched claims, so an auditor can rebuild it
 byte-for-byte. Structure and rationale: `docs/reporting/technical/report-anatomy.md`.
 
+**A section may report nothing.** Where the method for turning our data into a framework's
+requirement has not been agreed with the user, the section states that and publishes no
+figure. Entries live in `report_common.TBD_SECTIONS`; both reports render the same block, and
+the verifier **fails** any report that publishes a figure whose method is still deferred.
+Currently deferred: the IFRS S2 29(c) vulnerable-asset count. Err toward an explicit gap over
+a fast answer — a gap is a conversation, a wrong number is a liability with the customer's
+name on it.
+
 Two things to check before it goes anywhere:
 
 - **`report_config.yaml`.** While `horizons.source` or `vulnerability.source` reads
@@ -238,6 +246,12 @@ Two things to check before it goes anywhere:
 ---
 
 ## Stage 3b — Bespoke report
+
+**Facets accept lists, and `region` is determined by the data.** Each region profile declares
+a `matches:` block; `assert_region_coverage()` refuses to build if any delivered location is
+uncovered. A portfolio spanning California, the Gulf coast, the mid-Atlantic and Bavaria needs
+four region profiles, not one — describing it with a single region's framing is confidently
+wrong about the first thing a reader checks.
 
 ```bash
 # 1. choose facets in report_config.yaml, then

@@ -244,18 +244,47 @@ def check_reports(delivery: Path, manifest: dict, values, assets, layers) -> Non
               f"{path.name} contains an HTML comment -- narrative guidance must be stripped")
         print(f"  {path.name} checked ({path.stat().st_size // 1024} KB)")
 
-    # The headline metric, end to end: recomputed here, compared with what was printed.
-    if compliance.exists():
+    # While the vulnerability method is deferred, NO report may publish a determination.
+    #
+    # This is the check that keeps a considered "we have not decided" from quietly becoming
+    # a number again. A percentile threshold produces a vulnerable-asset count very easily,
+    # and the count looks authoritative; the whole point of deferring is that nothing
+    # connects a global exposure rank to susceptibility to harm.
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from utils.report_common import TBD_SECTIONS  # noqa: E402
+
+    if "vulnerability_metric" in TBD_SECTIONS:
+        for path in (compliance, bespoke):
+            if not path.exists():
+                continue
+            visible = re.sub(r"<[^>]+>", " ", path.read_text())
+            published = [
+                phrase for phrase in (
+                    "assets vulnerable at", "Assets vulnerable |",
+                    "Not vulnerable", "vulnerable of", "% of assessed vulnerable",
+                )
+                if phrase in visible
+            ]
+            check(not published,
+                  f"{path.name} publishes a vulnerability determination "
+                  f"({', '.join(published)}) while the method is recorded as deferred in "
+                  f"TBD_SECTIONS. Either agree the method and remove the TBD entry, or do "
+                  f"not print the figure.")
+            check("method to be agreed" in visible.lower()
+                  or "not yet determined" in visible.lower(),
+                  f"{path.name} does not state that the vulnerability method is deferred")
+        print("  vulnerability metric correctly reported as deferred, not published")
+    else:
+        # Method agreed: the printed counts must match an independent recomputation.
         threshold = float((cfg.get("vulnerability") or {}).get("threshold", 80))
         expected = independent_vulnerable_counts(values, assets, hazard_layers, threshold)
-        html_text = compliance.read_text()
+        html_text = compliance.read_text() if compliance.exists() else ""
         m = re.search(r"threshold[^<]*?(\d+)th percentile\.(.*?)</table>", html_text, re.S)
         check(m is not None, "compliance report has no vulnerability table to check")
         if m:
             check(int(m.group(1)) == int(threshold),
                   f"compliance report states threshold {m.group(1)} but report_config.yaml "
                   f"says {threshold:.0f}")
-            rows = re.findall(r"<tr>(.*?)</tr>", m.group(2), re.S)
             horizons = {
                 str(v.get("label", k)): int(v["decade"])
                 for k, v in (cfg.get("horizons") or {}).items()
@@ -263,7 +292,7 @@ def check_reports(delivery: Path, manifest: dict, values, assets, layers) -> Non
             }
             tiers = {"Low forcing": "low", "Medium forcing": "medium", "High forcing": "high"}
             compared = 0
-            for row in rows:
+            for row in re.findall(r"<tr>(.*?)</tr>", m.group(2), re.S):
                 cells = [re.sub(r"<[^>]+>", "", c).strip()
                          for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)]
                 if len(cells) < 4 or cells[0] not in horizons or cells[1] not in tiers:

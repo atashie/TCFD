@@ -32,14 +32,40 @@ which hazards actually reach this asset and how, what decision this reader is ma
 vocabulary lands and what misfires, what will make them distrust the numbers, what to ask
 them, and what must never be claimed.
 
+## Every facet accepts a list
+
+`report_config.yaml` may name one profile or several per facet, and most real portfolios need
+several. The worked example carries three asset profiles and four region profiles.
+
+## Region is determined by the data, and is validated
+
+A region profile MUST declare a `matches:` block. `assert_region_coverage()` checks every
+delivered location against the selected profiles and **refuses to build** if any is
+uncovered — because a report whose regional context does not match its sites is confidently
+wrong about the first thing a reader checks. A profile without `matches.countries` is a load
+error: it would match everything and silently defeat the check.
+
+```yaml
+matches:
+  countries: [USA, United States, US]
+  states: [California, Oregon, Washington]   # empty list = the whole country
+```
+
+Matching is: country must match; if states are listed the location's state must be among
+them; a location with no state recorded matches on country alone, so an offshore or
+country-level site can still be covered. Absent CSV columns arrive as the float `nan`, whose
+`str()` is the truthy string `"nan"` — `_blank_safe()` handles that, and without it every
+offshore site reads as uncovered everywhere.
+
 ## Schema
 
 ```markdown
 ---
 facet: asset            # asset | region | persona | vertical | use_case | company
-id: timber-land-loblolly   # must equal the filename stem
-name: Loblolly pine timberland
+id: timber-land-conifer    # must equal the filename stem
+name: Temperate conifer timberland
 aliases: [...]          # optional
+matches: {...}          # REQUIRED for region profiles, ignored elsewhere
 confirmed_on: null      # null until a human signs it off
 sources: [...]          # required for any factual claim; see ../research/method.md
 ---
@@ -85,11 +111,20 @@ prevent — the same protocol as `confirmed_on` in `config/asset_catalog.yaml`.
    work, because it names the mistakes a fluent writer makes without noticing.
 5. Leave `confirmed_on: null` and say so when you hand it over.
 
-## Note on the current asset profile
+## General and specific profiles
 
-`timber-land-loblolly` uses layers overridden per row (`conifer-npp; cyclone; wildfire;
-drought-3b`) rather than the `timber land` catalog entry, which omits `cyclone`. That is a
-real, unresolved catalog question: cyclone is the dominant hazard for southeastern pine and
-irrelevant for Pacific Northwest pine, and the catalog has no region dimension. It has not
-been changed globally, because doing so would attach a hazard with no transmission channel to
-inland holdings. **Raise it before the next timber delivery.**
+Both are legitimate. `timber-land-conifer` covers managed temperate conifer stands generally;
+`timber-land-loblolly` covers the specific species-and-region system with its own documented
+damage pathway. Select the general one, or both, or the specific one alone.
+
+Where a hazard ranking depends on region — wind dominates southeastern pine and is irrelevant
+in the Pacific Northwest — the **region profile owns the ranking** and the asset profile says
+so rather than assuming. This is why the two are separate facets.
+
+## Open catalog question
+
+The `timber land` entry in `config/asset_catalog.yaml` omits `cyclone`. That is right for the
+Pacific Northwest and wrong for the southeastern US, and the catalog has no region dimension
+to express the difference. It has not been changed globally, because doing so would attach a
+hazard with no transmission channel to inland holdings. **Raise it before the next timber
+delivery.**

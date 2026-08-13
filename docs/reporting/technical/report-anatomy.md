@@ -13,7 +13,7 @@ claims, so an auditor can rebuild it and get the same document.
 | 3 | Time horizons | the three configured horizons; a callout if they are ours |
 | 4 | Where risk concentrates | ranked bar + band stack + per-asset table |
 | 5 | Resilience and scenario analysis | tiers, Paris-aligned member, provenance, Climate Score series |
-| 6 | Assets vulnerable | the 29(c) metric, threshold sensitivity, monetary if supplied |
+| 6 | Assets vulnerable | **DEFERRED** — states the requirement, why, and what is outstanding |
 | 7 | Direction of change | one trend strip per hazard — units differ, so never one axis |
 | 8 | Sections the entity must complete | governance, risk management, financial effects, targets |
 | 9 | Limitations | every `must_disclose` caveat, then the `should_note` table |
@@ -24,6 +24,11 @@ claims, so an auditor can rebuild it and get the same document.
 **Section 8 is not padding.** IFRS S2 has four pillars and this report can populate parts of
 two. Publishing sections 1–7 without naming the gap would present hazard screening as an S2
 filing. A missing pillar is invisible unless it is named.
+
+**Section 6 currently reports nothing, on purpose.** See
+[../compliance/vulnerability-definition.md](../compliance/vulnerability-definition.md). It is
+an instance of the general rule: a section whose method has not been agreed states that
+instead of publishing a provisional figure.
 
 **Section 10 is not padding either.** A report that lists what it assessed and stops reads as
 though the rest was assessed and found immaterial — every number correct, the document still

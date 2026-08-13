@@ -38,12 +38,14 @@ documents on four spines would drift apart at the first data refresh.
 | 5–7 | Governance | **Not supplied** — entity-owned |
 | 24–26 | Risk management process | **Not supplied** — entity-owned |
 | 28–29 | Metrics; basis and limitations | **Supplied** |
-| 29(c) | Amount **and** percentage of assets vulnerable to physical risk | **Percentage always; amount only if asset values are supplied** |
+| 29(c) | Amount **and** percentage of assets vulnerable to physical risk | **NOT REPORTED** — method deferred, see [vulnerability-definition.md](vulnerability-definition.md) |
 | 33–37 | Targets | **Not supplied** — entity-owned |
 
-29(c) is the paragraph that gets scrutinised, and it is the one our data cannot fully meet on
-its own: no climate model contains a carrying amount. Section 8 of the report prints the
-whole "not supplied" column rather than omitting it.
+29(c) is the paragraph that gets scrutinised, and it is the one we currently do not answer.
+Two separate obstacles: no climate model contains a carrying amount, and — the larger one —
+converting exposure into vulnerability is a judgement we have not made. The report states
+that position rather than publishing a provisional count. Section 8 likewise prints the whole
+"not supplied" column rather than omitting it.
 
 ## CDP question 3.1.1
 
@@ -80,8 +82,8 @@ carries the word.
 
 | Datapoint | Supported |
 |---|---|
-| Assets at material physical risk — count and share | yes |
-| Assets at material physical risk — monetary amount | only with supplied asset values |
+| Assets at material physical risk — count and share | **not yet** — requires an agreed definition |
+| Assets at material physical risk — monetary amount | **not yet** — needs the definition *and* asset values |
 | Disaggregation by acute and chronic | yes — `esrs_class` in the hazard taxonomy |
 | Location of significant assets by NUTS 3 | **no** — coordinates are delivered; no NUTS lookup exists here |
 | Short / medium / long term breakdown | yes |

@@ -501,27 +501,26 @@ def config_caveats(delivery: Delivery) -> List[dict]:
             )
         )
 
-    vuln = cfg["vulnerability"]
-    if str(vuln.get("source", "")).lower() == "default":
-        out.append(
-            _cav(
-                "THRESHOLD-DEFAULT",
-                SEVERITY_MUST,
-                "delivery",
-                "The threshold that decides which assets count as vulnerable is ours, not the customer's",
-                f"""
-                An asset is reported as vulnerable where its worst hazard reaches the
-                {vuln['threshold']}th percentile. There is no natural cut-point here: the
-                count of vulnerable assets is a monotone function of a number somebody
-                chose, and this one is our default ({vuln.get('basis', '')}). Counts at
-                {', '.join(str(t) for t in vuln.get('sensitivity', []))} are reported
-                alongside so the sensitivity is visible. The customer should set the
-                threshold that matches its own risk appetite and then this report should be
-                rebuilt.
-                """,
-                evidence="report_config.yaml vulnerability.source = default",
-            )
+    out.append(
+        _cav(
+            "VULNERABILITY-METRIC-DEFERRED",
+            SEVERITY_MUST,
+            "delivery",
+            "The headline disclosure metric — assets vulnerable to physical risk — is not reported",
+            """
+            IFRS S2 paragraph 29(c) and ESRS E1-9 both require the amount and percentage of
+            assets vulnerable to physical climate risk. This assessment does NOT report it.
+            What is measured here is exposure — where a site sits in the global distribution
+            of a modelled hazard — and vulnerability is a statement about susceptibility to
+            harm. Converting one into the other is a judgement about each asset type rather
+            than a calculation, and it has not been made. Reporting a provisional figure
+            would put a number nobody chose deliberately into a disclosure, so the section
+            states the position instead. Exposure level, portfolio rank and direction of
+            change are reported and are measured rather than inferred.
+            """,
+            evidence="report_config.yaml vulnerability block; see the report's section 6",
         )
+    )
 
     values = pd.to_numeric(delivery.assets.get("asset_value"), errors="coerce") \
         if "asset_value" in delivery.assets.columns else pd.Series(dtype=float)

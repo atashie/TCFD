@@ -264,7 +264,81 @@ def coverage_summary(delivery: Delivery, taxonomy: Optional[dict] = None) -> dic
 
 
 # ---------------------------------------------------------------------------------------
-# Vulnerability (IFRS S2 29(c))
+# Deferred decisions
+# ---------------------------------------------------------------------------------------
+#
+# A REPORT SECTION IS ALLOWED TO SAY "NOT YET DECIDED", AND SHOULD.
+#
+# The pressure on this pipeline is to fill every box a framework defines, because a complete
+# -looking report is what a customer expects to receive. That pressure is exactly what
+# produces a number nobody chose deliberately -- and once such a number is in a filing it is
+# indistinguishable from one that was reasoned about.
+#
+# So: where the method for translating our data into a framework's requirement has NOT been
+# thought through and agreed, the section states that plainly and reports nothing. Err
+# toward an explicit gap over a fast answer. A gap is a conversation; a wrong number is a
+# liability with the customer's name on it.
+#
+# Move an entry out of here only after the decision has actually been made WITH the user,
+# and record the decision where the code implements it.
+
+TBD_SECTIONS: Dict[str, dict] = {
+    "vulnerability_metric": {
+        "requirement": "IFRS S2 paragraph 29(c) / ESRS E1-9 — the amount and percentage of "
+                       "assets vulnerable to climate-related physical risks",
+        "why_deferred": (
+            "Our data measures EXPOSURE — where a site sits in the global distribution of a "
+            "modelled hazard — and 'vulnerable' is a statement about susceptibility to harm. "
+            "Converting one into the other is a judgement about each asset type, not a "
+            "calculation, and it has not been made."
+        ),
+        "decisions_outstanding": [
+            "What counts as vulnerable for each asset type. A timber stand at the 85th "
+            "percentile for drought may be well inside its normal operating range while a "
+            "data centre at the 60th is not, so a single portfolio-wide cut-point encodes an "
+            "assumption we have not tested.",
+            "Whether a global-relative rank is the right basis at all. The alternatives — "
+            "change from the site's own baseline, or an absolute physical threshold such as "
+            "a burnt-area fraction — answer materially different questions and would rank "
+            "the same portfolio differently.",
+            "How to combine hazards. Taking the worst treats them as interchangeable; any "
+            "weighting is a materiality judgement that belongs to the asset owner.",
+            "Whether a determination is meaningful when hazard coverage is uneven — cyclone "
+            "publishes no high-forcing scenario, and different asset types carry different "
+            "hazard sets, so assets are not being judged on a common basis.",
+            "Whether to report at all without asset values, given that the requirement asks "
+            "for a monetary amount and not only a count.",
+        ],
+        "reported_instead": (
+            "Exposure level per site and hazard, its rank within this portfolio, and its "
+            "direction of change — all of which are measured rather than inferred."
+        ),
+    },
+}
+
+
+def tbd_block(key: str) -> str:
+    """Render a deferred decision as a report section. Publishes no number."""
+    spec = TBD_SECTIONS[key]
+    items = "".join(f"<li>{esc(d)}</li>" for d in spec["decisions_outstanding"])
+    return (
+        '<div class="callout must">'
+        "<h4>Not yet determined — method to be agreed</h4>"
+        f"<p><strong>Requirement:</strong> {esc(spec['requirement'])}</p>"
+        f"<p>{esc(spec['why_deferred'])}</p>"
+        "<p><strong>Decisions outstanding:</strong></p>"
+        f"<ol>{items}</ol>"
+        f"<p><strong>Reported instead:</strong> {esc(spec['reported_instead'])}</p>"
+        "<p>This section is deliberately blank rather than populated with a provisional "
+        "figure. A count of vulnerable assets is a monotone function of a threshold "
+        "somebody chooses, and publishing one before that choice has been made and agreed "
+        "would put an unowned number into a disclosure.</p>"
+        "</div>"
+    )
+
+
+# ---------------------------------------------------------------------------------------
+# Exposure (the measured half of IFRS S2 29(c))
 # ---------------------------------------------------------------------------------------
 
 NOT_ASSESSED = "NOT_ASSESSED"
@@ -795,6 +869,10 @@ def _inline(text: str) -> str:
     return out
 
 
+#: A list marker is a bullet or number FOLLOWED BY WHITESPACE. Testing `startswith("*")`
+#: instead classifies `**Bold lead-in.**` as a list item and loses the paragraph.
+LIST_RE = re.compile(r"^(?:[-*+]\s+|\d+[.)]\s+)")
+
 LEADING_H2_RE = re.compile(r"\A\s*##\s+.*?$\n?", re.M)
 
 
@@ -890,28 +968,46 @@ def markdown(text: str) -> str:
                 i += 1
             out.append(f"<blockquote><p>{_inline(' '.join(block))}</p></blockquote>")
             continue
-        if re.match(r"^[-*]\s+", stripped) or re.match(r"^\d+[.)]\s+", stripped):
+        if LIST_RE.match(stripped):
             ordered = bool(re.match(r"^\d+[.)]\s+", stripped))
-            items = []
+            items: List[str] = []
             while i < len(lines):
                 s = lines[i].strip()
-                m2 = re.match(r"^(?:[-*]|\d+[.)])\s+(.*)$", s)
-                if not m2:
-                    break
-                items.append(f"<li>{_inline(m2.group(1))}</li>")
-                i += 1
+                m2 = re.match(r"^(?:[-*+]|\d+[.)])\s+(.*)$", s)
+                if m2:
+                    items.append(m2.group(1))
+                    i += 1
+                    continue
+                # A CONTINUATION line: non-blank, not a new item, not another block. The
+                # earlier version stopped here and let the rest of the item fall through to
+                # the paragraph branch, which split one bullet into a <li> plus a stray <p>.
+                if s and not s.startswith(("#", ">", "<!--")) and items:
+                    items[-1] = f"{items[-1]} {s}"
+                    i += 1
+                    continue
+                break
             tag = "ol" if ordered else "ul"
-            out.append(f"<{tag}>{''.join(items)}</{tag}>")
+            out.append(
+                f"<{tag}>" + "".join(f"<li>{_inline(it)}</li>" for it in items) + f"</{tag}>"
+            )
             continue
         para = []
-        while i < len(lines) and lines[i].strip() and not lines[i].strip().startswith(
-            ("#", ">", "-", "*", "<!--")
-        ) and not re.match(r"^\d+[.)]\s+", lines[i].strip()):
-            para.append(lines[i].strip())
+        while i < len(lines):
+            s = lines[i].strip()
+            if not s or s.startswith(("#", ">", "<!--")) or LIST_RE.match(s):
+                break
+            para.append(s)
             i += 1
         if para:
             out.append(f"<p>{_inline(' '.join(para))}</p>")
         else:
+            # Nothing matched and nothing consumed: emit the line rather than skipping it.
+            # The previous version advanced past any line it did not recognise, which
+            # silently DELETED every paragraph opening with bold text -- `**Finding.** ...`
+            # starts with an asterisk, was rejected as a list, rejected as a paragraph, and
+            # dropped. Losing a sentence out of a customer document is the worst failure
+            # this converter can have, so the fallback is always to render.
+            out.append(f"<p>{_inline(stripped)}</p>")
             i += 1
     return "\n".join(out)
 
@@ -923,6 +1019,61 @@ def markdown(text: str) -> str:
 
 def esc(value) -> str:
     return html.escape("" if value is None else str(value), quote=True)
+
+
+def assert_narrative_rendered(bodies: Dict[str, str], rendered_html: str) -> None:
+    """Every paragraph the author wrote must appear in the document.
+
+    A markdown converter that silently drops a line produces a document that looks finished
+    and is missing an argument -- and nothing else in this pipeline would notice, because
+    every remaining number is still correct. This shipped once: paragraphs opening with bold
+    text were classified as list items, rejected as lists, and discarded.
+
+    The check is on a distinctive prose fragment from each paragraph rather than the whole
+    string, since inline markup is transformed on the way through.
+    """
+    # Whitespace-INSENSITIVE comparison. Replacing a tag with a space is necessary (otherwise
+    # `a</p><p>b` becomes `ab`) but it also inserts a space wherever inline markup closes
+    # mid-sentence, so `…two sites</strong>, and…` renders as `two sites , and`. Comparing
+    # with spaces removed sidesteps every such difference; a 50-character probe cannot
+    # collide by accident.
+    def squash(text: str) -> str:
+        return re.sub(r"\s+", "", text)
+
+    visible = squash(re.sub(r"<[^>]+>", " ", rendered_html))
+    missing = []
+    for slot, body in bodies.items():
+        # LINE level, not paragraph level. Source lines are joined with single spaces on the
+        # way out, so each line's own text stays contiguous in the output -- whereas a
+        # paragraph-level probe spans list-item boundaries and reports false misses.
+        for line in body.split("\n"):
+            s = line.strip()
+            if not s or s.startswith(("#", ">", "<!--")):
+                continue
+            # Probe a run of text BETWEEN citation markers. A probe spanning one cannot
+            # match: the marker is stripped from the source but renders as a number, so
+            # "…derived , which removes…" would be compared against "…derived 12, which
+            # removes…" on a paragraph that is present.
+            cleaned = [
+                " ".join(
+                    html.unescape(
+                        re.sub(r"[*`_]|^\s*[-+]\s+|^\s*\d+[.)]\s+", "", frag)
+                    ).split()
+                )
+                for frag in re.split(r"\{\{cite:\d+\}\}", s)
+            ]
+            probe = max(cleaned, key=len) if cleaned else ""
+            if len(probe) < 25:
+                continue
+            if squash(probe[:50]) not in visible:
+                missing.append(f"{slot}: \"{probe[:60]}...\"")
+    if missing:
+        raise DeliveryError(
+            f"{len(missing)} narrative paragraph(s) did not reach the rendered report:\n"
+            + "\n".join(f"  - {m}" for m in missing[:8])
+            + "\nThe markdown converter dropped them. Do not ship a document that is "
+              "missing text the author wrote."
+        )
 
 
 def table(

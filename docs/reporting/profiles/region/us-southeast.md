@@ -2,7 +2,9 @@
 facet: region
 id: us-southeast
 name: US Southeast
-covers: [North Carolina, South Carolina, Georgia, Florida, Alabama, Mississippi, Louisiana, Arkansas, Tennessee, Virginia, East Texas]
+matches:
+  countries: [USA, United States, US]
+  states: [North Carolina, South Carolina, Georgia, Tennessee, Arkansas]
 confirmed_on: null
 sources:
   - id: jof-hurricane-wind-risk-forests

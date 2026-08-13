@@ -771,6 +771,33 @@ Stages 3 (reports) and 4 (caveats) were built on the IFRS S2 spine, mapped outwa
 
 ---
 
+### 2026-08-13: First Report Review — A Regional Narrative for the Wrong Region, a Metric That Should Not Have Been Published, and Two Figures Nobody Could Read
+
+The first generated reports were reviewed by a user. Every finding was a failure of the same kind: the pipeline produced something **plausible** where it should have produced something **true or nothing**.
+
+**1. The bespoke report described North Carolina for a portfolio spanning California, Alabama, Virginia and Bavaria.** The facet model allowed exactly one `region` profile, and nothing checked it against the delivered coordinates — so a single region's framing was applied to a two-continent portfolio and read as confident local expertise. Fixed structurally rather than by choosing better: **every facet now accepts a list, and `region` is validated against the data.** Each region profile declares a `matches:` block of countries and states, and `assert_region_coverage()` **refuses to build** when any location is uncovered. A region profile with no `matches.countries` is a load error, because it would match everything and silently defeat the check. Two bugs surfaced while testing it — an absent CSV column arrives as the float `nan` whose `str()` is the truthy `"nan"`, so every offshore site read as uncovered everywhere; and the pre-existing `us-southeast` profile had no `matches` block and therefore matched the entire world.
+
+**2. The vulnerable-asset count was withdrawn.** IFRS S2 29(c) asks for the amount and percentage of assets *vulnerable* to physical risk. The implementation called an asset vulnerable when its worst hazard reached the 80th percentile — but **`percentile` is a global-relative EXPOSURE rank and "vulnerable" is a claim about susceptibility to HARM**, and nothing in the pipeline connects them. The instability was visible in the output and was published anyway: on one portfolio **every asset was vulnerable at a threshold of 60 and none at 80**. The metric had a defined method, a sensitivity table and an independent verification path — everything except a reason to believe it measured vulnerability.
+
+**Rule created — a report section may report NOTHING, and should.** Deferred decisions live in `report_common.TBD_SECTIONS` and render through `tbd_block()`, which states the requirement, why it is deferred, the decisions outstanding, and what is reported instead. Both reports render the same block so they cannot describe one gap differently. The verifier **fails any report publishing a figure whose method is still deferred**, and flips automatically to "the published counts must match an independent recomputation" when the entry is removed. The pressure runs toward filling every box a framework defines, because a complete-looking report is what a customer expects; that pressure is exactly what produces a number nobody chose, and once it is in a filing it is indistinguishable from a reasoned one. **A gap is a conversation. A wrong number is a liability with the customer's name on it.**
+
+**3. Two figures were unreadable, and both had been "verified" by well-formedness checks.** The XML parsed, the values were correct, and nobody could read them:
+
+- **Bar labels clipped.** Site labels run to 54 characters ("Gulf Platform Alpha — Warehouse (Offshore supply base)") in a fixed 210-unit column, truncating precisely the part that distinguishes two assets at one site. Now wrapped to two lines with ellipsis beyond. SVG cannot measure text without a layout engine and there is no browser here, so `CHAR_WIDTH_EM` is an estimate deliberately erring narrow.
+- **Trend strips rendered as columns of `0.000`.** Slopes span three orders of magnitude between layers — cyclone tops out near 9e-4 per decade, wildfire reaches 3e-1 — and fixed decimal places erased whole figures. Each strip now picks its own factor so its limit lands in [1, 10) and states it on the axis (`×10⁻⁴`).
+
+**4. The markdown converter was silently DELETING author text.** Found only because the new region narrative used bold lead-ins. A paragraph opening `**Finding.** …` starts with an asterisk, was classified as a list item, rejected as a list (no space after the marker), rejected as a paragraph, and **dropped**. Multi-line list items were separately split into an `<li>` plus a stray `<p>`. The document looked finished and was missing arguments; every remaining number was still correct, so nothing else would have noticed. Fixed both, and added `assert_narrative_rendered()` — every source line of ≥25 characters must appear in the output, compared whitespace-insensitively on a fragment BETWEEN citation markers (stripping a marker leaves a gap the rendered text fills with a number, and replacing a tag with a space inserts spaces mid-sentence; both produced false misses before the comparison was made robust).
+
+**5. Scope prose was correct and the example was not.** `report_compliance.html` already read "6 assets at 5 locations in Germany, USA" — the country list was derived, not hardcoded. What was wrong was that a *second*, invented single-region example delivery had become the thing being reviewed. It was removed; the worked example is now the actual mixed-asset, multi-region portfolio.
+
+**What this round cost, and what it bought**: four new region profiles (`us-west-california`, `us-gulf-coast`, `us-mid-atlantic`, `central-europe`), three new asset profiles, and a new `annual-disclosure` use case — all grounded in cited sources, because the regional claims are the ones a reader checks. The Bavarian pairing turned out to be the strongest result in the portfolio: drought exposure diverges from 33.8 at low forcing to **97.4** at high, on the one hazard-and-asset combination with a documented mortality pathway (drought → bark beetle → spruce), while the productivity layer reads **8.2** at the same site and scenario because it contains no pest module. Both numbers correct, jointly meaningless without the caveat.
+
+**Standing limitation, unchanged**: no report has been rendered in a browser here. The clipped labels and unreadable trend axes were both caught by a human opening the file — **static checks confirmed the SVG was well-formed and told us nothing about whether it could be read.**
+
+**Files**: `scripts/utils/report_figures.py`, `scripts/utils/report_common.py`, `scripts/utils/report_profiles.py`, `scripts/generate_compliance_report.py`, `scripts/generate_bespoke_report.py`, `scripts/generate_delivery_caveats.py`, `scripts/test_customer_delivery.py`, `docs/reporting/`.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

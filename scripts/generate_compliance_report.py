@@ -58,6 +58,7 @@ from utils.report_common import (  # noqa: E402
     build_stamp,
     coverage_summary,
     customer_evidence,
+    tbd_block,
     document,
     esc,
     figure_block,
@@ -87,7 +88,7 @@ SECTIONS = [
     ("horizons", "3. Time horizons"),
     ("concentration", "4. Where physical risk concentrates"),
     ("scenarios", "5. Climate resilience and scenario analysis"),
-    ("metrics", "6. Assets vulnerable to physical climate risk"),
+    ("metrics", "6. Assets vulnerable to physical climate risk — method not yet agreed"),
     ("trend", "7. Direction of change"),
     ("entity", "8. Sections the entity must complete"),
     ("limitations", "9. Limitations and required disclosures"),
@@ -393,91 +394,63 @@ assumptions.</p>
 
 
 def sec_metrics(delivery: Delivery, vf: pd.DataFrame) -> str:
-    cfg = delivery.config["vulnerability"]
-    threshold = float(cfg["threshold"])
+    """IFRS S2 29(c) — DEFERRED.
+
+    An earlier version of this section published a vulnerable-asset count derived from a
+    percentile threshold. That was wrong, and wrong in a way that looked authoritative:
+    `percentile` is a global-relative EXPOSURE rank, "vulnerable" is a statement about
+    susceptibility to HARM, and no step in this pipeline connects the two. The threshold
+    behaved accordingly -- on one example portfolio every asset was vulnerable at 60 and none
+    at 80, which is a property of the cut-point rather than of the portfolio.
+
+    So the section reports nothing until the method has been agreed. See
+    `report_common.TBD_SECTIONS`.
+    """
     hz = horizon_pairs(delivery)
     tiers = [t for t in TIER_ORDER if t in set(vf["scenario_tier"])]
+    n_haz = len(hazard_layer_ids(delivery))
 
-    rows = []
-    for key, dec, label in hz:
-        for t in tiers:
-            r = vulnerability_rollup(delivery, t, dec, threshold=threshold, frame=vf)
-            cells = [
-                label,
-                TIER_LABELS[t],
-                r["n_assets_assessed"],
-                r["n_assets_vulnerable"],
-                F.fmt(r["pct_of_assessed_vulnerable"]) + "%"
-                if r["pct_of_assessed_vulnerable"] is not None else "—",
-                r["n_assets_not_assessed"],
-            ]
-            if r["monetary_available"]:
-                cells.append(
-                    f"{r['currency'] or ''} {F.fmt(r['amount_vulnerable'], 0)}".strip()
-                )
-            rows.append(cells)
-    headers = ["Horizon", "Forcing tier", "Assets assessed", "Vulnerable",
-               "% of assessed", "Not assessed"]
-    have_money = any(len(r) > 6 for r in rows)
-    if have_money:
-        headers.append("Amount vulnerable")
-
-    long_dec = hz[-1][1] if hz else max(delivery.decades)
-    worst_tier = tiers[-1] if tiers else "medium"
-    sens_rows = [
-        [
-            f"≥ {F.fmt(s['threshold'], 0)}" + (" (used)" if s["is_chosen"] else ""),
-            s["n_assets_vulnerable"],
-            F.fmt(s["pct_of_assessed_vulnerable"]) + "%"
-            if s["pct_of_assessed_vulnerable"] is not None else "—",
-        ]
-        for s in vulnerability_sensitivity(delivery, worst_tier, long_dec)
-    ]
+    coverage_notes = "".join(
+        f"<li><strong>{esc(TIER_LABELS[t])}:</strong> "
+        f"{n_haz - len(delivery.layers_absent_at_tier(t))} of {n_haz} hazards — "
+        + ", ".join(f"<code>{esc(l)}</code>" for l in delivery.layers_absent_at_tier(t))
+        + " publishes no scenario at this forcing level.</li>"
+        for t in tiers if delivery.layers_absent_at_tier(t)
+    )
+    values_supplied = bool(delivery.config.get("asset_values", {}).get("supplied"))
 
     body = f"""
-<p>IFRS S2 paragraph 29(c) requires the amount and percentage of assets vulnerable to
-climate-related physical risks. An asset is reported as <strong>vulnerable</strong> where its
-most exposed assessed hazard reaches the <strong>{F.fmt(threshold, 0)}th percentile</strong>
-of the global 2020s land distribution. Scenario codes within a tier are averaged per hazard;
-the maximum is then taken across hazards, because a single severe exposure makes an asset
-vulnerable and an average would dilute exactly that case.</p>
+<p>IFRS S2 paragraph 29(c) requires the <em>amount and percentage of assets vulnerable to
+climate-related physical risks</em>. <strong>This assessment does not yet report that
+metric.</strong></p>
 
-{table(headers, rows, align_right=(2, 3, 4, 5),
-       caption=f"Assets vulnerable to physical climate risk, threshold ≥ {F.fmt(threshold, 0)}th percentile.")}
+{tbd_block("vulnerability_metric")}
 
-<p><strong>Assets not assessed are excluded from the denominator.</strong> A site outside the
-modelled domain has not been found safe; it has not been examined, and counting it as
-not-vulnerable would understate the rate.</p>
-
-{"".join(
-    f"<p class='sub'><strong>{esc(TIER_LABELS[t])}:</strong> assessed over "
-    f"{len(hazard_layer_ids(delivery)) - len(delivery.layers_absent_at_tier(t))} of "
-    f"{len(hazard_layer_ids(delivery))} hazards — "
-    + ", ".join(f"<code>{esc(l)}</code>" for l in delivery.layers_absent_at_tier(t))
-    + " publishes no scenario at this forcing level, so the vulnerability determination at "
-      "this tier rests on fewer hazards than at the others and is not directly comparable "
-      "with them.</p>"
-    for t in tiers if delivery.layers_absent_at_tier(t)
-)}
-
-{callout(
-    "The vulnerability count depends on a threshold somebody chose",
-    "<p>There is no natural cut-point between vulnerable and not vulnerable. The count is a "
-    "monotone function of the threshold, so the same portfolio at the same horizon produces "
-    "the counts below. This sensitivity is reported so that the choice is visible rather "
-    "than embedded.</p>"
-    + table(["Threshold", "Assets vulnerable", "% of assessed"], sens_rows, align_right=(1, 2),
-            caption=f"Sensitivity of the vulnerable count, {TIER_LABELS[worst_tier].lower()}, {long_dec}s."),
-    kind="must",
-)}
+<p>What <em>is</em> measured, and reported elsewhere in this document:</p>
+<ul>
+  <li><strong>Exposure level</strong> per site and hazard, ranked against the global 2020s
+      land distribution — section 4.</li>
+  <li><strong>Direction of change</strong> at each site, with the robustness of each
+      trend — section 7.</li>
+  <li><strong>Which sites could not be assessed at all</strong>, kept separate from sites
+      assessed and found less exposed — sections 4 and 9.</li>
+</ul>
 """
-    if not have_money:
+    if coverage_notes:
+        body += (
+            "<p>A further reason this determination is not straightforward for this "
+            "portfolio: hazard coverage is uneven across forcing tiers, so assets are not "
+            "compared on a common basis.</p>"
+            f"<ul>{coverage_notes}</ul>"
+        )
+    if not values_supplied:
         body += callout(
-            "The monetary half of this metric cannot be reported",
-            """<p>IFRS S2 29(c) and ESRS E1-9 both require a monetary <em>amount</em>, not
-only a count. No climate model can supply it. Provide each asset's carrying amount, currency,
-valuation date and valuation basis with the site list and this table will report the amount
-and percentage of value at risk alongside the counts.</p>""",
+            "Asset values were not supplied",
+            """<p>Even once the method is agreed, the requirement asks for a monetary
+<em>amount</em> and not only a count, and no climate model can supply it. Provide each
+asset's carrying amount, currency, valuation date and valuation basis with the site list.
+The valuation basis matters as much as the figure — book, insured, market and replacement
+values give four different answers to the same question.</p>""",
             kind="must",
         )
     return body
@@ -633,7 +606,8 @@ def sec_mapping(delivery: Delivery, cov: dict) -> str:
             ["10(d)", "Definitions of short, medium and long term", "Section 3"],
             ["13(b)", "Where risks are concentrated in the business model", "Section 4"],
             ["22(a)–(b)", "Climate resilience assessed with scenario analysis; scenarios, sources, horizons", "Section 5"],
-            ["29(c)", "Amount and percentage of assets vulnerable to physical risks", "Section 6"],
+            ["29(c)", "Amount and percentage of assets vulnerable to physical risks",
+             "Section 6 — NOT REPORTED, method not yet agreed"],
             ["28–29", "Basis of preparation, method and limitations of the metrics", "Sections 1, 9"],
             ["5–7, 24–26, 14–21, 33–37", "Governance, risk management, financial effects, targets", "Section 8 — not supplied"],
         ],
@@ -659,10 +633,10 @@ def sec_mapping(delivery: Delivery, cov: dict) -> str:
     esrs = table(
         ["ESRS E1-9 datapoint", "Supported", "Note"],
         [
-            ["Assets at material physical risk — count and share", "Yes", "Section 6"],
-            ["Assets at material physical risk — monetary amount",
-             "Only if asset values are supplied",
-             "Requires Asset_Value with the site list"],
+            ["Assets at material physical risk — count and share", "Not yet",
+             "Section 6 — requires an agreed definition of 'at material risk'"],
+            ["Assets at material physical risk — monetary amount", "Not yet",
+             "Needs both the definition above and Asset_Value with the site list"],
             ["Disaggregation by acute and chronic", "Yes", "Class column in sections 2 and 10"],
             ["Location of significant assets by NUTS 3 code", "No",
              "Decimal coordinates are delivered for every site; NUTS classification is not applied"],
@@ -675,7 +649,8 @@ def sec_mapping(delivery: Delivery, cov: dict) -> str:
     sb261 = table(
         ["California SB 261", "Where"],
         [
-            ["Climate-related financial risk, physical — disclosure", "Sections 2, 4, 6"],
+            ["Climate-related financial risk, physical — exposure disclosed", "Sections 2, 4, 7"],
+            ["Assets vulnerable — quantified", "Section 6 — not yet reported"],
             ["Framework used", "IFRS S2, as an accepted framework under the statute"],
             ["Measures adopted to reduce and adapt to risk", "Section 8 — entity-owned"],
             ["Gaps in disclosure and plans to address them", "Sections 8, 9, 10"],
@@ -722,8 +697,7 @@ def sec_data(delivery: Delivery, vf: pd.DataFrame) -> str:
                         TIER_LABELS[t],
                         r["worst_hazard"] or "—",
                         band_cell(r["worst_percentile"]),
-                        "Vulnerable" if r["status"] == VULNERABLE
-                        else ("Not assessed" if r["status"] == NOT_ASSESSED else "Not vulnerable"),
+                        f"{int(r['n_hazards_assessed'])} of {int(r['n_hazards_expected'])}",
                     ]
                 )
     return f"""
@@ -732,10 +706,11 @@ the per-asset summary; <code>values.csv</code> in the same delivery folder carri
 result for every hazard, scenario and decade, together with confidence intervals, both slope
 estimators and per-cell ensemble depth.</p>
 {table(
-    ["Location", "Asset", "Coordinates", "Horizon", "Tier", "Worst hazard", "Percentile", "Determination"],
+    ["Location", "Asset", "Coordinates", "Horizon", "Tier", "Most exposed hazard",
+     "Percentile", "Hazards assessed"],
     rows,
     align_right=(6,),
-    caption="Per-asset results at the three reporting horizons.",
+    caption="Per-asset exposure at the three reporting horizons. Percentile is a global-relative exposure rank, not a vulnerability determination.",
 )}
 """
 

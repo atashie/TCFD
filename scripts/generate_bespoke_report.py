@@ -56,11 +56,13 @@ from utils.report_common import (  # noqa: E402
     Delivery,
     assert_baseline_tier_equality,
     assert_caveats_present,
+    assert_narrative_rendered,
     band_cell,
     build_stamp,
     check_narrative,
     coverage_summary,
     customer_evidence,
+    tbd_block,
     drop_leading_heading,
     number_citations,
     render_references,
@@ -114,8 +116,8 @@ def callout(title: str, body_html: str, kind: str = "") -> str:
 # ---------------------------------------------------------------------------------------
 
 
-def scaffold_narrative(delivery: Delivery, profiles: Dict[str, Optional[P.Profile]]) -> str:
-    chosen = ", ".join(f"{f}={p.id}" for f, p in profiles.items() if p)
+def scaffold_narrative(delivery: Delivery, profiles: Dict[str, List[P.Profile]]) -> str:
+    chosen = ", ".join(f"{f}={p.id}" for f, g in profiles.items() for p in g)
     out = [
         f"<!-- narrative for {delivery.customer} — {delivery.path.name} -->",
         f"<!-- profiles: {chosen} -->",
@@ -224,20 +226,19 @@ def sec_figures(delivery: Delivery, vf: pd.DataFrame) -> str:
     )
 
     detail = table(
-        ["Asset", "Worst hazard", "Percentile", "Determination", "Hazards assessed"],
+        ["Asset", "Most exposed hazard", "Percentile", "Hazards assessed"],
         [
             [
                 delivery.asset_label(r["asset_id"]),
                 r["worst_hazard"] or "—",
                 band_cell(r["worst_percentile"]),
-                "Vulnerable" if r["status"] == VULNERABLE
-                else ("Not assessed" if r["status"] == NOT_ASSESSED else "Not vulnerable"),
                 f"{int(r['n_hazards_assessed'])} of {int(r['n_hazards_expected'])}",
             ]
             for _, r in sel.iterrows()
         ],
         align_right=(2,),
-        caption=f"{TIER_LABELS[tier]}, {long_dec}s.",
+        caption=f"{TIER_LABELS[tier]}, {long_dec}s. Exposure rank, not a vulnerability "
+                f"determination — see the compliance report, section 6.",
     )
     absent = delivery.layers_absent_at_tier(tier)
     gap = (
@@ -275,6 +276,11 @@ def sec_gaps(delivery: Delivery, cov: dict) -> str:
                 kind="must",
             )
         )
+    # Structural, not narrative. A deferred method is a disclosure obligation, and both
+    # reports must state it identically rather than depending on whoever wrote the prose
+    # having remembered to.
+    out.append("<h3>The vulnerability metric</h3>")
+    out.append(tbd_block("vulnerability_metric"))
     out.append("<h3>Hazards outside this assessment</h3>")
     out.append(
         table(
@@ -293,11 +299,10 @@ def sec_gaps(delivery: Delivery, cov: dict) -> str:
     return "\n".join(out)
 
 
-def sec_sources(delivery: Delivery, profiles: Dict[str, Optional[P.Profile]]) -> str:
+def sec_sources(delivery: Delivery, profiles: Dict[str, List[P.Profile]]) -> str:
     sources = list(delivery.dossier.get("sources") or [])
-    for p in profiles.values():
-        if p:
-            sources.extend(p.sources)
+    for p in P.all_profiles(profiles):
+        sources.extend(p.sources)
     seen, rows = set(), []
     for s in sources:
         sid = str(s.get("id", ""))
@@ -351,7 +356,7 @@ def sec_sources(delivery: Delivery, profiles: Dict[str, Optional[P.Profile]]) ->
 # ---------------------------------------------------------------------------------------
 
 
-def build_report(delivery: Delivery, profiles: Dict[str, Optional[P.Profile]]) -> str:
+def build_report(delivery: Delivery, profiles: Dict[str, List[P.Profile]]) -> str:
     narrative_path = delivery.path / NARRATIVE_FILENAME
     if not narrative_path.exists():
         raise DeliveryError(
@@ -406,7 +411,13 @@ def build_report(delivery: Delivery, profiles: Dict[str, Optional[P.Profile]]) -
 
     body = "\n".join(body_parts)
     stamp = build_stamp(body, Path(__file__).read_text())
-    prof_line = " · ".join(f"{p.name}" for p in profiles.values() if p)
+    # Region first and in full: the subtitle is where a reader checks that the document
+    # is about their sites. A single region named for a multi-region portfolio is the most
+    # visible way to be wrong.
+    prof_line = " · ".join(
+        p.name for facet in ("asset", "region", "persona", "vertical", "use_case", "company")
+        for p in profiles.get(facet, [])
+    )
     html = document(
         title="Physical Climate Risk — Portfolio Review",
         subtitle=prof_line or "Prepared for this portfolio",
@@ -416,6 +427,7 @@ def build_report(delivery: Delivery, profiles: Dict[str, Optional[P.Profile]]) -
         toc=toc,
     )
     assert_caveats_present(delivery, html)
+    assert_narrative_rendered(bodies, html)
     return html
 
 
@@ -439,6 +451,8 @@ def main() -> int:
     try:
         delivery = load_delivery(args.delivery)
         profiles = P.load_selected(delivery.config)
+        # Region is the one facet the DATA determines. Checked before anything is written.
+        P.assert_region_coverage(delivery.locations, profiles["region"])
 
         if args.scaffold:
             n = delivery.path / NARRATIVE_FILENAME

@@ -123,6 +123,63 @@ def band_var(percentile: Optional[float]) -> str:
     return "var(--ink-axis)" if idx is None else f"var(--risk-{idx + 1})"
 
 
+#: Average glyph advance as a fraction of font-size for the UI stack, used to wrap labels.
+#: An estimate is the only option -- SVG cannot measure text without a layout engine, and
+#: there is no browser here. Erring narrow costs a little whitespace; erring wide clips the
+#: label, which is the failure this replaces.
+CHAR_WIDTH_EM = 0.55
+
+SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
+def _wrap(text: str, width_px: float, font_size: float, max_lines: int = 2) -> List[str]:
+    """Wrap a label to fit a fixed column, breaking on spaces, ellipsising past max_lines.
+
+    Site labels routinely run past 50 characters ("Gulf Platform Alpha — Warehouse (Offshore
+    supply base)") and a fixed single-line column silently truncates them at the plot edge,
+    which loses exactly the part that distinguishes one asset at a site from another.
+    """
+    max_chars = max(8, int(width_px / (font_size * CHAR_WIDTH_EM)))
+    words, lines, cur = str(text).split(), [], ""
+    for w in words:
+        trial = f"{cur} {w}".strip()
+        if len(trial) <= max_chars or not cur:
+            cur = trial
+        else:
+            lines.append(cur)
+            cur = w
+            if len(lines) == max_lines:
+                break
+    if cur and len(lines) < max_lines:
+        lines.append(cur)
+    if not lines:
+        return [""]
+    consumed = len(" ".join(lines).split())
+    if consumed < len(words):
+        tail = lines[-1]
+        lines[-1] = (tail[: max_chars - 1] + "…") if len(tail) >= max_chars - 1 else tail + " …"
+    return lines
+
+
+def _scale_for(limit: float) -> Tuple[float, str]:
+    """Pick a display multiplier so small slopes stop rendering as 0.000.
+
+    Returns (multiplier, suffix). Slopes here span three orders of magnitude between layers
+    -- cyclone tops out around 9e-4 per decade while wildfire reaches 3e-1 -- so a fixed
+    number of decimal places renders whole figures as columns of zeros. Each figure picks
+    its own factor and states it in the axis label, which is the same convention a scientific
+    axis uses.
+    """
+    if not limit or limit != limit or limit <= 0:
+        return 1.0, ""
+    import math
+
+    if 0.1 <= limit < 10000:
+        return 1.0, ""
+    exp = -int(math.floor(math.log10(limit)))
+    return 10.0 ** exp, f" ×10{str(-exp).translate(SUPERSCRIPT)}"
+
+
 def _marker(shape: str, cx: float, cy: float, size: float, fill: str) -> str:
     """One marker in the tier's assigned SHAPE. A 2px surface ring keeps overlapping
     markers separable where two tiers cross."""
@@ -182,7 +239,12 @@ def ranked_bar(
     A row with no value draws no bar and is annotated, rather than drawing a zero-length bar
     that reads as "assessed, and found to be nil".
     """
-    row_h, gap, pad_top, pad_bottom = 26, 6, 34, 30
+    label_size = 11.5
+    wrapped = [_wrap(label, label_width - 8, label_size) for label, _ in rows]
+    n_lines = max((len(w) for w in wrapped), default=1)
+    line_h = 13.5
+    row_h = max(26, n_lines * line_h + 8)
+    gap, pad_top, pad_bottom = 7, 34, 30
     plot_left = label_width
     plot_right = FIG_WIDTH - 58
     plot_w = plot_right - plot_left
@@ -206,10 +268,14 @@ def ranked_bar(
 
     for i, (label, value) in enumerate(rows):
         y = pad_top + i * (row_h + gap)
-        out.append(_text(0, y + row_h * 0.68, label, cls="fig-label", size=12))
+        lines = wrapped[i]
+        # Vertically centre the wrapped block against the bar.
+        first = y + row_h / 2 - (len(lines) - 1) * line_h / 2 + 4
+        for k, line in enumerate(lines):
+            out.append(_text(0, first + k * line_h, line, cls="fig-label", size=label_size))
         if value is None or value != value:
             out.append(
-                _text(plot_left + 4, y + row_h * 0.68, "not assessed at this site",
+                _text(plot_left + 4, y + row_h * 0.62, "not assessed at this site",
                       cls="fig-null", size=11)
             )
             continue
@@ -228,7 +294,7 @@ def ranked_bar(
             f'height="{row_h}" fill="{fill}"/>'
         )
         out.append(
-            _text(plot_left + w + 6, y + row_h * 0.68, fmt(value), cls="fig-value", size=12)
+            _text(plot_left + w + 6, y + row_h * 0.62, fmt(value), cls="fig-value", size=12)
         )
 
     out.append(
@@ -420,8 +486,14 @@ def trend_strip(
     if not finite:
         return empty_figure(title, "No slope values available for this selection.")
     limit = max(abs(v) for v in finite) or 1.0
-    row_h, gap, pad_top, pad_bottom, label_width = 24, 6, 34, 42, 210
-    plot_left, plot_right = label_width, FIG_WIDTH - 66
+    scale, scale_suffix = _scale_for(limit)
+
+    label_width, label_size, line_h = 236, 11.5, 13.5
+    wrapped = [_wrap(label, label_width - 8, label_size) for label, _v, _a in rows]
+    n_lines = max((len(w) for w in wrapped), default=1)
+    row_h = max(24, n_lines * line_h + 6)
+    gap, pad_top, pad_bottom = 7, 34, 42
+    plot_left, plot_right = label_width, FIG_WIDTH - 76
     mid = (plot_left + plot_right) / 2
     half = (plot_right - plot_left) / 2
     height = pad_top + len(rows) * (row_h + gap) + pad_bottom
@@ -449,9 +521,12 @@ def trend_strip(
 
     for i, (label, value, agree) in enumerate(rows):
         y = pad_top + i * (row_h + gap)
-        out.append(_text(0, y + row_h * 0.7, label, cls="fig-label", size=12))
+        lines = wrapped[i]
+        first = y + row_h / 2 - (len(lines) - 1) * line_h / 2 + 4
+        for k, line in enumerate(lines):
+            out.append(_text(0, first + k * line_h, line, cls="fig-label", size=label_size))
         if value is None or value != value:
-            out.append(_text(mid + 6, y + row_h * 0.7, "no trend published",
+            out.append(_text(mid + 6, y + row_h * 0.65, "no trend published",
                              cls="fig-null", size=11))
             continue
         w = abs(float(value)) / limit * half
@@ -468,13 +543,14 @@ def trend_strip(
             )
         anchor_x = mid + w + 6 if value >= 0 else mid - w - 6
         out.append(
-            _text(anchor_x, y + row_h * 0.7, fmt(value, 3),
+            _text(anchor_x, y + row_h * 0.65, fmt(float(value) * scale, 2),
                   anchor="start" if value >= 0 else "end", cls="fig-value", size=11)
         )
 
     out.append(
         _text(0, height - 22,
-              f"Slope in {units}; axis symmetric about zero at ±{fmt(limit, 3)}",
+              f"Slope in {units}{scale_suffix}; axis symmetric about zero at "
+              f"±{fmt(limit * scale, 2)}",
               cls="fig-axis-title", size=11)
     )
     out.append(
@@ -483,9 +559,13 @@ def trend_strip(
               cls="fig-axis-title", size=11)
     )
     desc = "; ".join(
-        f"{lab} {fmt(v, 3)}{'' if a is not False else ' (not robust)'}" for lab, v, a in rows
+        f"{lab} {fmt((v * scale) if v is not None and v == v else v, 2)}"
+        f"{'' if a is not False else ' (not robust)'}"
+        for lab, v, a in rows
     )
-    return _frame(FIG_WIDTH, height, title, f"Slopes in {units}. {desc}", "".join(out))
+    return _frame(
+        FIG_WIDTH, height, title, f"Slopes in {units}{scale_suffix}. {desc}", "".join(out)
+    )
 
 
 def empty_figure(title: str, reason: str) -> str:

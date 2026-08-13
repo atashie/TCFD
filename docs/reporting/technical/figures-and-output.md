@@ -63,6 +63,15 @@ Rules the module already enforces, which you should not undo:
   fails. These are the accessibility channel, not decoration.
 - **Missing points break a line rather than interpolating.** An interpolated segment through
   a decade a layer does not publish is a fabricated number in a figure.
+- **Labels wrap to two lines and ellipsise past that.** Site labels routinely exceed 50
+  characters and a fixed single-line column silently truncated exactly the part that
+  distinguishes two assets at one site. SVG cannot measure text without a layout engine and
+  there is no browser here, so `CHAR_WIDTH_EM` is an estimate deliberately erring narrow.
+- **`trend_strip` rescales per figure.** Slopes span three orders of magnitude between
+  layers — cyclone tops out near 9e-4 per decade while wildfire reaches 3e-1 — so fixed
+  decimal places rendered whole figures as columns of `0.000`. Each figure picks a factor so
+  its limit lands in [1, 10) and states it on the axis (`×10⁻⁴`), the same convention a
+  scientific axis uses.
 - **A figure that cannot be drawn says why.** An empty panel is indistinguishable from a
   rendering bug, and that ambiguity has already produced bug reports against the dashboard.
 - **`trend_strip` hatches non-robust bars.** There is no p-value here; estimator disagreement
@@ -107,3 +116,18 @@ converter whose grammar fits on one screen cannot surprise a document filed with
 
 **Escaping happens before markup, never after.** A customer-supplied name containing markup
 must render as text.
+
+Two failures this converter has already had, both of which DELETED author text while leaving
+a document that looked finished:
+
+- a paragraph opening `**Bold lead-in.** …` was classified as a list item (it starts with an
+  asterisk), rejected as a list, rejected as a paragraph, and dropped. A list marker is a
+  bullet **followed by whitespace** — `LIST_RE` — and the paragraph branch now falls through
+  to rendering rather than skipping anything it does not recognise.
+- a multi-line list item was split into an `<li>` plus a stray `<p>`. Continuation lines now
+  fold into the current item.
+
+`assert_narrative_rendered()` is the backstop: every source line of at least 25 characters
+must appear in the output. It compares whitespace-insensitively on a fragment BETWEEN citation
+markers, because stripping a marker leaves a gap the rendered text fills with a number, and
+replacing a tag with a space inserts spaces mid-sentence.

@@ -52,6 +52,14 @@ decided on it.
 
 ## The claim list
 
+### Not currently reported at all
+
+- **A count or percentage of assets vulnerable to physical risk.** The method is deferred —
+  see [../compliance/vulnerability-definition.md](../compliance/vulnerability-definition.md).
+  `percentile` is a global-relative exposure rank and "vulnerable" is a statement about
+  susceptibility to harm; nothing here connects them. The verifier fails any report that
+  publishes the figure while the entry sits in `TBD_SECTIONS`.
+
 ### Never claim
 
 - An expected financial loss, a loss probability, a return impact, or a valuation effect.
@@ -74,7 +82,6 @@ decided on it.
 
 | Claim | Required qualification |
 |---|---|
-| a count of vulnerable assets | the threshold, in the same sentence |
 | any portfolio percentage | that it is count-weighted, unless asset values were supplied |
 | a cross-tier comparison | the balanced panel it was computed over |
 | a comparison of two sites | that both were assessed on the same hazard set |

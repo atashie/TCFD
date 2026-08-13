@@ -43,6 +43,26 @@ without them, and `test_customer_delivery.py` re-checks afterwards. Generating c
 would mean each report derived its own list, and the one thing a caveat list must not do is
 differ between two documents describing one delivery.
 
+## Say "not yet decided" rather than fill the box
+
+**A report section is allowed to report nothing, and should, wherever the method for
+translating our data into a framework's requirement has not been thought through and agreed
+with the user.**
+
+The pressure runs the other way. A complete-looking report is what a customer expects to
+receive, and that pressure is exactly what produces a number nobody chose deliberately —
+which, once it is in a filing, is indistinguishable from a reasoned one.
+
+Deferred decisions live in `report_common.TBD_SECTIONS` and render through `tbd_block()`,
+which states the requirement, why it is deferred, the decisions outstanding, and what is
+reported instead. Both reports render the same block, so they cannot describe the same gap
+differently. The verifier enforces the deferral: while an entry is in `TBD_SECTIONS`, a
+report that publishes the corresponding figure **fails**.
+
+Currently deferred: **the vulnerable-asset count** (IFRS S2 29(c) / ESRS E1-9). See
+[compliance/vulnerability-definition.md](compliance/vulnerability-definition.md) for what was
+tried, why it was wrong, and what has to be settled.
+
 ## The composition model
 
 A report should be specific to one **asset × region × persona × vertical × company × use
@@ -52,6 +72,19 @@ and four use cases is four thousand documents.
 So the library holds **one short profile per value of each facet** — `timber-land-loblolly`,
 `us-southeast`, `sustainability-team` — and a report selects one from each. Sixty files
 cover a million combinations. Facet selections live in the delivery's `report_config.yaml`.
+
+**Every facet accepts a list**, and most portfolios need one. The worked example carries
+three asset profiles and four region profiles, because it holds timber, warehouses and a data
+centre across California, the Gulf coast, the mid-Atlantic and Bavaria.
+
+**Region is the one facet the DATA determines, and it is validated.** Each region profile
+declares a `matches:` block of countries and states; `assert_region_coverage()` checks every
+delivered location against the selected profiles and **refuses to build** if any is
+uncovered. A report whose regional context does not match the sites it describes is
+confidently wrong about the thing a reader checks first — and describing a portfolio spanning
+two continents with one region's framing is the specific failure this prevents. A region
+profile without a `matches:` block is a load error, because it would match everything and
+silently defeat the check.
 
 `company` is different in kind. It is researched per engagement and lives in the delivery's
 `dossier.yaml`; a repeat customer earns a company profile seeded from that dossier.
