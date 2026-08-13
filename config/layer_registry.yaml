@@ -1,0 +1,143 @@
+# TCFD layer registry -- the delivery-facing catalog of shipped hazard layers.
+#
+# THIS FILE NEVER RESTATES A FACT THE NetCDF ALREADY CARRIES.
+#
+# Units, decadal_statistic, percentile_direction, field_nature, ensemble composition,
+# scenarios, decades and every caveat live in the processed file's global attributes and
+# are read from it at delivery time. Duplicating them here would create a second source of
+# truth that drifts silently the moment a layer is reprocessed. What this registry holds is
+# only what the file CANNOT say about itself:
+#
+#   folder / file_prefix   where the layer lives on disk
+#   hazard / measure       the customer-facing label for the hazard
+#   status                 preferred | alternate | superseded | blocked
+#   recommended_slope      which of the two slopes to READ (see below)
+#   qa_reviewed_on         date a HUMAN read the QA warnings and viewed the maps
+#
+# `qa_reviewed_on: null` means nobody has confirmed that review. It is null on every layer
+# below, and the delivery surfaces it as "NOT CONFIRMED" in layers.csv and as a warning in
+# the delivered README rather than staying quiet. Passing the output contract means a file
+# is SHAPED right, not that its input is about what its name says -- both sugarcane layers
+# passed every check and were meaningless. Set the date only after actually doing it.
+#
+# Scenarios are NEVER listed here. They are globbed from disk per GUARDRAILS.md §3 --
+# a hardcoded scenario list once made 25% of processed data invisible.
+#
+# ---------------------------------------------------------------------------------------
+# recommended_slope
+# ---------------------------------------------------------------------------------------
+# values.csv carries BOTH ols_slope and sen_slope, so nothing is hidden. This field tells a
+# downstream reader which one is trustworthy on THIS layer, because the two estimators fail
+# in opposite regimes (OUTPUT-SPEC.md, "The two slopes"):
+#
+#   - sen_slope collapses to exactly 0 on zero-inflated hazards
+#   - ols_slope absorbs member level offsets as trend when coverage is uneven
+#
+# Every rationale below is MEASURED, not asserted -- the sen==0 share and the sign-agreement
+# share are computed on ACTIVE cells only (either slope non-zero) at the final decade, which
+# is the view OUTPUT-SPEC requires. Judging on all cells dilutes both figures with ocean and
+# with permanently-zero land and produces the opposite conclusion.
+#
+# Re-measure with: scripts/generate_customer_delivery.py --measure-slopes
+
+registry_version: 1
+measured_on: "2026-08-12"
+processed_root: data/processed
+
+layers:
+
+  drought-3b:
+    folder: drought-isimip3b_driedarea_annual
+    file_prefix: driedarea
+    hazard: Drought
+    hazard_measure: Drought exposure frequency
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on 100.0% of active cells (2090s, 61,810 active of 63,455 finite;
+      measured 2026-08-12). Sign agreement 0.0%. Sen carries no signal on this layer.
+    delivery_note: >-
+      Measures DEPARTURE FROM A FIXED HISTORICAL REFERENCE, not aridity. A permanently arid
+      cell with a stable regime scores LOW. Must be stated in any customer narrative.
+
+  drought-2b:
+    folder: drought_led_annual
+    file_prefix: led
+    hazard: Drought
+    hazard_measure: Drought exposure frequency (ISIMIP2b/RCP)
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on 100.0% of active cells (2090s, 66,741 active of 68,116 finite;
+      measured 2026-08-12). Sign agreement 0.0%.
+    delivery_note: >-
+      SIBLING of drought-3b, not a superseded version -- deeper ensemble (31 members,
+      8 impact models) against older CMIP5 scenarios. Not selected by default: the standing
+      preference is the more recent / more robust option, which is drought-3b. Select
+      explicitly when RCP scenarios or ensemble depth is the requirement. Measures departure
+      from PREINDUSTRIAL, not aridity.
+
+  cyclone:
+    folder: cyclone_let_annual
+    file_prefix: let
+    hazard: Tropical cyclone
+    hazard_measure: Land area fraction exposed to tropical cyclones
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on 97.4% of active cells (2090s, 20,337 active of 68,249 finite;
+      measured 2026-08-12). Sign agreement 2.5%.
+    delivery_note: >-
+      SINGLE impact model (ke-tg-meanfield), so the CI is inter-GCM spread only and carries
+      NO structural model uncertainty. Spatially smoothed with an L=2.5 kernel -- a declared
+      deviation -- because the raw field is one-cell-wide storm tracks. Only ISIMIP2b/RCP
+      exists; there is no SSP re-issue of TC exposure.
+
+  wildfire:
+    folder: wildfire-isimip3b_burntarea-total_annual
+    file_prefix: burntarea
+    hazard: Wildfire
+    hazard_measure: Annual burnt area
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on 74.0% of active cells (2090s, 64,039 active of 70,849 finite;
+      measured 2026-08-12). Sign agreement 22.6%. Higher than the layer's 29.2% grid-level
+      zero fraction would suggest -- the collapse is in the year-pair differences, not the
+      values, which is exactly why this is measured rather than inferred from field_nature.
+    delivery_note: >-
+      Values are NOT clipped at 100%: a cell that reburns within a year can legitimately
+      exceed full coverage (measured annual maxima up to ~575% for elm-eca).
+
+  conifer-npp:
+    folder: conifer-temperate_npp-tempnle_annual
+    file_prefix: npp-tempnle
+    hazard: Timber productivity
+    hazard_measure: Temperate conifer stand net primary productivity
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: sen_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on only 2.1% of active cells (2090s, 25,603 active of 25,714 finite;
+      measured 2026-08-12) and sign agreement is 87.9%. The only shipped layer where the
+      robust estimator is the correct read.
+    delivery_note: >-
+      higher_is_better -- the percentile is ALREADY INVERTED in the file, so rising
+      productivity reads as falling risk. Reported PER TILE (per unit conifer-stand area)
+      behind a 2%-cover presence mask, so a site with no modelled conifer stand returns
+      OFF_LAYER_MASK rather than zero. Rising NPP is partly a CO2-fertilisation response and
+      that caveat belongs in the narrative.
+
+# Layers refused by the loader. A folder carrying INVALID-DO-NOT-USE.md is ALSO refused
+# automatically, so this list is belt-and-braces rather than the only guard.
+blocked:
+  sugarcane_yield-sug-firr_annual: >-
+    WITHDRAWN 2026-08-11, upstream data defect. ISIMIP2b LPJmL simulates no sugarcane in the
+    sugarcane belt (Sao Paulo, Uttar Pradesh, Queensland, Florida all sentinel-zero). Passes
+    the output contract and means nothing.
+  sugarcane_yield-sug-noirr_annual: >-
+    WITHDRAWN 2026-08-11, same upstream data defect as the irrigated variant.

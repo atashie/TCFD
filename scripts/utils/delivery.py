@@ -1,0 +1,1135 @@
+"""Customer-delivery extraction: processed TCFD layers -> a normalized CSV star schema.
+
+This is the DETERMINISTIC half of the customer workflow. It takes a list of
+location-asset rows, resolves each asset to its hazard layers via the asset catalog, pulls
+every contract metric out of each layer at each point, and writes a normalized set of CSVs.
+No scoring, no ranking, no narrative -- those belong to the report workflow downstream.
+
+OUTPUT (star schema, chosen by the user 2026-08-12 -- "no redundant columns")
+
+    locations.csv   location_id, name, lat, lon, country, state, city, region, subregion
+    assets.csv      asset_id, location_id, asset_type, sub_asset_unit
+    layers.csv      layer_id + everything read back OUT of the processed NetCDF
+    values.csv      asset_id, layer_id, scenario, decade + the ten metrics
+    manifest.json   provenance: source files, mtimes, sizes, extraction parameters
+    README.md       how to read the delivery
+
+Location metadata is written once in locations.csv, layer metadata once in layers.csv, and
+values.csv is pure keys plus measurements.
+
+THREE THINGS THAT ARE EASY TO GET WRONG HERE
+--------------------------------------------
+
+1. DO NOT RE-INVERT THE PERCENTILE. Every layer following OUTPUT-SPEC.md has already
+   applied the `higher_is_better` inversion when it wrote the file -- its
+   `percentile_baseline` attribute says so explicitly. Calling
+   `spatial_extract.apply_percentile_inversion()` on a current-contract layer would invert a
+   second time and silently reverse the risk ranking of every conifer-NPP row. That function
+   exists for pre-contract layers only. `percentile_direction` travels into layers.csv as
+   documentation of what was ALREADY done, never as an instruction to do it here.
+
+2. THE SLOPES ARE ALREADY PER DECADE ON EVERY SHIPPED LAYER. OUTPUT-SPEC.md fits per YEAR
+   and requires the layer to declare which it stored in `slope_units`; all five shipped
+   layers declare `decade-1`. So `slope_units` is READ from the file and carried into
+   layers.csv rather than assumed. Multiplying by 10 here would inflate every trend tenfold,
+   which is a mistake this codebase has made before.
+
+3. SCENARIOS ARE GLOBBED, NEVER LISTED (GUARDRAILS.md §3). A hardcoded scenario list once
+   made 25% of processed data invisible. `picontrol` and `historical` are dropped -- they
+   strengthen a baseline but are not client-facing.
+
+The baseline decade legitimately carries NaN slopes (the expanding window has no span yet),
+so a NaN slope in the 2020s row is the contract working, not missing data.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+import yaml
+
+from .spatial_extract import extract_by_point, normalize_longitude
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LAYER_REGISTRY_PATH = PROJECT_ROOT / "config" / "layer_registry.yaml"
+ASSET_CATALOG_PATH = PROJECT_ROOT / "config" / "asset_catalog.yaml"
+DELIVERIES_ROOT = PROJECT_ROOT / "deliveries"
+
+#: A folder carrying this file is refused by the loader regardless of the registry.
+INVALID_MARKER = "INVALID-DO-NOT-USE.md"
+
+#: Not client-facing (see the isimip-extract-aggregate skill).
+NON_DELIVERABLE_SCENARIOS = frozenset({"picontrol", "historical", "obsclim", "counterclim"})
+
+#: Metrics pulled from every layer, in values.csv column order. `median` is renamed to
+#: `value` on the way out: the contract itself notes that `median` holds a MEAN on boolean
+#: and extreme-zero-inflated layers, and three of five shipped layers are in that regime.
+#: The layer's `decadal_statistic` in layers.csv says which statistic produced it.
+CONTRACT_METRICS = (
+    "median",
+    "lower_ci",
+    "upper_ci",
+    "percentile",
+    "ols_slope",
+    "sen_slope",
+    "n_members",
+    "n_models",
+)
+
+METRIC_OUTPUT_NAMES = {"median": "value"}
+
+#: Counts are Gaussian-weighted like everything else, so a point straddling a mask edge
+#: yields a fractional depth. Rounded to an integer for delivery.
+COUNT_METRICS = frozenset({"n_members", "n_models"})
+
+VALUES_COLUMNS = (
+    "asset_id",
+    "layer_id",
+    "scenario",
+    "decade",
+    "value",
+    "lower_ci",
+    "upper_ci",
+    "percentile",
+    "ols_slope",
+    "sen_slope",
+    "slopes_agree",
+    "n_members",
+    "n_models",
+    "data_status",
+)
+
+#: Global attributes lifted from the processed file into layers.csv. Everything here is a
+#: fact the NetCDF asserts about itself; the registry deliberately does not restate any of
+#: it (see config/layer_registry.yaml).
+#:
+#: `n_members` is DELIBERATELY ABSENT. It is a per-scenario global attribute, and a layer
+#: whose ensemble composition varies by scenario would have one scenario's count published
+#: as if it were the layer's -- `conifer-npp` reads 10/9/10 across rcp26/60/85, so a flat
+#: "10" is false for rcp60. `n_members_by_scenario` below is emitted instead, and
+#: values.csv already carries the per-cell per-scenario count.
+LAYER_ATTRS_EXPORTED = (
+    "variable",
+    "long_name",
+    "units",
+    "slope_units",
+    "decadal_statistic",
+    "field_nature",
+    "percentile_direction",
+    "percentile_zero_fraction",
+    "baseline_decade",
+    "window_years",
+    "ensemble_uniform_across_scenarios",
+    "members_by_scenario",
+    "impact_models",
+    "gcms",
+    "source_dataset",
+    "spatial_smoothing",
+    "interpretation_caveat",
+)
+
+#: Attributes that MUST be identical across a layer's scenarios. If they are not, the layer
+#: cannot be described by a single layers.csv row and the delivery stops rather than
+#: publishing one scenario's value as the layer's.
+LAYER_ATTRS_MUST_MATCH = (
+    "units",
+    "slope_units",
+    "decadal_statistic",
+    "percentile_direction",
+    "variable",
+)
+
+# data_status values -------------------------------------------------------------------
+STATUS_OK = "OK"
+#: NaN in this layer, but the site has data in at least one other registry layer -- so it is
+#: on land and this layer simply does not model the site (e.g. no conifer stand present).
+STATUS_OFF_LAYER_MASK = "OFF_LAYER_MASK"
+#: NaN in every registry layer -- offshore, or outside the modelled domain entirely.
+STATUS_OUTSIDE_DOMAIN = "OUTSIDE_DOMAIN"
+
+# Point-extraction parameters, recorded in the manifest so a delivery is reproducible.
+#
+# ASSET-CATALOG.md "Spatial averaging -- the complete picture" is authoritative for what
+# these mean and what they were measured to do; do not restate it here. The three facts a
+# reader of THIS file needs:
+#
+#   - sigma 0.25 with radius 0.5 is a 2-sigma TRUNCATED Gaussian, and on this grid it
+#     resolves to a 4-cell blend for every site that is not exactly on a cell centre
+#     (measured: 100% of 20,000 random sites) -- a 1 deg x 1 deg footprint, ~111 km N-S.
+#   - a delivered `cyclone` value has ALSO been through that layer's processing-time L=2.5
+#     5x5 kernel. The two stages compound; cyclone values are not site-specific.
+#   - NaN neighbours are dropped and weights renormalized, so a masked cell still returns a
+#     value. Accepted because customer locations are masked to land upstream.
+EXTRACT_SIGMA = 0.25
+EXTRACT_SEARCH_RADIUS = 0.5
+
+
+class DeliveryError(RuntimeError):
+    """A delivery cannot proceed. Always carries what the operator must fix."""
+
+
+# ---------------------------------------------------------------------------------------
+# Registry and catalog
+# ---------------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class LayerSpec:
+    """One shipped layer, as the registry knows it.
+
+    Deliberately thin: this holds only what a processed NetCDF cannot say about itself.
+    Units, statistics, ensemble composition and caveats are read from the file at delivery
+    time so the registry can never drift from the data.
+    """
+
+    layer_id: str
+    folder: str
+    file_prefix: str
+    hazard: str
+    hazard_measure: str
+    status: str
+    recommended_slope: str
+    recommended_slope_rationale: str = ""
+    delivery_note: str = ""
+    #: Date a human read this layer's QA report warnings and viewed its maps. Null until
+    #: that actually happened. A contract PASS means the file is SHAPED right, not that the
+    #: input is about what its name says -- both sugarcane layers passed every check and
+    #: were meaningless. Absence is surfaced as "NOT CONFIRMED" in the delivered
+    #: layers.csv and README rather than silently omitted.
+    qa_reviewed_on: Optional[str] = None
+
+
+@dataclass
+class Registry:
+    layers: Dict[str, LayerSpec]
+    blocked: Dict[str, str]
+    processed_root: Path
+    measured_on: str
+
+    def get(self, layer_id: str) -> LayerSpec:
+        if layer_id not in self.layers:
+            known = ", ".join(sorted(self.layers))
+            raise DeliveryError(
+                f"Unknown layer_id {layer_id!r}. Registered layers: {known}"
+            )
+        return self.layers[layer_id]
+
+
+def load_registry(path: Path = LAYER_REGISTRY_PATH) -> Registry:
+    raw = yaml.safe_load(path.read_text())
+    layers = {
+        lid: LayerSpec(layer_id=lid, **spec) for lid, spec in raw.get("layers", {}).items()
+    }
+    processed_root = Path(raw.get("processed_root", "data/processed"))
+    if not processed_root.is_absolute():
+        processed_root = PROJECT_ROOT / processed_root
+    return Registry(
+        layers=layers,
+        blocked=raw.get("blocked") or {},
+        processed_root=processed_root,
+        measured_on=str(raw.get("measured_on", "")),
+    )
+
+
+@dataclass
+class AssetCatalog:
+    """asset type -> layer ids. Absence is an error, never a default."""
+
+    entries: Dict[str, dict]
+    _index: Dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name, entry in self.entries.items():
+            self._index[name.strip().lower()] = name
+            for alias in entry.get("aliases") or []:
+                self._index[str(alias).strip().lower()] = name
+
+    def resolve(self, asset_type: str) -> Tuple[str, dict]:
+        key = str(asset_type).strip().lower()
+        if key not in self._index:
+            known = ", ".join(sorted(self.entries))
+            raise DeliveryError(
+                f"Asset type {asset_type!r} is not in the catalog.\n"
+                f"  Known asset types: {known}\n"
+                f"  This is deliberate -- an unknown asset must be worked out with the "
+                f"user and added to config/asset_catalog.yaml, never defaulted."
+            )
+        canonical = self._index[key]
+        return canonical, self.entries[canonical]
+
+
+def load_asset_catalog(path: Path = ASSET_CATALOG_PATH) -> AssetCatalog:
+    raw = yaml.safe_load(path.read_text())
+    return AssetCatalog(entries=raw.get("assets") or {})
+
+
+# ---------------------------------------------------------------------------------------
+# Layer files on disk
+# ---------------------------------------------------------------------------------------
+
+def layer_dir(registry: Registry, spec: LayerSpec) -> Path:
+    path = registry.processed_root / spec.folder
+    if not path.is_dir():
+        raise DeliveryError(
+            f"Layer {spec.layer_id!r} is registered but not on disk: {path}\n"
+            f"  data/ is local and ephemeral -- the layer may need reprocessing."
+        )
+    if (path / INVALID_MARKER).exists():
+        marker = (path / INVALID_MARKER).read_text().strip().splitlines()
+        reason = marker[0] if marker else "no reason recorded"
+        raise DeliveryError(
+            f"Layer {spec.layer_id!r} is marked invalid and cannot be delivered.\n"
+            f"  {path / INVALID_MARKER}: {reason}"
+        )
+    if spec.folder in registry.blocked:
+        raise DeliveryError(
+            f"Layer {spec.layer_id!r} is blocked by the registry.\n"
+            f"  {registry.blocked[spec.folder]}"
+        )
+    return path
+
+
+def discover_scenarios(registry: Registry, spec: LayerSpec) -> List[str]:
+    """Glob the scenarios that actually exist. GUARDRAILS §3 -- never a hardcoded list."""
+    path = layer_dir(registry, spec)
+    pattern = re.compile(rf"^{re.escape(spec.file_prefix)}_(.+)_processed\.nc$")
+    scenarios = []
+    for f in sorted(path.glob(f"{spec.file_prefix}_*_processed.nc")):
+        m = pattern.match(f.name)
+        if m and m.group(1) not in NON_DELIVERABLE_SCENARIOS:
+            scenarios.append(m.group(1))
+    if not scenarios:
+        raise DeliveryError(
+            f"Layer {spec.layer_id!r} has no deliverable scenario files in {path}"
+        )
+    return scenarios
+
+
+def scenario_path(registry: Registry, spec: LayerSpec, scenario: str) -> Path:
+    return layer_dir(registry, spec) / f"{spec.file_prefix}_{scenario}_processed.nc"
+
+
+# ---------------------------------------------------------------------------------------
+# Extraction
+# ---------------------------------------------------------------------------------------
+
+def _domain_mask(registry: Registry) -> xr.DataArray:
+    """Union of finite cells across EVERY available registry layer -- the modelled domain.
+
+    Used only to tell OFF_LAYER_MASK ("on land, this layer does not model your site") apart
+    from OUTSIDE_DOMAIN ("offshore or off-grid"). Built from the layers rather than a
+    downloaded land mask, so a delivery needs no network and stays reproducible.
+
+    THE UNION IS OVER THE WHOLE REGISTRY, NOT OVER THE DELIVERY'S LAYERS. Scoping it to the
+    delivery makes the meaning of a status depend on what else the customer happened to
+    order: a conifer-only delivery for an Amazon site would report OUTSIDE_DOMAIN -- "your
+    site is offshore" -- when the truth is that no conifer stand is modelled on perfectly
+    good land. Layers that are registered but absent from disk are skipped, so a delivery
+    still runs on a partial data directory; the layers actually consulted are recorded in
+    the manifest.
+    """
+    union = None
+    consulted: List[str] = []
+    for layer_id, spec in sorted(registry.layers.items()):
+        try:
+            scenario = discover_scenarios(registry, spec)[0]
+        except DeliveryError:
+            continue  # not on disk / withdrawn -- it just does not widen the domain
+        with xr.open_dataset(scenario_path(registry, spec, scenario)) as ds:
+            finite = np.isfinite(ds["median"]).any(dim="decade")
+            union = finite if union is None else (union | finite)
+        consulted.append(layer_id)
+    if union is None:
+        raise DeliveryError(
+            "No registry layer is available on disk, so no modelled domain can be built."
+        )
+    union = union.compute()
+    union.attrs["consulted_layers"] = ";".join(consulted)
+    return union
+
+
+def _point_in_domain(domain: xr.DataArray, lat: float, lon: float) -> bool:
+    lon = normalize_longitude(lon)
+    sub = domain.sel(
+        lat=slice(lat - EXTRACT_SEARCH_RADIUS, lat + EXTRACT_SEARCH_RADIUS),
+        lon=slice(lon - EXTRACT_SEARCH_RADIUS, lon + EXTRACT_SEARCH_RADIUS),
+    )
+    if sub.size == 0:
+        # lat is stored descending on some layers; fall back to a boolean selection.
+        sub = domain.where(
+            (np.abs(domain.lat - lat) <= EXTRACT_SEARCH_RADIUS)
+            & (np.abs(domain.lon - lon) <= EXTRACT_SEARCH_RADIUS),
+            drop=True,
+        )
+    return bool(np.asarray(sub).any())
+
+
+def _slopes_agree(ols: float, sen: float) -> Optional[bool]:
+    """The dual-slope robustness signal that replaced the retired p-value.
+
+    OUTPUT-SPEC.md requires agreement to be judged on ACTIVE cells only -- either slope
+    non-zero -- so this has three outcomes, not two:
+
+        both slopes 0      -> None. INACTIVE, not applicable. A site that never burns and
+                              never sees a cyclone has a genuinely zero trend under both
+                              estimators; calling that "disagreement" would make a
+                              downstream "unreliable trend" filter flag every quiet site.
+        exactly one is 0   -> False. This is the zero-collapse regime and the disagreement
+                              is real and informative.
+        both non-zero      -> do the signs match?
+
+    None also covers a NaN slope, which is what the baseline decade legitimately carries.
+    """
+    if not (np.isfinite(ols) and np.isfinite(sen)):
+        return None
+    if ols == 0 and sen == 0:
+        return None
+    if ols == 0 or sen == 0:
+        return False
+    return (ols > 0) == (sen > 0)
+
+
+def extract_layer_for_points(
+    registry: Registry,
+    layer_id: str,
+    points: Sequence[Tuple[str, float, float]],
+    domain: xr.DataArray,
+) -> Tuple[List[dict], dict]:
+    """Extract every scenario x decade of one layer at each (asset_id, lat, lon).
+
+    Returns (value rows, layer metadata read back out of the NetCDF).
+    """
+    spec = registry.get(layer_id)
+    scenarios = discover_scenarios(registry, spec)
+
+    rows: List[dict] = []
+    layer_meta: dict = {}
+    per_scenario_attrs: Dict[str, dict] = {}
+
+    for scenario in scenarios:
+        path = scenario_path(registry, spec, scenario)
+        with xr.open_dataset(path) as ds:
+            per_scenario_attrs[scenario] = dict(ds.attrs)
+            if not layer_meta:
+                layer_meta = _layer_metadata(spec, ds, scenarios)
+
+            for asset_id, lat, lon in points:
+                data = extract_by_point(
+                    ds,
+                    lat=lat,
+                    lon=normalize_longitude(lon),
+                    variables=list(CONTRACT_METRICS),
+                    search_radius=EXTRACT_SEARCH_RADIUS,
+                    sigma=EXTRACT_SIGMA,
+                )
+                for decade in [int(d) for d in ds.decade.values]:
+                    row = {
+                        "asset_id": asset_id,
+                        "layer_id": layer_id,
+                        "scenario": scenario,
+                        "decade": decade,
+                    }
+                    for metric in CONTRACT_METRICS:
+                        val = data.get(metric, {}).get(decade, np.nan)
+                        if metric in COUNT_METRICS and np.isfinite(val):
+                            val = int(round(val))
+                        row[METRIC_OUTPUT_NAMES.get(metric, metric)] = val
+
+                    row["slopes_agree"] = _slopes_agree(
+                        row["ols_slope"], row["sen_slope"]
+                    )
+                    if np.isfinite(row["value"]):
+                        row["data_status"] = STATUS_OK
+                    elif _point_in_domain(domain, lat, lon):
+                        row["data_status"] = STATUS_OFF_LAYER_MASK
+                    else:
+                        row["data_status"] = STATUS_OUTSIDE_DOMAIN
+                    rows.append(row)
+
+    _assert_scenarios_describable(spec, per_scenario_attrs)
+    layer_meta["n_members_by_scenario"] = ";".join(
+        f"{s}:{per_scenario_attrs[s].get('n_members', '?')}" for s in scenarios
+    )
+    return rows, layer_meta
+
+
+def _assert_scenarios_describable(spec: LayerSpec, attrs_by_scenario: Dict[str, dict]) -> None:
+    """Refuse to publish one scenario's metadata as the whole layer's.
+
+    layers.csv carries one row per layer, which is only honest while the load-bearing
+    attributes agree across scenarios. Units or a decadal statistic that differ between
+    scenarios mean the files are not the same measurement and cannot share a row.
+    """
+    for attr in LAYER_ATTRS_MUST_MATCH:
+        seen = {s: a.get(attr, "") for s, a in attrs_by_scenario.items()}
+        if len(set(seen.values())) > 1:
+            detail = "; ".join(f"{s}={v!r}" for s, v in sorted(seen.items()))
+            raise DeliveryError(
+                f"Layer {spec.layer_id!r} disagrees with itself on {attr!r} across "
+                f"scenarios and cannot be described by one layers.csv row: {detail}\n"
+                f"  The scenario files are not the same measurement. Reprocess the layer."
+            )
+
+
+def _layer_metadata(spec: LayerSpec, ds: xr.Dataset, scenarios: Sequence[str]) -> dict:
+    """Build the layers.csv row -- registry labels plus facts read from the NetCDF.
+
+    Attributes come from the layer's first scenario. That is safe only for attributes
+    verified identical across scenarios by `_assert_scenarios_describable`, plus attributes
+    that are scenario-resolved by construction (`members_by_scenario`). Anything genuinely
+    per-scenario is emitted as its own `*_by_scenario` column instead -- see the note on
+    `n_members` at LAYER_ATTRS_EXPORTED.
+    """
+    meta = {
+        "layer_id": spec.layer_id,
+        "hazard": spec.hazard,
+        "hazard_measure": spec.hazard_measure,
+        "registry_status": spec.status,
+        "recommended_slope": spec.recommended_slope,
+        "recommended_slope_rationale": " ".join(spec.recommended_slope_rationale.split()),
+        "delivery_note": " ".join(spec.delivery_note.split()),
+        "qa_reviewed_on": spec.qa_reviewed_on or "NOT CONFIRMED",
+        "scenarios": ";".join(scenarios),
+        "decades": ";".join(str(int(d)) for d in ds.decade.values),
+        "source_folder": spec.folder,
+    }
+    for attr in LAYER_ATTRS_EXPORTED:
+        value = ds.attrs.get(attr, "")
+        meta[attr] = " ".join(str(value).split()) if value != "" else ""
+    return meta
+
+
+# ---------------------------------------------------------------------------------------
+# Inputs
+# ---------------------------------------------------------------------------------------
+
+REQUIRED_INPUT_COLUMNS = ("Location", "Lat", "Lon", "Asset_Type")
+OPTIONAL_INPUT_COLUMNS = (
+    "Sub_Asset_Unit",
+    "Country",
+    "State",
+    "City",
+    "Region",
+    "Subregion",
+    "Layers",
+    "Coord_Source",
+)
+
+
+def load_input(path: Path) -> pd.DataFrame:
+    """Read the customer's location-asset list.
+
+    One row per location-asset combination. `Layers` (semicolon-separated layer_ids) is an
+    optional per-row override of the asset catalog.
+    """
+    sep = "\t" if path.suffix.lower() in {".tsv", ".tab"} else ","
+    df = pd.read_csv(path, sep=sep)
+    df.columns = [c.strip() for c in df.columns]
+
+    missing = [c for c in REQUIRED_INPUT_COLUMNS if c not in df.columns]
+    if missing:
+        raise DeliveryError(
+            f"Input {path} is missing required column(s): {', '.join(missing)}\n"
+            f"  Required: {', '.join(REQUIRED_INPUT_COLUMNS)}\n"
+            f"  Optional: {', '.join(OPTIONAL_INPUT_COLUMNS)}"
+        )
+    for col in OPTIONAL_INPUT_COLUMNS:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    # Coerce BEFORE any arithmetic. A customer CSV is untrusted text: a stray "N/A", a
+    # degrees-minutes string or an Excel artifact in Lat makes the column dtype object, and
+    # `.abs()` on it raises a bare TypeError that escapes the CLI's DeliveryError handler
+    # and shows the customer a traceback.
+    for col in ("Lat", "Lon"):
+        coerced = pd.to_numeric(df[col], errors="coerce")
+        unparseable = df[coerced.isna() & df[col].notna()]
+        if len(unparseable):
+            examples = ", ".join(
+                f"{r['Location']!s}={r[col]!r}" for _, r in unparseable.head(5).iterrows()
+            )
+            raise DeliveryError(
+                f"{len(unparseable)} row(s) have a non-numeric {col}: {examples}\n"
+                f"  Coordinates must be decimal degrees."
+            )
+        df[col] = coerced
+
+    bad = df[df["Lat"].isna() | df["Lon"].isna()]
+    if len(bad):
+        names = ", ".join(str(n) for n in bad["Location"].tolist()[:5])
+        raise DeliveryError(
+            f"{len(bad)} row(s) have no coordinates and cannot be extracted: {names}"
+        )
+    out_of_range = df[(df["Lat"].abs() > 90) | (df["Lon"].abs() > 360)]
+    if len(out_of_range):
+        names = ", ".join(str(n) for n in out_of_range["Location"].tolist()[:5])
+        raise DeliveryError(f"Row(s) with out-of-range coordinates: {names}")
+    return df
+
+
+def build_plan(
+    df: pd.DataFrame,
+    catalog: AssetCatalog,
+    registry: Registry,
+    layer_override: Optional[Sequence[str]] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame, List[dict]]:
+    """Resolve locations, assets and each asset's layers WITHOUT touching the data.
+
+    This is what `--plan` prints for user confirmation before any extraction runs. IDs are
+    assigned in input order and are stable for a given input file.
+    """
+    locations: List[dict] = []
+    loc_ids: Dict[Tuple[str, float, float], str] = {}
+    assets: List[dict] = []
+
+    def _clean(v, default=""):
+        return default if pd.isna(v) else str(v).strip()
+
+    for _, row in df.iterrows():
+        name = str(row["Location"]).strip()
+        lat, lon = float(row["Lat"]), normalize_longitude(float(row["Lon"]))
+        key = (name, round(lat, 6), round(lon, 6))
+        if key not in loc_ids:
+            loc_ids[key] = f"LOC-{len(loc_ids) + 1:03d}"
+            locations.append(
+                {
+                    "location_id": loc_ids[key],
+                    "name": name,
+                    "lat": lat,
+                    "lon": lon,
+                    # Provenance for a coordinate we supplied rather than the customer.
+                    # Stage 1 of the workflow permits deriving a missing lat/lon, but a
+                    # derived coordinate and a surveyed one must never be indistinguishable
+                    # in the delivered file.
+                    "coord_source": _clean(row.get("Coord_Source"), "supplied"),
+                    "country": _clean(row.get("Country")),
+                    "state": _clean(row.get("State")),
+                    "city": _clean(row.get("City")),
+                    "region": _clean(row.get("Region")),
+                    "subregion": _clean(row.get("Subregion")),
+                }
+            )
+
+        asset_type_raw = _clean(row["Asset_Type"])
+        if layer_override:
+            canonical, layer_ids = asset_type_raw, list(layer_override)
+            source = "cli-override"
+        elif _clean(row.get("Layers")):
+            canonical = asset_type_raw
+            layer_ids = [s.strip() for s in _clean(row["Layers"]).split(";") if s.strip()]
+            source = "row-override"
+        else:
+            canonical, entry = catalog.resolve(asset_type_raw)
+            layer_ids = list(entry.get("layers") or [])
+            source = "catalog"
+            if not layer_ids:
+                raise DeliveryError(
+                    f"Catalog entry {canonical!r} lists no layers."
+                )
+
+        for layer_id in layer_ids:
+            registry.get(layer_id)  # fail fast on a typo, before any I/O
+
+        assets.append(
+            {
+                "asset_id": f"AST-{len(assets) + 1:03d}",
+                "location_id": loc_ids[key],
+                "asset_type": asset_type_raw,
+                "catalog_entry": canonical,
+                "sub_asset_unit": _clean(row.get("Sub_Asset_Unit")),
+                "layer_ids": layer_ids,
+                "layer_source": source,
+            }
+        )
+
+    assets_df = pd.DataFrame(assets)
+    locations_df = pd.DataFrame(locations)
+
+    # One work item per layer, carrying the assets that need it.
+    by_layer: Dict[str, List[str]] = {}
+    for a in assets:
+        for layer_id in a["layer_ids"]:
+            by_layer.setdefault(layer_id, []).append(a["asset_id"])
+    work = [
+        {"layer_id": lid, "asset_ids": ids, "n_assets": len(ids)}
+        for lid, ids in sorted(by_layer.items())
+    ]
+    return locations_df, assets_df, work
+
+
+# ---------------------------------------------------------------------------------------
+# Delivery
+# ---------------------------------------------------------------------------------------
+
+#: Columns of climate_score.csv. Grain is (asset_id, scenario_tier, decade) -- a DIFFERENT
+#: grain from values.csv, which is why it is its own table rather than extra columns there.
+CLIMATE_SCORE_COLUMNS = (
+    "asset_id",
+    "scenario_tier",
+    "decade",
+    "climate_score",
+    "n_hazards",
+    "n_hazards_expected",
+    "hazards",
+    "scenarios",
+)
+
+
+def compute_climate_score(
+    values_df: pd.DataFrame, assets_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Mean risk percentile across an asset's hazards, per forcing tier per decade.
+
+    WHY PERCENTILE AND NOTHING ELSE
+    -------------------------------
+    `percentile` is the only cross-hazard comparable axis in the contract. `value` is in
+    native units that differ per layer (g C m-2 yr-1, a dimensionless fraction, a percent),
+    so averaging values across hazards is meaningless arithmetic. Percentiles are also
+    already ORIENTED for risk -- a `higher_is_better` layer was inverted at processing time,
+    so 100 is worst on every layer -- which is exactly what makes the mean legitimate.
+
+    WHY THE KEY IS A FORCING TIER, NOT A SCENARIO CODE
+    --------------------------------------------------
+    This is the load-bearing decision and it is forced by the data, not chosen for
+    convenience. ISIMIP2b layers publish rcp*, ISIMIP3b layers publish ssp*, and NO native
+    code spans both. Measured on the example delivery, a timber asset carrying three
+    hazards resolves as:
+
+        rcp26  -> 1 of 3 hazards (conifer-npp)
+        ssp126 -> 2 of 3 hazards (drought-3b, wildfire)
+
+    So a score keyed on `ssp126` would average two hazards and be labelled "mean across all
+    hazards". Keying on the TIER (rcp26 + ssp126 = "low") is the only way to get a complete
+    cross-hazard set. The native codes that actually contributed are recorded per row in
+    `scenarios`, so the harmonization is visible rather than implied.
+
+    RCP and SSP tiers are only APPROXIMATELY comparable. Any narrative must say so.
+
+    TWO-STAGE MEAN
+    --------------
+    Scenario codes are averaged WITHIN a hazard first, then hazards are averaged. This keeps
+    every hazard equally weighted even where one contributes two codes to a tier (rcp45 and
+    rcp60 both map to 'medium'). A flat mean over rows would silently double that hazard.
+
+    MISSING HAZARDS REDUCE n_hazards, THEY DO NOT ZERO THE SCORE
+    ------------------------------------------------------------
+    A hazard that is OFF_LAYER_MASK at a site has a NaN percentile and is excluded. Decades
+    also differ by round -- ISIMIP3b layers start at 2020, so an ISIMIP2b-only 2010s panel
+    legitimately scores on fewer hazards. `n_hazards` is emitted for exactly this reason: a
+    1-hazard score must never be read as a 3-hazard one.
+
+    Hazards are weighted EQUALLY. That is an assumption, not a finding -- there is no
+    materiality weighting here, and a hazard with no transmission channel to the asset would
+    dilute the score just as much as the one that matters. The catalog is what keeps
+    irrelevant hazards out of an asset's set.
+    """
+    from .viz_common import TIER_ORDER, tier_of
+
+    # `layer_ids` is a list in the in-memory frame and a ";"-joined string once written to
+    # assets.csv. Accept both so this works on a live run and on a re-read delivery.
+    def _layers(v) -> set:
+        if isinstance(v, (list, tuple, set)):
+            return {str(x) for x in v}
+        return {x for x in str(v).split(";") if x and x != "nan"}
+
+    asset_layers = {
+        r["asset_id"]: _layers(r["layer_ids"]) for _, r in assets_df.iterrows()
+    }
+
+    df = values_df[["asset_id", "layer_id", "scenario", "decade", "percentile"]].copy()
+    # Only an asset's OWN hazards count -- values.csv is already scoped that way, but a
+    # future caller could pass a wider frame.
+    df = df[df.apply(lambda r: r["layer_id"] in asset_layers.get(r["asset_id"], set()), axis=1)]
+    df = df[df["percentile"].notna()]
+    if df.empty:
+        return pd.DataFrame(columns=list(CLIMATE_SCORE_COLUMNS))
+
+    df["scenario_tier"] = df["scenario"].map(tier_of)
+
+    # Stage 1: within (asset, hazard, tier, decade) average the native codes.
+    per_hazard = (
+        df.groupby(["asset_id", "layer_id", "scenario_tier", "decade"])
+        .agg(pct=("percentile", "mean"), codes=("scenario", lambda s: sorted(set(s))))
+        .reset_index()
+    )
+
+    # Stage 2: average the hazards.
+    rows = []
+    for (asset_id, tier, decade), grp in per_hazard.groupby(
+        ["asset_id", "scenario_tier", "decade"]
+    ):
+        codes = sorted({c for lst in grp["codes"] for c in lst})
+        rows.append({
+            "asset_id": asset_id,
+            "scenario_tier": tier,
+            "decade": int(decade),
+            "climate_score": round(float(grp["pct"].mean()), 2),
+            "n_hazards": int(len(grp)),
+            # WITHOUT THIS COLUMN THE CSV IS UNSAFE TO SORT. `n_hazards` alone cannot say
+            # whether a score is complete: a 2-hazard warehouse and a 4-hazard timber asset
+            # can both read 2, one complete and one partial. Expected count lives in
+            # assets.csv, so a naive consumer of this file would have to join to find out.
+            # complete == (n_hazards == n_hazards_expected).
+            "n_hazards_expected": int(len(asset_layers.get(asset_id, set()))),
+            "hazards": ";".join(sorted(grp["layer_id"])),
+            "scenarios": ";".join(codes),
+        })
+
+    out = pd.DataFrame(rows, columns=list(CLIMATE_SCORE_COLUMNS))
+    out["_t"] = out["scenario_tier"].map(lambda t: TIER_ORDER.index(t)
+                                         if t in TIER_ORDER else 99)
+    out = out.sort_values(["asset_id", "_t", "decade"]).drop(columns="_t")
+    return out
+
+
+#: The customer-delivery pipeline. Stages 3 and 4 are not built yet; they are declared here
+#: so a half-finished delivery is visible in its own manifest rather than looking complete.
+#: See .claude/skills/customer-delivery/SKILL.md, which is the entry point for all of them.
+DELIVERY_STAGES = (
+    ("inputs", "Location/asset list assembled and confirmed with the user"),
+    ("extract", "values.csv + climate_score.csv + the star schema"),
+    ("dashboard", "dashboard.html"),
+    ("compliance_report", "Physical hazard compliance report -- NOT BUILT"),
+    ("bespoke_report", "Customer-focused bespoke report -- NOT BUILT"),
+    ("caveats", "Caveat / anomaly documentation for this delivery -- NOT BUILT"),
+)
+
+
+def record_stage(out_dir: Path, stage: str, status: str, detail: str = "") -> None:
+    """Stamp a stage's status into the delivery manifest.
+
+    Deliveries are built in stages that may run in separate sessions, so "what has actually
+    been produced for this customer?" has to be answerable from the folder itself rather
+    than from anyone's memory of what they ran.
+    """
+    known = {s for s, _ in DELIVERY_STAGES}
+    if stage not in known:
+        raise DeliveryError(f"Unknown delivery stage {stage!r}; known: {sorted(known)}")
+    path = out_dir / "manifest.json"
+    manifest = json.loads(path.read_text()) if path.exists() else {}
+    stages = manifest.setdefault("stages", {})
+    stages[stage] = {
+        "status": status,
+        "at": datetime.now(timezone.utc).isoformat(),
+        **({"detail": detail} if detail else {}),
+    }
+    for name, desc in DELIVERY_STAGES:
+        stages.setdefault(name, {"status": "not_started", "description": desc})
+    # Atomic replace: a crash midway through a plain write_text leaves truncated JSON and
+    # every later stage then fails to read the manifest at all.
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(manifest, indent=2) + "\n")
+    tmp.replace(path)
+
+
+def _sha256(path: Path) -> str:
+    """Content hash of a source file.
+
+    Path, size and mtime do not identify content -- a layer reprocessed in place can keep
+    all three and change every number. The hash is what lets a delivery be re-derived and
+    audited later, and the same reasoning applies to the registry and catalog YAML, whose
+    hand-maintained `*_version` integers nobody reliably increments.
+    """
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(text).strip().lower()).strip("-")
+    if not slug:
+        raise DeliveryError(f"Customer name {text!r} does not produce a usable folder name")
+    return slug
+
+
+def delivery_dir(customer: str, run_date: Optional[str] = None) -> Path:
+    run_date = run_date or datetime.now().strftime("%Y%m%d")
+    return DELIVERIES_ROOT / slugify(customer) / run_date
+
+
+def run_delivery(
+    customer: str,
+    input_path: Path,
+    locations_df: pd.DataFrame,
+    assets_df: pd.DataFrame,
+    work: List[dict],
+    registry: Registry,
+    out_dir: Path,
+) -> dict:
+    """Extract every work item and write the star schema. Returns the manifest."""
+    domain = _domain_mask(registry)
+
+    # Index once, not once per asset -- the naive form re-indexes inside the comprehension
+    # and is quadratic in site count.
+    loc_by_id = locations_df.set_index("location_id")
+    coords = {
+        a["asset_id"]: (
+            float(loc_by_id.at[a["location_id"], "lat"]),
+            float(loc_by_id.at[a["location_id"], "lon"]),
+        )
+        for _, a in assets_df.iterrows()
+    }
+
+    all_rows: List[dict] = []
+    layer_rows: List[dict] = []
+    sources: List[dict] = []
+
+    for item in work:
+        layer_id = item["layer_id"]
+        spec = registry.get(layer_id)
+        points = [(aid, *coords[aid]) for aid in item["asset_ids"]]
+        print(f"  {layer_id}: {len(points)} asset(s) x "
+              f"{len(discover_scenarios(registry, spec))} scenario(s)")
+        rows, meta = extract_layer_for_points(registry, layer_id, points, domain)
+        all_rows.extend(rows)
+        layer_rows.append(meta)
+        for scenario in discover_scenarios(registry, spec):
+            p = scenario_path(registry, spec, scenario)
+            stat = p.stat()
+            sources.append(
+                {
+                    "layer_id": layer_id,
+                    "scenario": scenario,
+                    "path": str(p.relative_to(PROJECT_ROOT)),
+                    "bytes": stat.st_size,
+                    "modified_utc": datetime.fromtimestamp(
+                        stat.st_mtime, tz=timezone.utc
+                    ).isoformat(),
+                    "sha256": _sha256(p),
+                }
+            )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    values_df = pd.DataFrame(all_rows)
+    if not values_df.empty:
+        values_df = values_df[list(VALUES_COLUMNS)].sort_values(
+            ["asset_id", "layer_id", "scenario", "decade"]
+        )
+        # Nullable ints: an off-mask row has no ensemble depth, and a count must not be
+        # delivered as "10.0" just because some other row is NaN.
+        for col in COUNT_METRICS:
+            values_df[col] = values_df[col].astype("Int64")
+
+    locations_df.to_csv(out_dir / "locations.csv", index=False)
+    assets_out = assets_df.copy()
+    assets_out["layer_ids"] = assets_out["layer_ids"].apply(";".join)
+    assets_out.to_csv(out_dir / "assets.csv", index=False)
+    pd.DataFrame(layer_rows).to_csv(out_dir / "layers.csv", index=False)
+    values_df.to_csv(out_dir / "values.csv", index=False)
+
+    scores_df = compute_climate_score(values_df, assets_df)
+    scores_df.to_csv(out_dir / "climate_score.csv", index=False)
+
+    status_counts = (
+        values_df["data_status"].value_counts().to_dict() if not values_df.empty else {}
+    )
+
+    manifest = {
+        "customer": customer,
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "input_file": str(input_path),
+        "registry_version": yaml.safe_load(LAYER_REGISTRY_PATH.read_text()).get(
+            "registry_version"
+        ),
+        "registry_measured_on": registry.measured_on,
+        "catalog_version": yaml.safe_load(ASSET_CATALOG_PATH.read_text()).get(
+            "catalog_version"
+        ),
+        "config_sha256": {
+            "layer_registry.yaml": _sha256(LAYER_REGISTRY_PATH),
+            "asset_catalog.yaml": _sha256(ASSET_CATALOG_PATH),
+            "delivery.py": _sha256(Path(__file__)),
+            "spatial_extract.py": _sha256(Path(__file__).with_name("spatial_extract.py")),
+        },
+        "qa_review": {
+            layer["layer_id"]: layer["qa_reviewed_on"] for layer in layer_rows
+        },
+        "extraction": {
+            "mode": "point",
+            "weighting": "gaussian distance-weighted over cell centres",
+            "sigma_degrees": EXTRACT_SIGMA,
+            "search_radius_degrees": EXTRACT_SEARCH_RADIUS,
+            "nan_handling": "NaN cells excluded, remaining weights renormalized",
+            "longitude_wrapping": "search window wraps the antimeridian",
+            "domain_mask_layers": domain.attrs.get("consulted_layers", ""),
+            "percentile_inversion_applied_here": False,
+            "percentile_note": (
+                "Percentiles are delivered exactly as stored. Layers declaring "
+                "higher_is_better already applied the inversion at processing time; "
+                "inverting again here would reverse the risk ranking."
+            ),
+            "slope_units_note": (
+                "slope_units is read per layer from the processed file and reported in "
+                "layers.csv. No unit conversion is applied."
+            ),
+        },
+        "counts": {
+            "locations": int(len(locations_df)),
+            "assets": int(len(assets_df)),
+            "layers": int(len(layer_rows)),
+            "value_rows": int(len(values_df)),
+            "climate_score_rows": int(len(scores_df)),
+            "data_status": {k: int(v) for k, v in status_counts.items()},
+        },
+        "climate_score": {
+            "definition": (
+                "Unweighted mean of `percentile` across an asset's hazards, per forcing "
+                "tier per decade. Percentile is the only cross-hazard comparable axis and "
+                "is already oriented for risk (100 = worst on every layer)."
+            ),
+            "keyed_on": "forcing tier, NOT a native scenario code",
+            "why": (
+                "No native code spans both ISIMIP rounds -- an rcp code sees only the 2b "
+                "layers and an ssp code only the 3b ones -- so a score keyed on a native "
+                "code would average a subset and be labelled 'across all hazards'. "
+                "RCP and SSP tiers are only approximately comparable; say so in narrative."
+            ),
+            "hazard_weighting": "equal; there is no materiality weighting",
+            # Compared per row against ITS OWN asset's expected count. Comparing against
+            # the global maximum called every warehouse row incomplete in a portfolio that
+            # also held timber.
+            "incomplete_rows": int(
+                (scores_df["n_hazards"] < scores_df["n_hazards_expected"]).sum()
+            ) if len(scores_df) else 0,
+        },
+        "source_files": sources,
+    }
+    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    record_stage(out_dir, "inputs", "confirmed",
+                 f"{len(locations_df)} locations, {len(assets_df)} assets from "
+                 f"{Path(input_path).name}")
+    record_stage(out_dir, "extract", "built",
+                 f"{len(values_df)} value rows, {len(scores_df)} climate-score rows")
+    _write_readme(out_dir, manifest, layer_rows)
+
+    # Echo the exact input alongside the outputs so the delivery is self-contained.
+    (out_dir / "input_locations.csv").write_text(Path(input_path).read_text())
+
+    return manifest
+
+
+def _write_readme(out_dir: Path, manifest: dict, layer_rows: List[dict]) -> None:
+    layers_md = "\n".join(
+        f"| `{r['layer_id']}` | {r['hazard']} | {r['hazard_measure']} | "
+        f"{r.get('units','')} | {r.get('slope_units','')} | `{r['recommended_slope']}` | "
+        f"{r['qa_reviewed_on']} |"
+        for r in layer_rows
+    )
+    unreviewed = [r["layer_id"] for r in layer_rows if r["qa_reviewed_on"] == "NOT CONFIRMED"]
+    review_md = (
+        "> **QA review not confirmed for: "
+        + ", ".join(f"`{lid}`" for lid in unreviewed)
+        + ".** For these layers this delivery cannot state that the QA report warnings were\n"
+        "> read and the maps were viewed. Passing the output contract means a file is\n"
+        "> *shaped* right, not that its input is about what its name says -- two layers have\n"
+        "> passed every check in this pipeline and been meaningless. Treat the numbers as\n"
+        "> provisional until the layers are reviewed.\n"
+        if unreviewed
+        else "All layers in this delivery have a recorded QA review date.\n"
+    )
+    text = f"""# Climate hazard extract -- {manifest['customer']}
+
+Generated {manifest['generated_utc']} from ISIMIP processed layers.
+{manifest['counts']['locations']} location(s), {manifest['counts']['assets']} asset(s),
+{manifest['counts']['value_rows']} value rows.
+
+## Files
+
+| File | Contents |
+|---|---|
+| `locations.csv` | One row per distinct site. Join key `location_id`. |
+| `assets.csv` | One row per location-asset combination. Join key `asset_id`. |
+| `layers.csv` | One row per hazard layer: units, ensemble, statistic, caveats. |
+| `values.csv` | The measurements. `asset_id` x `layer_id` x `scenario` x `decade`. |
+| `climate_score.csv` | Cross-hazard Climate Score. `asset_id` x `scenario_tier` x `decade`. |
+| `manifest.json` | Provenance: source files, mtimes, extraction parameters. |
+| `dashboard.html` | Interactive QA dashboard — open this first. |
+| `input_locations.csv` | Verbatim copy of the submitted input. |
+
+## Layers in this delivery
+
+| layer_id | Hazard | Measure | Units | Slope units | Read this slope | QA reviewed |
+|---|---|---|---|---|---|---|
+{layers_md}
+
+{review_md}
+Ensemble composition can vary by scenario, so `layers.csv` reports
+`n_members_by_scenario` and `members_by_scenario` rather than a single count.
+
+## Reading `values.csv`
+
+- `value` is the decadal central statistic. **Which** statistic differs by layer -- see
+  `decadal_statistic` in `layers.csv` (`pooled_median`, `pooled_mean_boolean`, or
+  `pooled_mean_zero_inflated`). It is a mean, not a median, on the boolean and
+  zero-inflated layers.
+- `lower_ci` / `upper_ci` bound the same decade pool. On median layers they are the 25th
+  and 75th percentiles; on mean layers they are mean -/+ 1 SD. `ci_definition` in the
+  source file records which.
+- `percentile` is 1-100 against the shared 2020s baseline and is **already oriented for
+  risk**: on a `higher_is_better` layer it has been inverted at processing time, so 100
+  always means highest risk. Do not invert it again.
+- `ols_slope` and `sen_slope` are both reported because they fail in opposite regimes.
+  Read the one named in `recommended_slope`; that choice is measured per layer and the
+  measurement is in `recommended_slope_rationale`.
+- `slopes_agree` is the robustness signal, judged on ACTIVE cells only. True when both
+  slopes are non-zero and share a sign; false when they disagree or when one has collapsed
+  to zero; **blank when both are zero**, which means the site is inactive for this hazard
+  (never burns, never sees a cyclone) rather than that the trends disagree. There is no
+  p-value under this contract -- disagreement is what tells you a trend is not robust.
+- Slopes are **NaN in the baseline decade** by design; the expanding window has no span
+  there. That is the contract working, not missing data.
+- `data_status`: `OK`; `OFF_LAYER_MASK` = the site is on modelled land but this layer does
+  not cover it (e.g. no conifer stand present); `OUTSIDE_DOMAIN` = offshore or off-grid.
+
+## Reading `climate_score.csv`
+
+The **Climate Score** is the unweighted mean of `percentile` across an asset's hazards, for
+one forcing tier and one decade. Percentile is the only cross-hazard comparable axis, and it
+is already oriented so that 100 is worst on every layer — which is what makes the average
+meaningful. Higher score = higher aggregate physical climate risk.
+
+- **Keyed on a forcing tier (`low` / `medium` / `high`), not a scenario code.** No native
+  ISIMIP code spans both rounds: an `rcp*` code sees only the ISIMIP2b layers and an `ssp*`
+  code only the ISIMIP3b ones. A score keyed on a native code would therefore average a
+  *subset* of an asset's hazards while claiming to cover all of them. The `scenarios` column
+  lists exactly which native codes contributed to each row.
+- **RCP and SSP tiers are only approximately comparable.** They are different scenario
+  families from different CMIP generations. State that in any narrative built on this score.
+- **Check `n_hazards` before comparing two scores.** A hazard that does not cover a site is
+  excluded rather than counted as zero, and ISIMIP3b layers have no 2010s panel — so an
+  early decade or an off-mask site legitimately scores on fewer hazards. Two scores with
+  different `n_hazards` are not like for like.
+- **Hazards are weighted equally.** There is no materiality weighting. What keeps an
+  irrelevant hazard out of an asset's average is the asset catalog, not the arithmetic.
+
+## Scenarios
+
+Native ISIMIP codes are delivered as-is in `values.csv`. ISIMIP2b layers carry
+`rcp26`/`rcp60`/`rcp85` and ISIMIP3b layers carry `ssp126`/`ssp370`/`ssp585`; the two
+families are **not** the same scenarios and are not harmonized there. `climate_score.csv` is
+the one exception, by necessity — see above.
+
+## Extraction
+
+Point extraction, Gaussian distance weighting over grid-cell centres
+(sigma = {manifest['extraction']['sigma_degrees']} deg, search radius
+{manifest['extraction']['search_radius_degrees']} deg on a 0.5 deg grid). The search window
+wraps the antimeridian. NaN cells are excluded and the remaining weights renormalized, so a
+coastal site can draw on its land neighbours.
+
+`manifest.json` records a SHA-256 for every source file and for the code and configuration
+that produced this delivery, so it can be re-derived and audited.
+"""
+    (out_dir / "README.md").write_text(text)

@@ -1,0 +1,75 @@
+# Asset -> layer catalog for customer deliveries.
+#
+# Maps a customer's asset type onto the hazard layers that get extracted for it. This is a
+# LIVING file: it is expected to grow and to be corrected as we learn what a given asset
+# class is actually exposed to. See ASSET-CATALOG.md for the maintenance protocol.
+#
+# Three rules govern its use, and the delivery driver enforces the first one in code:
+#
+#   1. A run NEVER extracts silently. `generate_customer_delivery.py` prints the resolved
+#      asset -> layer mapping and stops; extraction requires an explicit --run.
+#   2. An asset type absent from this catalog is an ERROR, not a default. Work out the
+#      right layers with the user, then add the entry here.
+#   3. Anything learned in a run -- a layer that should not have been there, one that was
+#      missing, a user preference -- is written back to this file, dated, in the same
+#      session it was learned.
+#
+# `layers:` entries are layer_ids from config/layer_registry.yaml. Matching on `Asset_Type`
+# is case-insensitive and checks `aliases` too.
+#
+# STATUS: seeded 2026-08-12. Every entry below is a DRAFT pending user sign-off, and the
+# catalog is narrow because only five layers are shipped. `confirmed_on` records when a user
+# actually approved an entry; entries without it have not been reviewed.
+
+catalog_version: 1
+seeded_on: "2026-08-12"
+
+assets:
+
+  timber land:
+    aliases: [timberland, forestry, forest, plantation, managed forest]
+    layers: [conifer-npp, wildfire, drought-3b]
+    rationale: >-
+      Productivity is the asset's yield; wildfire is the dominant acute loss mechanism for
+      standing timber; drought drives both growth loss and fire preconditioning.
+    caveats: >-
+      conifer-npp covers TEMPERATE NEEDLELEAF EVERGREEN stands only (Douglas-fir, loblolly
+      and ponderosa pine, Norway spruce, radiata pine). A broadleaf or boreal holding will
+      return OFF_LAYER_MASK and needs a different productivity layer that is not yet shipped.
+    confirmed_on: null
+
+  data center:
+    aliases: [datacenter, data centre, colocation facility, server farm]
+    layers: [drought-3b, cyclone, wildfire]
+    rationale: >-
+      Drought is a genuine process input here rather than a generic hazard -- evaporative
+      cooling and the local grid both depend on water availability. Cyclone and wildfire are
+      direct physical-damage and outage risks.
+    confirmed_on: null
+
+  warehouse:
+    aliases: [distribution center, distribution centre, logistics facility, depot]
+    layers: [cyclone, wildfire]
+    rationale: >-
+      Built asset whose exposure is physical damage and access interruption. Drought is
+      deliberately EXCLUDED -- water is not a process input and including it would report a
+      hazard with no transmission channel to the asset.
+    confirmed_on: null
+
+  office:
+    aliases: [commercial building, office building, corporate campus, retail]
+    layers: [cyclone, wildfire]
+    rationale: >-
+      Same reasoning as warehouse -- physical damage and business interruption.
+    confirmed_on: null
+
+  agricultural land:
+    aliases: [farmland, cropland, agriculture, farm]
+    layers: [drought-3b, wildfire]
+    rationale: >-
+      Drought is the primary yield driver; wildfire is the acute loss mechanism.
+    caveats: >-
+      NO crop-yield layer is currently shipped, so this returns hazard exposure WITHOUT a
+      yield response. The sugarcane layers were withdrawn 2026-08-11 for an upstream data
+      defect and must not be substituted.
+    confirmed_on: null

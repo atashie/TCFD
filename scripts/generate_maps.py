@@ -9,6 +9,7 @@ Following the process-metrics skill requirements:
 - 6σ anomaly detection (flag only, do not alter data)
 """
 
+import sys
 import numpy as np
 import xarray as xr
 import plotly.graph_objects as go
@@ -17,6 +18,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import json
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts.utils.viz_common import sigfig as viz_sigfig  # noqa: E402
 
 
 # Configuration
@@ -201,15 +205,19 @@ COLORBAR_LABELS = {
 }
 
 
+#: Shared with the delivery dashboard via scripts/utils/viz_common.py. Verified numerically
+#: identical to the previous local implementation on 2026-08-12 before the swap (random
+#: 1e-6 and 1e6 magnitudes, plus 0/NaN/+-inf edge cases).
+#:
+#: NOT yet shared: the symmetric-limit accumulation below (lines ~861-878) computes the
+#: same "percentile of |value|, centred on zero" idea that viz_common.symmetric_limit holds
+#: and that compare_water_index.py open-codes three more times at the 98th percentile. It
+#: is left alone here because it accumulates a running peak ACROSS panels rather than
+#: computing one limit, so the swap is not mechanical and this script's output cannot be
+#: rendered for verification in the current environment.
 def _sigfig(a: np.ndarray, n: int = VALUE_SIGFIGS) -> np.ndarray:
-    """Round to n significant figures (np.round takes only scalar decimals)."""
-    out = np.array(a, dtype=np.float64, copy=True)
-    nz = np.isfinite(out) & (out != 0)
-    if np.any(nz):
-        mag = np.floor(np.log10(np.abs(out[nz])))
-        factor = np.power(10.0, (n - 1 - mag))
-        out[nz] = np.round(out[nz] * factor) / factor
-    return out
+    """Round to n significant figures. Thin wrapper over the shared implementation."""
+    return viz_sigfig(a, n)
 
 
 def block_mean(values: np.ndarray, stride: int) -> np.ndarray:

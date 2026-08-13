@@ -131,8 +131,23 @@ def extract_by_point(
 ) -> Dict[str, Dict[int, float]]:
     """Extract values at a point using Gaussian distance-weighted averaging.
 
-    Uses Gaussian weighting from the target point to nearby cell centers.
-    This provides smooth interpolation while weighting closer cells more heavily.
+    Weights nearby cell CENTRES by exp(-0.5 (d/sigma)^2) in DEGREE space, normalizes, sums.
+    NaN cells are dropped and the surviving weights renormalized.
+
+    Measured behaviour on the standard 0.5 deg grid with the defaults below -- see
+    ASSET-CATALOG.md "Spatial averaging" for the full record, including the compounding with
+    per-layer processing-time smoothing:
+
+    - It is a 4-CELL BLEND, not a 3x3 smoother. The 3x3 stencil requires the site to sit
+      exactly on a cell centre; 0.0005 deg off collapses it to 2x2, and 100% of 20,000
+      random sites got 2x2. Footprint is 1 deg x 1 deg, ~111 km N-S.
+    - The blend ranges from a flat 0.25/0.25/0.25/0.25 mean (site on a grid vertex) to
+      0.78/0.10/0.10/0.01 (site at a cell centre), so sub-cell position changes the kernel's
+      character, not just its numbers.
+    - radius = 2*sigma, so the Gaussian is TRUNCATED at 13.5% of peak rather than tapered.
+    - Longitude separation WRAPS the antimeridian (fixed 2026-08-12; before that 180E and
+      180W returned different values). Longitude is NOT cos(lat)-scaled, so the ground
+      footprint stretches with latitude -- 2.6x wider E-W than N-S at 67 deg N.
 
     Args:
         ds: xarray Dataset with (decade, lat, lon) dimensions
@@ -155,9 +170,15 @@ def extract_by_point(
     lats = ds.lat.values
     lons = ds.lon.values
 
-    # Find cells within search radius
-    lat_mask = np.abs(lats - lat) <= search_radius
-    lon_mask = np.abs(lons - lon) <= search_radius
+    # Longitude separation WRAPS at the antimeridian. Without the wrap the search window
+    # is one-sided at the seam and 180 deg E returns a different value from 180 deg W --
+    # the same meridian. Measured on burntarea ssp585 at 17S, 2090s: 0.775 vs 0.962.
+    lat_delta = np.abs(lats - lat)
+    lon_delta = np.abs(lons - lon)
+    lon_delta = np.minimum(lon_delta, 360.0 - lon_delta)
+
+    lat_mask = lat_delta <= search_radius
+    lon_mask = lon_delta <= search_radius
 
     nearby_lats = lats[lat_mask]
     nearby_lons = lons[lon_mask]
@@ -167,9 +188,10 @@ def extract_by_point(
             f"No grid cells found within {search_radius} degrees of ({lat}, {lon})"
         )
 
-    # Calculate distances from target point to cell CENTERS
-    lon_grid, lat_grid = np.meshgrid(nearby_lons, nearby_lats)
-    distances = np.sqrt((lat_grid - lat) ** 2 + (lon_grid - lon) ** 2)
+    # Distances from the target point to cell CENTRES, in degrees. Longitude uses the
+    # wrapped separation computed above rather than a raw difference.
+    lon_delta_grid, lat_grid = np.meshgrid(lon_delta[lon_mask], nearby_lats)
+    distances = np.sqrt((lat_grid - lat) ** 2 + lon_delta_grid ** 2)
 
     # Gaussian weights (sigma = half cell size gives natural falloff)
     weights = np.exp(-0.5 * (distances / sigma) ** 2)

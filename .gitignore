@@ -2,6 +2,11 @@
 data/
 reports/
 
+# Customer deliveries contain client site coordinates and asset inventories. They are
+# generated artifacts, reproducible from the input CSV plus the processed layers, and they
+# do not belong in version control.
+deliveries/
+
 # NetCDF data files
 *.nc
 *.nc4
