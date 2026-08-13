@@ -98,12 +98,14 @@ def hazard_coverage(delivery: Delivery, taxonomy: dict) -> List[dict]:
             "delivery",
             "This assessment covers three hazard families, not all of them",
             f"""
-            {len(covered)} of {cov['n_families']} physical-hazard families in the standard
-            disclosure taxonomy were assessed for this portfolio: {', '.join(covered)}. The
-            remaining {len(uncovered)} were NOT assessed, and their absence from this report
-            is not a finding that they are immaterial -- they were not examined. The most
-            consequential omissions are {', '.join(named)}. A reader comparing sites within
-            this report is comparing them on the hazards listed, and on nothing else.
+            The hazards assessed for this portfolio are: {', '.join(covered)}. Every other
+            physical hazard was NOT assessed, and its absence from this report is not a
+            finding that it is immaterial -- it was not examined. The omissions most likely
+            to matter are {', '.join(named)}. A reader comparing sites within this report is
+            comparing them on the hazards listed, and on nothing else. The full list of
+            hazards outside this assessment is set out in its own section; note that the
+            grouping of hazards into families is ours rather than any standard's, so the
+            COUNT of families is not a meaningful coverage ratio and none is quoted.
             """,
             evidence=(
                 "config/hazard_taxonomy.yaml, scoped to the layers this delivery actually "
@@ -198,14 +200,16 @@ def method_caveats(delivery: Delivery) -> List[dict]:
             a footprint of about 1° × 1°, or 111 km north-south. This is a screening
             instrument for comparing sites and horizons, not a site-specific engineering
             assessment, and it cannot resolve local topography, drainage, defensible space
-            or flood defences. Coordinate precision matters accordingly: moving one example
-            site by a quarter of a degree changed its 2090s burnt-area value by 166%.
+            or flood defences. Coordinate precision matters accordingly: shifting the sites
+            in this portfolio by a quarter of a degree changed their 2090s burnt-area values
+            by between 44% and 569%. A wrong coordinate is not a rounding error.
             """,
             evidence=(
                 "manifest.json extraction block: Gaussian weighting, sigma 0.25°, search "
                 "radius 0.5°, unmodelled neighbouring cells excluded and the remaining "
-                "weights rescaled. Measured across 20,000 random sites, 100% resolve to a "
-                "blend of four grid cells."
+                "weights rescaled. Both figures above are reproducible on demand -- 20,000 "
+                "random sites all resolve to a four-cell blend, and the coordinate shifts "
+                "were measured on this portfolio's own sites."
             ),
         ),
         _cav(
@@ -534,13 +538,15 @@ def config_caveats(delivery: Delivery) -> List[dict]:
                 "Asset carrying amounts were not supplied, so the monetary disclosure is incomplete",
                 f"""
                 {len(delivery.assets) - n_valued} of {len(delivery.assets)} assets carry no
-                value. IFRS S2 paragraph 29(c) and ESRS E1-9 both require the monetary
-                AMOUNT and the percentage of assets vulnerable to physical risk; no climate
-                model can supply the amount. This report therefore discloses counts and
-                percentages of assets only. To complete the metric, supply Asset_Value,
-                Currency, Valuation_Date and Value_Basis with the site list and rebuild --
-                the basis matters as much as the figure, since book, insured and market
-                values give three different answers.
+                value. IFRS S2 paragraph 29(c) and ESRS E1-9 both require a monetary AMOUNT,
+                and no climate model can supply it. This is the SECOND obstacle to that
+                metric rather than the only one: the method for determining which assets are
+                vulnerable has also not been agreed, so this report reports no count,
+                percentage or amount -- see VULNERABILITY-METRIC-DEFERRED. Supplying
+                Asset_Value, Currency, Valuation_Date and Value_Basis with the site list
+                removes this obstacle but not the other. The valuation basis matters as much
+                as the figure, since book, insured, market and replacement values give four
+                different answers to the same question.
                 """,
                 evidence=f"assets.csv asset_value populated for {n_valued} of {len(delivery.assets)}",
             )

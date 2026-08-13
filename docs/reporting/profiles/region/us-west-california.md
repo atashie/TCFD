@@ -28,14 +28,25 @@ sources:
       Acute drought compounded by a century of fire exclusion drove mass conifer mortality in
       the Sierra Nevada, and the resulting dead fuel raises the potential for very large,
       severe fires.
+  - id: usfs-california-tree-mortality-ads
+    title: "Tree Mortality and Fuel Changes from an Extreme Drought and Bark Beetle Outbreaks in California"
+    publisher: "USDA Forest Service, Rocky Mountain Research Station (Fire Lab)"
+    url: "https://research.fs.usda.gov/firelab/projects/outbreaksincalifornia"
+    source_type: regulator
+    retrieved_on: "2026-08-13"
+    as_of: "2023"
+    what_it_supports: >-
+      The Aerial Detection Survey mortality estimates: about 29 million trees in 2015,
+      rising to roughly 129 million cumulatively by 2017.
 ---
 
 ## Transmission channels
 
 **Drought and wildfire are one coupled mechanism here, not two hazards.** Acute drought
-compounded by a century of fire exclusion produced mass conifer mortality — the Forest
-Service estimated 29 million trees lost in California in 2015 alone — and the standing dead
-fuel that follows raises the potential for very large, severe fire
+compounded by a century of fire exclusion produced mass conifer mortality — the Forest Service
+Aerial Detection Survey estimated about 29 million trees lost in California in 2015 alone,
+and roughly 129 million cumulatively by 2017 [usfs-california-tree-mortality-ads] — and the
+standing dead fuel that follows raises the potential for very large, severe fire
 [stephens-drought-mortality-wildfire] [usgs-sierra-catastrophic-wildfire]. A drought result
 and a wildfire result at the same western site are therefore **not independent**, and adding
 or averaging them double-counts a single causal chain.

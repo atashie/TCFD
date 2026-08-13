@@ -32,9 +32,9 @@ documents on four spines would drift apart at the first data refresh.
 | 13(a)–(b) | Effects on business model; where risks concentrate | **Partly** — concentration by site; effects are entity-owned |
 | 14 | Response and adaptation | **Not supplied** — entity-owned |
 | 15–21 | Effects on financial position, performance, cash flows | **Not supplied** — needs vulnerability functions and asset values |
-| 22(a) | Climate resilience assessed via scenario analysis | **Supplied** |
-| 22(b) | Which scenarios, sources, horizons, assumptions | **Supplied** |
-| 22(b)(iii)–(iv) | Diverse range; a Paris-aligned scenario among them | **Supplied** — low/medium/high tiers, `rcp26`/`ssp126` as the Paris-aligned member |
+| 22(a) | Assessment of the resilience of the entity's **strategy and business model** — implications, significant uncertainties, financial flexibility, ability to redeploy assets | **NOT SUPPLIED.** We compare hazard exposure across scenarios; that is an input to a resilience assessment, not the assessment |
+| 22(b) | Which scenarios and sources, over which horizons, on which assumptions | **Supplied** |
+| 22(b)(i) | Inputs, incl. whether a diverse range was covered and whether one scenario was aligned with the latest international agreement | **Partly** — three forcing tiers covers the diverse range. Alignment is offered as a **proxy** only: a scenario code does not establish alignment, and the judgement is the entity's |
 | 5–7 | Governance | **Not supplied** — entity-owned |
 | 24–26 | Risk management process | **Not supplied** — entity-owned |
 | 28–29 | Metrics; basis and limitations | **Supplied** |
@@ -49,10 +49,11 @@ that position rather than publishing a provisional count. Section 8 likewise pri
 
 ## CDP question 3.1.1
 
-CDP's per-risk table asks ten fields per physical risk and awards management credit only when
-time horizon, likelihood and magnitude are all populated with something other than "Unknown".
-Leadership-tier credit requires scenario analysis under at least two pathways, which this
-assessment satisfies (it uses three).
+CDP's per-risk table is understood to ask around ten fields per physical risk, with
+management credit contingent on time horizon, likelihood and magnitude being populated, and
+leadership credit on scenario analysis under at least two pathways. **All of that is
+unverified against the live form** — see the warning below. On the scenario count this
+assessment would comfortably satisfy a two-pathway requirement, since it uses three.
 
 | Field | Supplied | Note |
 |---|---|---|
@@ -72,27 +73,36 @@ financial magnitude; we have a spatial exposure ranking. Mapping one onto the ot
 judgement the customer must make and own, and the report should say so rather than
 manufacturing a correspondence.
 
-**The hazard labels are UNVERIFIED.** `config/hazard_taxonomy.yaml` maps our families onto
-CDP's dropdown by name; as of 2026-08-13 the live 2026 questionnaire dropdown had not been
-enumerated option by option. Open the questionnaire and reconcile before filing. This is a
-GUARDRAILS §11 situation — a recorded claim needs its receipt or the word UNVERIFIED, and it
-carries the word.
+**THE WHOLE CDP MAPPING IS UNVERIFIED, not just the hazard labels.** As of 2026-08-13 the
+live 2026 questionnaire had not been opened: neither the hazard dropdown NOR the per-risk
+field list above NOR the scoring rules ("ten fields", "management credit", "leadership tier")
+were transcribed from it. They are inferences from published guidance and secondary summaries.
+An earlier version of this file marked only the labels as unverified, which was too narrow and
+implied the field list had been checked. Open the questionnaire and reconcile the whole
+appendix before filing. GUARDRAILS §11 — a recorded claim needs its receipt or the word
+UNVERIFIED.
 
 ## ESRS E1-9
 
 | Datapoint | Supported |
 |---|---|
-| Assets at material physical risk — count and share | **not yet** — requires an agreed definition |
-| Assets at material physical risk — monetary amount | **not yet** — needs the definition *and* asset values |
-| Disaggregation by acute and chronic | yes — `esrs_class` in the hazard taxonomy |
-| Location of significant assets by NUTS 3 | **no** — coordinates are delivered; no NUTS lookup exists here |
-| Short / medium / long term breakdown | yes |
-| Before adaptation actions | yes — no adaptation is modelled anywhere |
-| Anticipated financial effects | no — entity-owned |
+| Monetary amount **and proportion** of assets at material physical risk (para 66(a)) | **No.** This is the datapoint, and it is financial. We supply neither half: the definition of "at material risk" is not agreed, and no asset values were supplied |
+| Disaggregation of those monetary amounts into acute and chronic | **No.** We classify the *hazards* acute/chronic, which is not the same thing as the disaggregated monetary figure |
+| Breakdown over short / medium / long term | **Partly** — exposure is reported at three horizons; the monetary datapoint those horizons would qualify is absent |
+| Before adaptation actions | n/a until the above exists. No adaptation is modelled anywhere, so any future figure would be a pre-adaptation one |
+| Location of significant assets *at material physical risk*, by NUTS 3 | **No** — applies to assets already determined to be at material risk. Coordinates are delivered; no NUTS lookup exists here |
+| Anticipated financial effects | **No** — entity-owned |
 
-The NUTS 3 gap is the one worth flagging early to any EU customer: it is a lookup we do not
-have, and inventing a mapping from decimal degrees would be a fabricated regulatory
-identifier.
+**E1-9 is a financial disclosure, and this assessment is not one.** Its core requirement is a
+monetary amount and proportion of financial-statement assets, disaggregated acute/chronic and
+broken down by horizon. Classifying hazards and printing horizon labels does not supply it,
+and an earlier version of this file marked three of those rows "Yes" on that basis — which
+overstated coverage of the one datapoint E1-9 actually asks for.
+
+The NUTS 3 gap is worth flagging early to any EU customer: it is a lookup we do not have, and
+inventing a mapping from decimal degrees would be a fabricated regulatory identifier. Note it
+applies to assets already determined to be at material risk, so it sits downstream of the
+definition we have not yet agreed.
 
 ## Hazard coverage
 

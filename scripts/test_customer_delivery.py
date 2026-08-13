@@ -26,6 +26,7 @@ Checks:
 """
 
 import hashlib
+import html
 import json
 import re
 import sys
@@ -257,17 +258,39 @@ def check_reports(delivery: Path, manifest: dict, values, assets, layers) -> Non
         for path in (compliance, bespoke):
             if not path.exists():
                 continue
-            visible = re.sub(r"<[^>]+>", " ", path.read_text())
-            published = [
-                phrase for phrase in (
-                    "assets vulnerable at", "Assets vulnerable |",
-                    "Not vulnerable", "vulnerable of", "% of assessed vulnerable",
-                )
-                if phrase in visible
+            # Test each TEXT NODE, not the flattened page. Flattening replaces tags with
+            # spaces, so adjacent table cells run together and "Sections 2, 4, 7" followed
+            # by a cell reading "Assets vulnerable" matched a count-of-vulnerable-assets
+            # pattern that nothing had published. Per-node testing removes that class of
+            # false positive without losing sensitivity: a real determination -- a caption,
+            # a callout sentence, a determination cell -- is always within one node.
+            nodes = [
+                " ".join(html.unescape(n).split())
+                for n in re.split(r"<[^>]+>", path.read_text())
             ]
+            nodes = [n for n in nodes if n]
+
+            # A literal phrase list was the wrong shape here and missed a must-disclose
+            # caveat telling the customer "this report therefore discloses counts and
+            # percentages of assets only" -- a direct contradiction of the deferral, in both
+            # reports, past a passing verifier.
+            patterns = [
+                (r"\d+\s*(?:of\s*\d+\s*)?(?:assets?\s+)?vulnerable", "a count of vulnerable assets"),
+                (r"vulnerable[^.]{0,40}?\b\d+(?:\.\d+)?\s*%", "a percentage vulnerable"),
+                (r"^\s*Not vulnerable\s*$", "a per-asset not-vulnerable determination"),
+                (r"assets? vulnerable to[^.]{0,60}?threshold", "a vulnerability table caption"),
+                (r"sensitivity of the vulnerable count", "a threshold-sensitivity table"),
+                (r"(?:disclos|report|present)\w*\s+(?:only\s+)?(?:the\s+)?"
+                 r"(?:count|percentage|amount|share)s?\b[^.]{0,80}?\basset",
+                 "a claim that counts/percentages of assets are disclosed"),
+            ]
+            published = sorted({
+                why for pat, why in patterns
+                for n in nodes if re.search(pat, n, re.I)
+            })
             check(not published,
-                  f"{path.name} publishes a vulnerability determination "
-                  f"({', '.join(published)}) while the method is recorded as deferred in "
+                  f"{path.name} publishes or claims a vulnerability determination "
+                  f"({'; '.join(published)}) while the method is recorded as deferred in "
                   f"TBD_SECTIONS. Either agree the method and remove the TBD entry, or do "
                   f"not print the figure.")
             check("method to be agreed" in visible.lower()

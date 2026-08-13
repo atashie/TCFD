@@ -798,6 +798,42 @@ The first generated reports were reviewed by a user. Every finding was a failure
 
 ---
 
+### 2026-08-13: External Review of the Report Tooling — Nine Confirmed Overstatements, Including Three Regulatory Claims That Were Simply Wrong
+
+A Codex review scoped deliberately narrowly: *is anything asserted that is not true, and does anything overpromise?* Not general code review. The output of this pipeline is a document filed with a regulator, where a plausible false statement is worse than a bug because nothing downstream catches it. Nine confirmed findings, all accepted.
+
+**The worst one contradicted the deferral we had just built.** The `ASSET-VALUES-ABSENT` caveat told the customer "this report therefore discloses counts and percentages of assets only" — in a `must_disclose` caveat, in *both* reports, three sections after the report states it publishes no such thing. The verifier passed 3,294 checks over it, because its deferral check matched five literal phrases and that sentence was not one of them.
+
+**Three regulatory claims were wrong, not merely loose:**
+
+- **IFRS S2 22(b)(iii)–(iv)** was cited for the "diverse range" and Paris-alignment requirements. Those are **22(b)(i)(2)** and **22(b)(i)(4)**; 22(b)(iii) is the reporting period and **22(b)(iv) does not exist**. Found independently while checking paragraph numbers against the published standard, and confirmed by the review.
+- **22(a) was marked "Supplied".** It requires an assessment of the resilience of the entity's *strategy and business model* — uncertainties, financial flexibility, ability to redeploy assets. We compare hazard exposure across scenarios, which is an *input* to that assessment and not the assessment. Now marked NOT SUPPLIED.
+- **ESRS E1-9 rows were marked "Yes"** for acute/chronic disaggregation, horizon breakdown and before-adaptation. E1-9's requirement is a **monetary amount and proportion of financial-statement assets**; classifying hazards and printing horizon labels does not supply it. All now marked No or Partly.
+
+**"19 hazard families in the standard disclosure taxonomy" was an invented provenance.** The acute/chronic split *is* standards-derived; the family list and its boundaries are **ours**. TCFD Table A1 gives broad examples, not an enumeration; ESRS E1 AR 11 publishes a substantially longer classification. So "3 of 19" was a ratio against a denominator we chose, presented as though a standard had set it. Every fraction is now removed from customer-facing surfaces — reports name the hazards covered and not covered, which is true however the list is grouped.
+
+**"Paris-aligned" was an inference presented as a fact.** IFRS S2 deliberately prescribes no scenarios, and a scenario *code* does not establish alignment with an agreement — that depends on temperature outcomes and the entity's own commitments. `PARIS_ALIGNED` is now `LOW_FORCING_PROXY`, the column reads "Low-forcing pathway present", and the report says the judgement is the entity's.
+
+**Two source attributions were wrong in opposite directions.** "Roughly half the trees died at named northern Bavarian sites" came from a search-result summary and could not be traced to the paper it was cited against — the full text is paywalled (HTTP 403). **Removed** from the customer narrative rather than carried on an unverified attribution, with the removal recorded in the dossier's `verified_by`. Conversely, "29 million trees lost in California in 2015" is **true** but belonged to the USDA Forest Service Aerial Detection Survey, not to either source it was cited against; the correct source was added.
+
+**Our own guarantees overpromised.** `report_common` claimed "there is no third kind" of sentence and that `check_citations()` "enforces it mechanically"; `generate_bespoke_report` claimed it made "impossible to publish judgement that is not sourced". What the code checks is narrower: one citation **per paragraph**, a data key that **exists** (not that the row contains the number quoted), a dossier id that **exists** (the source is never fetched). A paragraph can carry one resolving citation and several unsupported assertions and pass. Both docstrings now state the gap explicitly — an overstated guarantee about a guardrail is the same category of error as the thing the guardrail guards against.
+
+**`customer_evidence()` matched substrings**, so `internal/archive/manifest.json` passed as a delivered file. Now matches bare filename tokens.
+
+**Citation scope: five sentences quoted a 2020s value while citing only the 2090s row.** The checker passed them because the cited row exists — it never compares the number in the sentence to the row. Fixed in the narrative by citing both endpoints. The general gap is now documented rather than papered over.
+
+**Rule created — a measurement quoted in a filing needs a reproduction, not a memory.** "Moving a site 0.25° changed a value by 166%" and "20,000 random sites, 100% resolve to a 4-cell blend" were both genuinely measured and neither had a script, a seed, or a retained artifact. To a reviewer that is indistinguishable from invention. `scripts/measure_extraction_sensitivity.py` now reproduces both on demand: the blend result confirms exactly (20,000/20,000), and the sensitivity figure is restated from a fresh measurement on the portfolio's own sites (**44% to 569%** at ±0.25°, wildfire ssp585 2090s) rather than an orphaned 166%.
+
+Same reason, same round: the threshold-cliff figure ("all five vulnerable at 60, none at 80") was measured on a delivery that had since been **deleted**. Restated from the shipped example, where the count falls from 4 of 5 to 1 of 5 between thresholds 60 and 90.
+
+**Verifier**: the deferral check now tests **text nodes rather than the flattened page** — flattening replaced tags with spaces, so "Sections 2, 4, 7" running into a cell reading "Assets vulnerable" produced a false positive on a report that published nothing. Four injected corruptions caught (contradicting caveat, restored table caption, per-asset determination cell, a count in prose), clean baseline.
+
+**What the review could not check, and said so**: per-layer global slope measurements (`sen_slope == 0` on 74.0% of active cells, etc.) are reproducible from the processed NetCDFs via `--measure-slopes` but not from a six-site delivery. Fair; the receipt exists, one level up.
+
+**Files**: `config/hazard_taxonomy.yaml`, `scripts/generate_compliance_report.py`, `scripts/generate_delivery_caveats.py`, `scripts/generate_bespoke_report.py`, `scripts/utils/report_common.py`, `scripts/test_customer_delivery.py`, `scripts/measure_extraction_sensitivity.py`, `docs/reporting/`.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

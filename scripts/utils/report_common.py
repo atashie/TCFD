@@ -5,29 +5,42 @@ bespoke document cannot disagree about a number. They differ in SPINE -- one is 
 IFRS S2 paragraph, the other by the reader's decision -- and in nothing else. Anything a
 report states about the data comes through here.
 
-THE LOAD-BEARING RULE
----------------------
-A report may contain exactly two kinds of sentence:
+THE LOAD-BEARING RULE, AND EXACTLY HOW FAR THE MACHINERY ENFORCES IT
+--------------------------------------------------------------------
+The rule a writer must follow: a report contains only sentences derived from the delivery,
+or sentences carrying a citation that resolves.
 
-  1. Something derived from the delivery, computed here, never retyped.
-  2. Something researched, carrying a citation that RESOLVES.
+WHAT THE CODE ACTUALLY CHECKS is narrower, and the gap matters:
 
-There is no third kind. `check_citations()` enforces it mechanically: a `[data:...]` marker
-must name a row that exists in the CSVs and a `[dossier:...]` marker must name a source in
-`dossier.yaml`. An unresolvable citation fails the build. This matters because the failure
-mode we are guarding against is not laziness, it is FLUENCY -- a well-written paragraph about
-a customer's operations reads exactly the same whether it was researched or invented, and by
-the time it reaches a disclosure nobody can tell which.
+  * every PARAGRAPH in a slot marked `requires_citation` contains at least one citation --
+    not every sentence, and not every claim;
+  * a `[data:...]` marker names a row that EXISTS -- not that the row contains the number
+    the sentence states, and not that the cited column is the one being quoted;
+  * a `[dossier:...]` marker names a source id that exists in `dossier.yaml` -- the source
+    is never fetched, and `what_it_supports` is never compared against the claim.
 
-VULNERABILITY IS COMPUTED IN ONE PLACE
---------------------------------------
-`vulnerability_frame()` is the only implementation of "is this asset vulnerable". It excludes
-non-hazard layers (`conifer-npp` measures the stand's productivity, not a hazard acting on
-it -- see config/hazard_taxonomy.yaml), it separates NOT ASSESSED from NOT VULNERABLE, and it
-reports the counts the chosen threshold produces alongside the counts the neighbouring
-thresholds would have produced. The last part is not decoration: the number of vulnerable
-assets is a monotone function of a threshold somebody picked, and a single unqualified count
-is the easiest way to make a true report misleading.
+So a paragraph can carry one resolving citation and several unsupported assertions and pass.
+The checks raise the cost of inventing something and make a fabricated reference impossible;
+they do not make an unsupported sentence impossible. **The remaining gap is closed by
+reading, not by the build.**
+
+That gap is worth being precise about, because the failure mode is FLUENCY: a well-written
+paragraph about a customer's operations reads exactly the same whether it was researched or
+invented, and by the time it reaches a disclosure nobody can tell which. A guarantee
+overstated here would be the same category of error.
+
+EXPOSURE IS COMPUTED IN ONE PLACE, AND VULNERABILITY IS NOT PUBLISHED AT ALL
+----------------------------------------------------------------------------
+`vulnerability_frame()` is the only implementation. What the reports USE from it is factual:
+the worst exposure percentile per asset, which hazard produced it, how many hazards were
+assessed, and the NOT_ASSESSED distinction. It excludes non-hazard layers (`conifer-npp`
+measures the stand's productivity, not a hazard acting on it -- see
+config/hazard_taxonomy.yaml).
+
+Its `VULNERABLE` / `NOT_VULNERABLE` statuses are NOT rendered anywhere. The method for
+turning a global-relative exposure rank into a claim about susceptibility to harm has not
+been agreed -- see `TBD_SECTIONS` and docs/reporting/compliance/vulnerability-definition.md
+-- and the verifier fails any report that publishes such a determination.
 """
 
 from __future__ import annotations
@@ -813,11 +826,14 @@ def customer_evidence(evidence: str) -> str:
     """
     if not evidence:
         return ""
-    kept = [
-        seg.strip()
-        for seg in evidence.split(";")
-        if any(f in seg for f in DELIVERED_FILES)
-    ]
+    kept = []
+    for seg in evidence.split(";"):
+        # Match on a BARE filename token, not a substring. `internal/archive/manifest.json`
+        # and `config/values.csv.notes` both contain a delivered filename and neither is a
+        # file the customer holds; a substring test published both.
+        tokens = re.findall(r"[A-Za-z0-9_.\-/]+", seg)
+        if any(t in DELIVERED_FILES for t in tokens):
+            kept.append(seg.strip())
     return "; ".join(kept)
 
 

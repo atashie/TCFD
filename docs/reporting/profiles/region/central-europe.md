@@ -35,8 +35,9 @@ sources:
     retrieved_on: "2026-08-13"
     as_of: "2021"
     what_it_supports: >-
-      Direct hot-drought mortality of Norway spruce in Germany during 2018–2019, including
-      roughly 50% mortality at northern Bavarian sites.
+      That the 2018-2019 hot droughts induced tree mortality of Norway spruce in central
+      Germany. Title and subject only -- the full text is paywalled, so no site-level
+      mortality percentage is taken from it.
 ---
 
 ## Transmission channels
@@ -45,8 +46,9 @@ sources:
 mechanism for Norway spruce is drought → physiological stress → loss of resin defence →
 *Ips typographus* bark beetle outbreak → stand mortality
 [sciencedirect-drought-bark-beetle-central-europe]. The 2018 drought initiated the most
-severe outbreak on record; at northern Bavarian sites roughly half the trees died
-[sciencedirect-beech-spruce-mortality-2018-19], and the effect is capable of transforming
+severe outbreak on record; the 2018–2019 hot droughts induced severe Norway spruce mortality
+in central Germany [sciencedirect-beech-spruce-mortality-2018-19], and the effect is capable
+of transforming
 forest composition at landscape scale rather than merely reducing one rotation's yield
 [pmc-drought-bark-beetle-transformation].
 

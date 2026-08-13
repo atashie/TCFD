@@ -31,15 +31,30 @@
 #                     `report_common.coverage_summary()` exposes `customer_note` and the
 #                     compliance report reads only that field. Do not swap them.
 #
-# PROVENANCE OF THE FRAMEWORK VOCABULARY
-# --------------------------------------
-# The acute/chronic split and the family list follow the TCFD Table A1 physical-risk
-# taxonomy, which CDP and ESRS both inherit. `cdp_label` values below are our best mapping
-# onto CDP's question 3.1.1 hazard dropdown and are marked UNVERIFIED: as of 2026-08-13 the
-# 2026 questionnaire's dropdown options were NOT enumerated verbatim -- CDP's public
-# guidance pages return the acute/chronic definitions but not the option list. Before a
-# delivery is filed against CDP, open the live questionnaire, enumerate the dropdown, and
-# replace these with the exact labels (GUARDRAILS.md §11: a recorded claim needs its
+# PROVENANCE OF THE FRAMEWORK VOCABULARY -- READ THIS BEFORE QUOTING "19 FAMILIES"
+# ------------------------------------------------------------------------------
+# THE FAMILY LIST BELOW IS OURS. It is a working taxonomy assembled for this pipeline, not
+# a list any standard publishes. Do not describe it as "the standard disclosure taxonomy",
+# and do not present "3 of 19" as a coverage ratio against a standards-defined denominator
+# -- the denominator is a choice we made, and a differently-grouped list would give a
+# different fraction.
+#
+# What IS standards-derived:
+#   * the ACUTE / CHRONIC split, which TCFD introduced and IFRS S2, CDP and ESRS all use.
+# What is NOT:
+#   * the number of families, and where the boundaries between them fall. TCFD's Table A1
+#     gives broad examples (cyclones, floods; temperature, precipitation, sea level), not an
+#     enumerated list. ESRS E1 AR 11 publishes a substantially LONGER four-column hazard
+#     classification derived from EU Regulation 2021/2139. Ours sits between the two and
+#     matches neither.
+#
+# When a report needs a coverage statement, name the hazards covered and the hazards not
+# covered. That is true regardless of how the list is grouped. A fraction is not.
+#
+# `cdp_label` values are our best mapping onto CDP's question 3.1.1 hazard dropdown and are
+# marked UNVERIFIED: as of 2026-08-13 the 2026 questionnaire was NOT enumerated -- neither
+# its dropdown options NOR its field list. Before a delivery is filed against CDP, open the
+# live questionnaire and reconcile both (GUARDRAILS.md §11: a recorded claim needs its
 # receipt or the word UNVERIFIED).
 #
 # ISIMIP source facts are NOT unverified -- they are copied from
@@ -47,11 +62,12 @@
 
 taxonomy_version: 1
 seeded_on: "2026-08-13"
-framework_basis: "TCFD Table A1 physical-risk taxonomy, as inherited by IFRS S2, CDP and ESRS E1"
+framework_basis: "OUR OWN working taxonomy. The acute/chronic split follows TCFD and is inherited by IFRS S2, CDP and ESRS E1; the family list and its boundaries are ours and match no published list."
 cdp_labels_verified: false
 cdp_labels_note: >-
-  UNVERIFIED as of 2026-08-13. The 2026 CDP question 3.1.1 hazard dropdown was not
-  enumerated; these labels are a mapping, not a transcription. Enumerate before filing.
+  UNVERIFIED as of 2026-08-13. Neither the 2026 CDP question 3.1.1 hazard dropdown NOR its
+  per-risk field list was enumerated against the live questionnaire; both the labels here
+  and the field mapping in the compliance report are inferences. Enumerate before filing.
 
 # ---------------------------------------------------------------------------------------
 # Layers that are NOT hazards

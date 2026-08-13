@@ -13,17 +13,21 @@ computes them through the same functions.
 
 A person owns the narrative -- what these numbers mean for this business, this asset class,
 this decision. That is judgement and no template produces it. What the generator does is
-make it impossible to publish judgement that is not sourced:
+raise the cost of publishing judgement that is not sourced:
 
   * `narrative.md` is a set of SLOTS. An unfilled slot fails the build.
-  * A paragraph in a slot marked `requires_citation: yes` must carry a citation.
+  * Every PARAGRAPH in a slot marked `requires_citation: yes` must carry at least one
+    citation. Not every sentence, and not every claim.
   * A citation must RESOLVE -- `[data:...]` to a row that exists in the delivered CSVs,
     `[dossier:...]` to a source recorded in `dossier.yaml`.
 
-That last check is the point of the whole design. The failure mode here is not laziness, it
-is fluency: a confident paragraph about a customer's operations reads identically whether it
-was researched or invented, and by the time it reaches a disclosure nobody can tell which.
-An unresolvable citation is worse than no citation, because it looks like evidence.
+**These checks do not make an unsupported sentence impossible**, and claiming otherwise
+would be its own overstatement. A paragraph can carry one resolving citation alongside
+several assertions it does not support; a data citation proves the row exists, not that it
+contains the number quoted. What they do make impossible is a fabricated REFERENCE -- and
+that matters, because the failure mode here is fluency: a confident paragraph about a
+customer reads identically whether researched or invented. An unresolvable citation is worse
+than no citation, because it looks like evidence. The rest is closed by reading.
 
 PROFILES DO NOT APPEAR IN THE OUTPUT
 ------------------------------------
@@ -286,7 +290,9 @@ def sec_gaps(delivery: Delivery, cov: dict) -> str:
         table(
             ["Hazard family", "Class", "Status and what it means for this portfolio"],
             [[u["name"], u["esrs_class"].title(), u["customer_note"]] for u in cov["uncovered"]],
-            caption=f"{len(cov['uncovered'])} of {cov['n_families']} families not assessed.",
+            caption="Physical hazards outside this assessment. The grouping into families "
+                    "is our own working taxonomy, not a list any standard publishes, so the "
+                    "number of rows is not a coverage ratio.",
         )
     )
     should = [c for c in delivery.caveats if c["severity"] == SEVERITY_SHOULD]

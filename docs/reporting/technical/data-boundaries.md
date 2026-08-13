@@ -39,11 +39,19 @@ ever delivered, which is exactly the failure this design removes.
 
 - The model grid is **0.5°** (~55 km at the equator).
 - Extraction blends the **four surrounding cell centres** with a Gaussian weighting —
-  measured across 20,000 random sites, 100% resolve to a 4-cell blend. Footprint ≈ **1° × 1°,
-  111 km north–south**.
+  20,000 random sites, 100% resolve to a 4-cell blend. Footprint ≈ **1° × 1°, 111 km
+  north–south**.
 - `cyclone` is *additionally* smoothed at processing time, so its two stages compound. Its
   values are the least site-specific numbers in any delivery.
-- Moving a site **0.25°** changed one measured burnt-area value by **166%**.
+- Moving a site **0.25°** changed 2090s burnt-area values at the example portfolio's own
+  sites by **44% to 569%**.
+
+**Both figures are reproducible**, and that is deliberate — an unreproducible measurement in
+a filing is indistinguishable from an invented one:
+
+```bash
+python scripts/measure_extraction_sensitivity.py
+```
 
 Therefore: this is a screening instrument for comparing sites, horizons and scenarios. It is
 not a site-level engineering assessment, it cannot resolve topography, drainage, defensible

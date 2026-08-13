@@ -38,7 +38,8 @@ Two decision points, and they need different treatments:
 ## Known confounders
 
 - **Coordinate precision decides the answer.** At this footprint, moving a site a quarter of
-  a degree changed one measured value by 166%. A pin dropped on a town centre standing in
+  a degree changed measured burnt-area values by 44% to 569% across one example portfolio
+  (`scripts/measure_extraction_sensitivity.py`). A pin dropped on a town centre standing in
   for a tract can reverse a ranking. Confirm coordinates before any screening result is
   acted on — this is the single highest-value check in the whole use case.
 - **Ranking is only valid within a hazard set.** Candidates mapped to different asset types

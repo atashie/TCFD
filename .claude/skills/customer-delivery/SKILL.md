@@ -226,6 +226,12 @@ IFRS S2 spine with a CDP / ESRS E1-9 / California SB 261 mapping appendix.
 **Fully deterministic** — no narrative, no researched claims, so an auditor can rebuild it
 byte-for-byte. Structure and rationale: `docs/reporting/technical/report-anatomy.md`.
 
+**Every regulatory claim needs its paragraph checked, and every measurement needs a
+reproduction.** An external review found three wrong IFRS S2/ESRS citations, an invented
+"standard taxonomy" provenance, and two quoted measurements with no retained receipt. Before
+asserting that a section satisfies a requirement, read the requirement; before quoting a
+number as measured, make sure something in the repo re-measures it.
+
 **A section may report nothing.** Where the method for turning our data into a framework's
 requirement has not been agreed with the user, the section states that and publishes no
 figure. Entries live in `report_common.TBD_SECTIONS`; both reports render the same block, and

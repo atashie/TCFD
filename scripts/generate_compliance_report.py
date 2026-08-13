@@ -77,10 +77,16 @@ from utils.viz_common import SCENARIO_TIER, TIER_LABELS, TIER_ORDER, risk_band  
 
 REPORT_FILENAME = "report_compliance.html"
 
-#: Which native scenario codes are treated as the Paris-aligned member for S2 22(b)(iv),
-#: which asks whether a scenario "aligned with the latest international agreement on climate
-#: change" was among those used.
-PARIS_ALIGNED = {"rcp26", "ssp126"}
+#: Low-forcing pathways used here as a PROXY for the scenario IFRS S2 22(b)(i) asks about --
+#: one "aligned with the latest international agreement on climate change".
+#:
+#: This is an inference and the report says so. IFRS S2 deliberately prescribes no particular
+#: scenario, and a scenario CODE does not by itself establish alignment with an agreement: that
+#: depends on the temperature outcome claimed, the jurisdiction's commitments and the entity's
+#: own assumptions. RCP2.6 and SSP1-2.6 are the conventional low-forcing choices for this
+#: purpose; calling them "Paris-aligned" without qualification would assert something neither
+#: we nor the scenario codes can establish.
+LOW_FORCING_PROXY = {"rcp26", "ssp126"}
 
 SECTIONS = [
     ("scope", "1. Scope and basis of this assessment"),
@@ -190,8 +196,9 @@ def sec_risks(delivery: Delivery, cov: dict) -> str:
                 ]
             )
     body = f"""
-<p>The following physical hazards were assessed. Classification into acute and chronic
-follows the standard disclosure taxonomy used by IFRS S2, CDP and ESRS E1.</p>
+<p>The following physical hazards were assessed. The acute/chronic classification is the one
+IFRS S2, CDP and ESRS E1 share; the grouping of hazards into the families named here is our
+own and does not correspond to a list any of those standards publishes.</p>
 {table(
     ["Hazard", "Class", "What is measured", "Units", "Ensemble", "Scenarios"],
     rows,
@@ -323,7 +330,7 @@ def sec_scenarios(delivery: Delivery) -> str:
         [
             TIER_LABELS.get(t, t),
             ", ".join(by_tier[t]),
-            "Yes" if any(s in PARIS_ALIGNED for s in by_tier[t]) else "No",
+            "Yes" if any(s in LOW_FORCING_PROXY for s in by_tier[t]) else "No",
         ]
         for t in TIER_ORDER
         if t in by_tier
@@ -380,15 +387,19 @@ def sec_scenarios(delivery: Delivery) -> str:
 drawn from {' and '.join(rounds)}. Because the hazards come from
 {'two ISIMIP generations and no scenario code spans both' if len(rounds) > 1 else 'a single ISIMIP generation'},
 scenarios are grouped into three forcing tiers.</p>
-{table(["Forcing tier", "Scenario codes used", "Paris-aligned pathway present"], rows,
+{table(["Forcing tier", "Scenario codes used", "Low-forcing pathway present"], rows,
        caption="Scenarios analysed, grouped into forcing tiers (IFRS S2 22(b)).")}
 {table(["Layer", "Model generation", "Source dataset"], prov_rows,
        caption="Provenance of each layer's projections.")}
-<p>The analysis includes a low-forcing pathway consistent with the goals of the Paris
-Agreement, a medium pathway and a high pathway, and therefore spans a diverse range as IFRS
-S2 22(b)(iii)–(iv) requires. The tiers are approximately comparable only: the RCP and SSP
-pathways rest on different generations of climate model and different socioeconomic
-assumptions.</p>
+<p>The analysis spans low, medium and high forcing, which addresses the diverse-range
+element of IFRS S2 22(b)(i). On the same paragraph's question of whether a scenario
+<em>aligned with the latest international agreement on climate change</em> was used: the
+low-forcing pathway (RCP2.6 / SSP1-2.6) is the conventional choice for that purpose and is
+offered here <strong>as a proxy</strong>. Whether it constitutes alignment is a judgement
+about temperature outcomes and the entity's own commitments, and it is the entity's to make
+— a scenario code does not establish it. The tiers are approximately comparable only: the
+RCP and SSP pathways rest on different generations of climate model and different
+socioeconomic assumptions.</p>
 {figure_block(fig, caption=note)}
 """
 
@@ -400,8 +411,9 @@ def sec_metrics(delivery: Delivery, vf: pd.DataFrame) -> str:
     percentile threshold. That was wrong, and wrong in a way that looked authoritative:
     `percentile` is a global-relative EXPOSURE rank, "vulnerable" is a statement about
     susceptibility to HARM, and no step in this pipeline connects the two. The threshold
-    behaved accordingly -- on one example portfolio every asset was vulnerable at 60 and none
-    at 80, which is a property of the cut-point rather than of the portfolio.
+    behaved accordingly -- on the worked example the vulnerable count falls from 4 of 5 to 1
+    of 5 as the threshold moves from 60 to 90, which is a property of the cut-point rather
+    than of the portfolio.
 
     So the section reports nothing until the method has been agreed. See
     `report_common.TBD_SECTIONS`.
@@ -585,7 +597,7 @@ def sec_not_assessed(delivery: Delivery, cov: dict) -> str:
     n_cov, n_all = len(cov["covered"]), cov["n_families"]
     return f"""
 {callout(
-    f"{n_all - n_cov} of {n_all} physical hazard families were not assessed",
+    "Hazards outside this assessment",
     "<p>Their absence from this report is <strong>not</strong> a finding that they are "
     "immaterial. They were not examined. A reader comparing sites in this report is "
     "comparing them on the hazards in section 2 and on nothing else — in particular, "
@@ -594,7 +606,9 @@ def sec_not_assessed(delivery: Delivery, cov: dict) -> str:
     kind="must",
 )}
 {table(["Hazard family", "Class", "Status and what it means for this portfolio"], rows,
-       caption=f"Physical hazard families not covered by this assessment ({len(rows)} of {n_all}).")}
+       caption="Physical hazards not covered by this assessment. The grouping into "
+               "families is our own working taxonomy, not a list any standard publishes, so "
+               "the number of rows is not a coverage ratio.")}
 """
 
 
@@ -605,7 +619,9 @@ def sec_mapping(delivery: Delivery, cov: dict) -> str:
             ["10, 10(a)", "Climate risks that could affect prospects; physical or transition", "Section 2"],
             ["10(d)", "Definitions of short, medium and long term", "Section 3"],
             ["13(b)", "Where risks are concentrated in the business model", "Section 4"],
-            ["22(a)–(b)", "Climate resilience assessed with scenario analysis; scenarios, sources, horizons", "Section 5"],
+            ["22(a)", "Assessment of the resilience of the entity's STRATEGY AND BUSINESS MODEL, including significant uncertainties, financial flexibility and ability to redeploy assets",
+             "NOT SUPPLIED — this assessment compares hazard exposure across scenarios; it does not assess strategy or business-model resilience"],
+            ["22(b)", "Which scenarios and sources were used, over which horizons, on which assumptions", "Section 5"],
             ["29(c)", "Amount and percentage of assets vulnerable to physical risks",
              "Section 6 — NOT REPORTED, method not yet agreed"],
             ["28–29", "Basis of preparation, method and limitations of the metrics", "Sections 1, 9"],
@@ -627,8 +643,10 @@ def sec_mapping(delivery: Delivery, cov: dict) -> str:
             ["Explanation of the risk", "Partly", "Method here; business consequence is entity-owned"],
             ["Cost of response / management method", "No", "Entity-owned"],
         ],
-        caption="CDP question 3.1.1 per-risk fields. Ten fields are required for full credit; "
-                "this assessment supplies the hazard and exposure half.",
+        caption="Our reading of CDP question 3.1.1's per-risk fields. NOT transcribed from "
+                "the live questionnaire — the field names, their number, and the scoring "
+                "rules are inferred and must be reconciled against the current form before "
+                "filing.",
     )
     esrs = table(
         ["ESRS E1-9 datapoint", "Supported", "Note"],
@@ -637,11 +655,18 @@ def sec_mapping(delivery: Delivery, cov: dict) -> str:
              "Section 6 — requires an agreed definition of 'at material risk'"],
             ["Assets at material physical risk — monetary amount", "Not yet",
              "Needs both the definition above and Asset_Value with the site list"],
-            ["Disaggregation by acute and chronic", "Yes", "Class column in sections 2 and 10"],
-            ["Location of significant assets by NUTS 3 code", "No",
-             "Decimal coordinates are delivered for every site; NUTS classification is not applied"],
-            ["Short, medium and long term breakdown", "Yes", "Section 3"],
-            ["Before adaptation actions", "Yes", "No adaptation is modelled anywhere in this assessment"],
+            ["Disaggregation of those amounts by acute and chronic", "No",
+             "The hazards assessed are classified acute/chronic in sections 2 and 10, but "
+             "that classification is not the disaggregated monetary datapoint E1-9 asks for"],
+            ["Location of significant assets at material physical risk, by NUTS 3 code", "No",
+             "Applies to assets already determined to be at material risk. Decimal "
+             "coordinates are delivered for every site; NUTS classification is not applied"],
+            ["Breakdown over short, medium and long term", "Partly",
+             "Exposure is reported at three horizons (section 3); the E1-9 monetary "
+             "datapoint those horizons would qualify is not supplied"],
+            ["Before climate change adaptation actions", "n/a until the above is supplied",
+             "No adaptation is modelled anywhere in this assessment, so any future figure "
+             "would be a pre-adaptation one"],
             ["Anticipated financial effects", "No", "Entity-owned"],
         ],
         caption="ESRS E1-9 coverage.",
@@ -662,11 +687,11 @@ def sec_mapping(delivery: Delivery, cov: dict) -> str:
         # Deliberately NOT `cov['cdp_labels_note']` -- that is the internal bookkeeping
         # note, and it renders as an alarm in a filing.
         note = callout(
-            "The CDP hazard labels above are a mapping, not a transcription",
-            "<p>Hazard families have been matched to CDP's question 3.1.1 vocabulary by "
-            "name rather than copied from the current questionnaire. Reconcile the two "
-            "lists against the live form before submitting, since CDP revises its hazard "
-            "options between cycles.</p>",
+            "The CDP mapping above is our reading, not a transcription",
+            "<p>Neither the hazard vocabulary nor the field list was copied from the current "
+            "questionnaire — both were matched by name from published guidance. Reconcile "
+            "the whole appendix against the live form before submitting, since CDP revises "
+            "its questions and hazard options between cycles.</p>",
             kind="limit",
         )
     return f"<h3>IFRS S2</h3>{s2}<h3>CDP</h3>{cdp}{note}<h3>ESRS E1-9</h3>{esrs}<h3>California SB 261</h3>{sb261}"
