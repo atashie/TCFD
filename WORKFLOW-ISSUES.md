@@ -661,6 +661,79 @@ The build record below is kept because the framing work and the parse bug are st
 
 **Files**: `scripts/download_tempnle_npp.py` (new), `scripts/process_tempnle_npp.py` (new), `CLAUDE.md`, `config/isimip_search_catalog.yaml`, `WORKFLOW-ISSUES.md`.
 
+### 2026-08-12: Customer Delivery Pipeline Built — External Review Found Eight Defects, One of Them in Shared Extraction Code
+
+**Delivered**: the customer-delivery pipeline — `config/asset_catalog.yaml` (asset type → hazard layers), `config/layer_registry.yaml` (layer → disk location, status, which slope to read), `scripts/utils/delivery.py`, `scripts/generate_customer_delivery.py`, and a normalized CSV star schema (`locations` / `assets` / `layers` / `values`). The 28-column Looker `Export-Key.csv` contract is **retired** (user decision): no column may be derivable from another, so the hazard bands, the long-term-trend column (it *is* the final decade's slope under an expanding window) and the two never-emitted significance columns are gone.
+
+**An external review (Codex) found eight defects in the first cut. All eight were reproduced independently before acting, and all eight were real.** The two that would have shipped wrong numbers:
+
+1. **`spatial_extract.extract_by_point` did not wrap longitude at the antimeridian.** The search window masked on a raw `|lons - lon|`, so it was one-sided at the seam and **180°E and 180°W — the same meridian — returned different values**. Measured on `burntarea` ssp585 at 17°S, 2090s: **0.775 vs 0.962**; at 67°N the two answers were **62× apart** (2.37e-7 vs 1.47e-5). After the wrap both return 0.868, the average of the two one-sided answers. **This was a pre-existing defect in shared code**, so `extract_timber_locations.py` had been carrying it too. Inland values are bit-identical before and after.
+2. **`data_status` scoped its domain mask to the delivery's own layers**, so a conifer-only delivery told an Amazon site at (−3, −60) it was `OUTSIDE_DOMAIN` — "offshore" — when the truth was that no conifer stand is modelled on perfectly good land. The mask is now the union over **every registry layer**, so a status cannot depend on what else the customer ordered.
+
+The other six: `layers.csv` published one scenario's `n_members` as the layer's (`conifer-npp` is **10/9/10** across rcp26/60/85, so "10" is false for rcp60 — replaced by `n_members_by_scenario` + `members_by_scenario`); `slopes_agree` returned `False` on inactive 0/0 cells, which would make a downstream "unreliable trend" filter flag every quiet site (now `None` — OUTPUT-SPEC requires the active-cell view); non-numeric coordinates raised a bare `TypeError` past the CLI's error handler; the manifest carried no content hashes; QA review status was documented but never recorded (`qa_reviewed_on`, `null` on all five layers, surfaced as `NOT CONFIRMED`); and the percentile "regression check" was an orientation spot-check, not proof of passthrough.
+
+**`scripts/test_customer_delivery.py` is the fix for that last one and the general guard.** It recomputes **every** delivered metric from the source NetCDF with a Gaussian weighting **written from the spec rather than imported** — calling the same function the delivery called would prove only determinism. Confirmed to fail on injected corruption: a double-inverted `conifer-npp` percentile, a ×10 `wildfire` slope and one wrong value produced **161 violations across 3,106 checks**.
+
+**`recommended_slope` is measured per layer, not inferred.** `wildfire` needs `ols_slope`: Sen collapses to exactly 0 on **74.0%** of its active cells at the 2090s, despite a grid-level zero fraction of only 29.2% — the collapse lives in the year-pair *differences*, not the values. Only `conifer-npp` (2.1%) is safe on Sen. `--measure-slopes` re-checks this and flags registry disagreement.
+
+**Spatial averaging was measured and documented end to end** (ASSET-CATALOG.md, "Spatial averaging — the complete picture"), because a delivered number passes through **two** kernels on some layers and nothing connected them. Stage 1 is the per-layer processing kernel (only `cyclone`, L=2.5, 8.1% on the centre cell). Stage 2 is extraction, and it is **a 4-cell blend, not a 3×3 smoother** — the 3×3 stencil requires the site to sit exactly on a cell centre, and **100% of 20,000 random sites got 2×2**, a 1°×1° footprint ≈111 km N-S. The kernel is truncated at 2σ (13.5% of peak, chopped not tapered), works in degree space so it reaches **2.6× further E-W than N-S at 67°N**, and drops NaN neighbours with renormalization — so a coastal site returns a land-derived value with `data_status` reading `OK` throughout. That last is **accepted**, not a gap: customer locations are masked to land upstream (user decision). Coordinate precision matters accordingly: moving a site ±0.25° changed 2090s burnt area at Shasta from **1.248 to 3.979**, 166% of the centre value.
+
+**Rule created**: `ASSET-CATALOG.md` (new, the reference doc); `/customer-delivery` skill (new). An unknown asset type is an **error, never a default** — a silently defaulted bundle delivers a hazard with no transmission channel to the asset and the customer cannot tell it was a guess.
+
+**Files**: `ASSET-CATALOG.md`, `.claude/skills/customer-delivery/SKILL.md`, `config/asset_catalog.yaml`, `config/layer_registry.yaml`, `scripts/utils/delivery.py`, `scripts/generate_customer_delivery.py`, `scripts/test_customer_delivery.py`, `scripts/utils/spatial_extract.py`, `CLAUDE.md`.
+
+---
+
+### 2026-08-13: Climate Score — A Composition Artifact That Reappeared at a Second Level of Rollup After Being "Fixed" at the First
+
+**Delivered**: `climate_score.csv` — the unweighted mean of `percentile` across an asset's hazards, per forcing tier per decade. Percentile is the only cross-hazard comparable axis (`value` is in native units that differ per layer) and is already oriented so 100 is worst on every layer, `higher_is_better` ones included, which is what makes the mean legitimate.
+
+**It is keyed on a forcing TIER, not a scenario code, and that is forced by the data.** No native ISIMIP code spans both rounds. Measured on a timber asset carrying three hazards: `rcp26` sees **1 of 3** (conifer-npp), `ssp126` sees **2 of 3** (drought-3b, wildfire), tier `low` sees **3 of 3**. A score keyed on `ssp126` would average two hazards and be labelled "across all hazards". This is the one place harmonization enters the CSV; `values.csv` still carries native codes only, and the `scenarios` column records which contributed. Scenario codes are averaged **within** a hazard before hazards are averaged, so a hazard contributing two codes to one tier is not double-weighted.
+
+**The defect: averaging each tier over whatever assets it happens to have makes the tier lines describe different portfolios.** `cyclone` publishes rcp26/rcp60 and **no rcp85**, so every cyclone-carrying asset is unscoreable at the high tier. The portfolio high-tier 2020s mean read **39.9 against 42.1** for low and medium — impossible on a common basis, because the shared 2020s panel is bit-identical across scenarios and the tiers *must* be equal there. The high line was 2 assets; the others were 5.
+
+**It then recurred at the next level down.** After the portfolio fix, adding a per-location Climate Score view reproduced it exactly: Shasta read **62.3 at high vs 51.7 at low/medium** in the 2020s, because that site holds a timber asset *and* a warehouse, and the warehouse carries cyclone. Same cause, one rollup level lower, found only because the baseline-equality tell was checked again.
+
+**Fix applied**: every chart comparing across tiers or decades restricts to a **balanced panel** — assets complete in every cell of that grid — and states what it dropped (2 of 6 assets on the example delivery). Both levels now read 39.88 / 62.3-equivalent identically across all three tiers.
+
+**Rule created**: **the shared 2020s panel is bit-identical across scenarios, so a baseline Climate Score MUST be equal across tiers for the same hazard set.** That invariant is now asserted in `test_customer_delivery.py` at *both* the raw-row level and on the balanced panels the dashboard builds, portfolio and per-location. **Apply the balanced panel at every level of rollup, not just the one where it first bit.**
+
+**Two further ways the score can mislead, both now guarded:**
+
+- **Incomplete hazard coverage.** ISIMIP3b layers have no 2010s panel, so a 2010s score rests on 1 hazard where the 2020s rests on 3 — a portfolio mean of **22 → 42** that reads as risk doubling when only the hazard set changed. Charts exclude incomplete-coverage decades and say so.
+- **`n_hazards` alone cannot say whether a score is complete.** A 2-hazard warehouse and a 4-hazard timber asset both read 2, one complete and one partial, and the expected count lives in `assets.csv` — so a naive consumer sorting the CSV compares unlike scores. `n_hazards_expected` was added for exactly this. The manifest's `incomplete_rows` was also comparing every row against the **global** maximum, mislabelling every warehouse row in a mixed portfolio; it is now per-asset and reads **36** (12 from the 2010s + 3 cyclone-carrying assets × 8 decades).
+
+**Files**: `scripts/utils/delivery.py`, `scripts/generate_delivery_dashboard.py`, `scripts/test_customer_delivery.py`, `ASSET-CATALOG.md`.
+
+---
+
+### 2026-08-13: Delivery Dashboard — Customer Text That Could Execute, a Silent Plotly Failure, and Two Phantom Bugs From Browser Cache
+
+**Delivered**: `scripts/generate_delivery_dashboard.py` + `scripts/utils/viz_common.py` — a single self-contained HTML page (~110 KB) over the delivery CSVs: Climate Score stat tiles, a site map with a metric toggle, bar rollups, per-location small multiples, and a filtered table. **Deliberately NOT merged with `generate_maps.py`**: that renders gridded layers at ~70,849 SVG markers per panel where marker count is the binding constraint; this renders a point portfolio that embeds as JSON. Same conventions, opposite payload profile. Shared vocabulary lives in `viz_common.py`, which also absorbed the symmetric-limit pattern that had been open-coded repeatedly across two scripts at two different percentiles (95th in `generate_maps.py`, 98th in `compare_water_index.py`).
+
+**1. Customer-controlled text reached the page as markup — the most serious defect of the session.** `json.dumps` escapes quotes and backslashes but **not** `<`, `>` or `&`. A delivery was generated with a location literally named `Depot </script><script>alert(1)</script>`; the string appeared **verbatim inside the `const DATA` block**, terminating the script element early and executing what followed. Raw `<b>markup</b>` from another name reached the DOM through `innerHTML`. Fix: the payload is `\uXXXX`-escaped server-side (valid JSON, decodes identically) and a JS `esc()` guards all 17 places data reaches markup, including Plotly `hovertemplate` strings. Re-tested with the same input: one script element, no raw markup, payload still decodes to the exact original names.
+
+**2. Clearing a Plotly container's `innerHTML` without `Plotly.purge()` fails silently.** It wipes the DOM but leaves Plotly's state bound to the node, so the next `Plotly.react` does nothing — **a blank panel with no console error**. Introduced while "fixing" a placeholder, and it broke the Value/Percentile views entirely. The root cause was structural: two functions drew into the same `#series` div and the mode switch between them cleared the node by hand. Fixed structurally — one render path, one lifecycle, every DOM write behind a `resetSeries()` that purges first, and the Climate Score became a *panel* in the shared grid rather than a competing mode.
+
+**3. A browser-cached dashboard is indistinguishable from a fresh one and produced two phantom bug reports** — colours and features reported missing that were correct on disk. Fixed with a **build stamp** in the page header (8-hex hash of payload + page logic + tokens) and `--check-stamp` to read what is on disk. **When a user says a regenerated page looks wrong, check the stamp before debugging the code.**
+
+**A second external review found four more, all confirmed and fixed:**
+
+- **The verifier validated the rows that were present, never that the expected rows existed.** Deleting every `rcp85` row from `values.csv` passed cleanly. It now reconstructs the expected key set from assets × layers × scenarios × decades and compares against manifest counts — the same truncation now fails four ways.
+- **The Climate Score check imported the writer's tier mapping** "so they cannot drift", which is exactly backwards: a wrong mapping would both produce and validate the score. It now keeps a deliberate second copy. Verified by mistyping `ssp585` as `medium`: previously silent, now **68 violations**. *A test must restate what it expects; that is what makes it a test.*
+- **A partial delivery looked shippable.** If the dashboard build raised, the folder kept all its CSVs and nothing marked it. Now the run records `dashboard: failed`, writes **`DELIVERY-INCOMPLETE.md`** (mirroring the `INVALID-DO-NOT-USE.md` convention) and exits non-zero; the verifier refuses any delivery carrying that marker.
+- `record_stage()` read-modify-wrote `manifest.json` non-atomically (a crash mid-write left truncated JSON that broke every later stage — now tmp + replace), and the verifier opened `glob(...)[0]` rather than the manifest's recorded source path.
+
+**Colour decisions** (user): red = risk (`percentile`, Climate Score), blue = raw magnitude; forcing tiers blue/yellow/red for low/medium/high. The tier triple is reference-palette slots 1/4/8, **not** the validated adjacent 1/2/3, and the palette validator could not be run — **no JS runtime, no Chrome on this machine**. What pure-Python luminance math could measure was measured: the red ramp is monotonic light→dark across all 13 steps; ordinal band steps clear the 2:1 floor on their own surface (2.01 lightest on light, 2.97 darkest on dark); and **blue vs red sit 1.12:1 apart on light and 1.05:1 on dark — effectively no lightness fallback**, with yellow at 2.11:1. Marker symbol *and* line dash are therefore applied **unconditionally** as secondary encoding. Do not strip them as visual noise; they are the accessibility channel.
+
+**Known limitation, recorded rather than glossed**: the dashboard has **never been rendered in a browser in this environment**. Static checks cover the payload, element ids, delimiter balance and script integrity; they cannot see layout, overlap or colour. Any session that generates a dashboard and does not open it must report it as *unreviewed*, exactly as the layer workflow requires for maps.
+
+**Regeneration check after the restructure**: CSVs byte-identical to the pre-restructure snapshot, decoded dashboard payloads equal, **18/18 reference values identical to full float precision** (including some measured before the antimeridian fix), and schema changes strictly additive.
+
+**Rule created**: `/customer-delivery` skill owns the four-stage pipeline (1 inputs → 2 CSV **and** dashboard → 3 reports *(unbuilt)* → 4 caveats *(unbuilt)*); stage status is stamped into each delivery's `manifest.json`. Stage 2 is atomic — one command produces both artifacts, and a delivery missing either fails verification.
+
+**Files**: `scripts/generate_delivery_dashboard.py`, `scripts/utils/viz_common.py`, `scripts/generate_maps.py`, `scripts/test_customer_delivery.py`, `.claude/skills/customer-delivery/SKILL.md`, `ASSET-CATALOG.md`.
+
 ---
 
 ## Adding New Incidents
