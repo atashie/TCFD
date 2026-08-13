@@ -25,15 +25,19 @@ Processes ISIMIP data into annualized decadal statistics for physical climate ri
 
 #### Shipped TCFD layers
 
-| Hazard | Variable | Round / scenarios | Processor |
-|---|---|---|---|
-| **Drought (exposure), ISIMIP2b** | `led` | 2b, rcp26/60 | `process_led_drought.py` (rebuilt 2026-08-11) |
-| **Drought (exposure), ISIMIP3b** | `driedarea` | 3b `Heinicke2026`, ssp126/370/585 | `process_driedarea_isimip3b.py` (new 2026-08-11) |
-| **Tropical cyclone (exposure)** | `let` | 2b, rcp26/60 | `process_let_cyclone.py` (rebuilt 2026-08-11) |
-| **Wildfire (burnt area)** | `burntarea-total` | 3b `fire`+`biomes`, ssp126/370/585 | `process_burntarea_isimip3b.py` |
-| ~~Wildfire, ISIMIP2b~~ — **SUPERSEDED 2026-08-10** | `burntarea` | 2b `biomes`, rcp26/60/85 | ~~`process_burntarea_fire.py`~~ |
-| Soil / subsurface carbon | `csoil-total` | 3b `biomes`, ssp126/370/585 | `process_csoil_soilcarbon.py` |
-| **Temperate conifer productivity** | `npp-tempnle` | 2b `biomes` CLM45+ORCHIDEE+LPJmL, rcp26/60/85 | `process_tempnle_npp.py` (new 2026-08-12) — per-**tile** denominator (measured), 2% cover presence mask, ragged CLM45 coverage |
+The **`layer_id`** column is the identifier the delivery workflow uses — `config/layer_registry.yaml`,
+`config/asset_catalog.yaml`, `config/hazard_taxonomy.yaml` and `layers.csv` all key on it.
+The **variable** is what the NetCDF calls itself. Keep both straight; they are different vocabularies.
+
+| Hazard | `layer_id` | Variable | Round / scenarios | Processor |
+|---|---|---|---|---|
+| **Drought (exposure), ISIMIP2b** | `drought-2b` | `led` | 2b, rcp26/60 | `process_led_drought.py` (rebuilt 2026-08-11) |
+| **Drought (exposure), ISIMIP3b** | `drought-3b` | `driedarea` | 3b `Heinicke2026`, ssp126/370/585 | `process_driedarea_isimip3b.py` (new 2026-08-11) |
+| **Tropical cyclone (exposure)** | `cyclone` | `let` | 2b, rcp26/60 | `process_let_cyclone.py` (rebuilt 2026-08-11) |
+| **Wildfire (burnt area)** | `wildfire` | `burntarea-total` | 3b `fire`+`biomes`, ssp126/370/585 | `process_burntarea_isimip3b.py` |
+| ~~Wildfire, ISIMIP2b~~ — **SUPERSEDED 2026-08-10** | — | `burntarea` | 2b `biomes`, rcp26/60/85 | ~~`process_burntarea_fire.py`~~ |
+| Soil / subsurface carbon | not registered | `csoil-total` | 3b `biomes`, ssp126/370/585 | `process_csoil_soilcarbon.py` |
+| **Temperate conifer productivity** | `conifer-npp` | `npp-tempnle` | 2b `biomes` CLM45+ORCHIDEE+LPJmL, rcp26/60/85 | `process_tempnle_npp.py` (new 2026-08-12) — per-**tile** denominator (measured), 2% cover presence mask, ragged CLM45 coverage. **Not a hazard** — an asset-condition layer; excluded from every hazard count |
 | ~~Sugarcane yield~~ — **WITHDRAWN 2026-08-11, upstream data defect** | `yield-sug-noirr`, `yield-sug-firr` | 2b `agriculture` LPJmL, rcp26/60 | ~~`process_sug_sugarcane.py`~~ — the 2b run does not simulate cane in the cane belt (São Paulo, UP India, Queensland, Florida all sentinel-zero); passes the contract, means nothing. No ISIMIP source supports a scenario-bearing sugarcane layer. |
 | Timber, fisheries, health, … | various | — | `process_*.py` |
 

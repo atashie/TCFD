@@ -36,8 +36,11 @@ figure, not in an appendix they will not reach under deadline.
 
 ## Metrics that lead
 
-- The vulnerable-asset count and its threshold sensitivity, because that is what goes in the
-  filing and what will be questioned.
+- **What can and cannot be filed.** The vulnerable-asset count is the metric this reader
+  expects to lead with, and we do not currently report it — the method is deferred. Say that
+  first, plainly, with the reason: it is the single thing they most need to know before they
+  start drafting, and discovering it late is worse than hearing it early.
+- Exposure level and portfolio rank, which are what we can support.
 - The list of what was **not** assessed. To this reader that is not a weakness in the
   report — it is the section that protects them, and burying it does them harm.
 - Trend direction and its robustness, because "is it getting worse" is the question the

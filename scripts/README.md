@@ -1,8 +1,93 @@
 # TCFD Utility Scripts
 
-Standalone Python scripts for data processing and visualization.
+Standalone Python scripts for data processing, visualization and customer delivery.
 
-## Scripts
+Two groups, and they belong to different stages of the same product:
+
+- **Layer processing** — `process_*.py`, `download_*.py`, `generate_maps.py`,
+  `test_shared_baseline.py`. One processor per shipped layer; each writes the
+  [OUTPUT-SPEC.md](../OUTPUT-SPEC.md) contract.
+- **Customer delivery** — everything under *Customer delivery* below. Reads processed layers,
+  never reprocesses them.
+
+`utils/` holds the shared modules: `delivery.py` (extraction and star schema),
+`report_common.py` (report loading, citations, exposure, document shell),
+`report_figures.py` (inline-SVG figures), `report_profiles.py` (facet library),
+`viz_common.py` (validated palette, scenario→tier colour), `spatial_extract.py`.
+
+---
+
+## Customer delivery
+
+The **`/customer-delivery` skill is the entry point.** Reference documentation:
+[ASSET-CATALOG.md](../ASSET-CATALOG.md) for stages 1–2, [docs/reporting/](../docs/reporting/README.md)
+for stages 3–4.
+
+Stage order is `inputs → extract → dashboard → caveats → compliance report → bespoke report`.
+**Caveats runs before the reports**: the caveat set is an input to them, each report must
+carry every must-disclose entry, and the verifier re-checks it.
+
+### generate_customer_delivery.py
+
+The driver. **Planning is the default and extraction requires `--run`**, because the resolved
+asset → layer mapping has to be shown to the user before any data is touched.
+
+```bash
+python scripts/generate_customer_delivery.py --customer "Acme" --input sites.csv            # plan
+python scripts/generate_customer_delivery.py --customer "Acme" --input sites.csv --run --reports
+python scripts/generate_customer_delivery.py --measure-slopes    # after reprocessing a layer
+```
+
+`--run` always builds the dashboard too; skipping it marks the delivery incomplete on disk
+and exits non-zero. `--reports` chains stage 4 and stage 3a.
+
+**Output**: `deliveries/{customer}/{date}/` — a normalized star schema, `manifest.json`,
+`report_config.yaml`, `dashboard.html`.
+
+### generate_delivery_dashboard.py
+
+Per-delivery QA dashboard (Plotly, interactive). Also importable as `build_dashboard()`.
+`--check-stamp` reads the build stamp on disk — **check it before debugging a page that looks
+stale**, since a cached page is indistinguishable from a fresh one.
+
+### generate_delivery_caveats.py — stage 4
+
+Derives the delivery's caveat set mechanically into `caveats.json` + `caveats.md`. Nothing
+here is authored; it comes from the manifest, the CSVs, `report_config.yaml` and
+`config/hazard_taxonomy.yaml`. Ids are semantic and stable because narratives cite them.
+
+### generate_compliance_report.py — stage 3a
+
+`report_compliance.html` on the IFRS S2 spine, mapped outward to CDP, ESRS E1-9 and CA SB 261.
+**Fully deterministic** — no narrative, so an auditor can rebuild it byte-for-byte.
+
+### generate_bespoke_report.py — stage 3b
+
+`report_bespoke.html`, composed from facet profiles plus a written narrative. `--scaffold`
+writes `narrative.md` and `dossier.yaml` first. The build refuses on an unfilled slot, an
+uncited paragraph, or a citation that does not resolve.
+
+### test_customer_delivery.py
+
+**The verifier. Run it on every delivery.** Recomputes every metric from the source NetCDF
+with a Gaussian weighting written independently of `spatial_extract`, then checks referential
+integrity, source hashes, percentile orientation, the Climate Score, the dashboard payload,
+the caveat coverage of both reports, and narrative citations. Exits non-zero on any violation.
+
+```bash
+python scripts/test_customer_delivery.py deliveries/acme/20260813
+```
+
+### measure_extraction_sensitivity.py
+
+Reproduces the two extraction-footprint measurements that reports quote as fact — the 4-cell
+blend and the coordinate sensitivity. Exists because both were once quoted without a retained
+receipt, which to a reviewer is indistinguishable from invention. Re-run after any change to
+the extraction parameters.
+
+---
+
+## Layer processing
 
 ### generate_maps.py
 
@@ -107,6 +192,24 @@ python scripts/process_burntarea_fire.py
 **Input**: `data/raw/wildfire_burntarea_annual/*_2006_2099.nc4`
 **Output**: `data/processed/wildfire_burntarea_annual/burntarea_{rcp26,rcp60,rcp85}_processed.nc`
 
+### process_driedarea_isimip3b.py — **the shipped ISIMIP3b drought layer**
+
+`driedarea` from ISIMIP3b `DerivedOutputData/Heinicke2026`, ssp126/370/585. A **sibling** of
+the ISIMIP2b `led` layer, not a replacement — deeper ensemble versus newer scenarios, and
+both are current. Resolves the minimum-model mask differently from `led` (full union rather
+than ≥2 models) on measured evidence; re-measure that rule per layer, never inherit it.
+
+**Output**: `data/processed/drought-isimip3b_driedarea_annual/driedarea_{ssp126,ssp370,ssp585}_processed.nc`
+
+### process_tempnle_npp.py — **the shipped conifer productivity layer**
+
+Temperate needleleaf-evergreen stand NPP from ISIMIP2b `biomes` (CLM45 + ORCHIDEE + LPJmL),
+rcp26/60/85. Reported on a **measured per-tile denominator** behind a 2% cover presence mask.
+`higher_is_better`, so its percentile is inverted at processing time and rising productivity
+reads as falling risk — state the CO₂-fertilisation caveat wherever it is reported.
+
+**Output**: `data/processed/conifer-temperate_npp-tempnle_annual/npp-tempnle_{rcp26,rcp60,rcp85}_processed.nc`
+
 ### process_csoil_soilcarbon.py
 
 Processes `csoil-total` (soil organic carbon stock, ISIMIP3b `biomes`) into the TCFD 6-value-class format — the direct **subsurface carbon-storage** signal (distinct from the vegetation pools `cveg`/`croot`/`cvegbg` and the net-sink flux `nbp`). Ensemble = 3 models (`classic`, `jules-es-vn6p3`, `mc2-usfs`) × their CMIP6 GCMs (2 + 5 + 5) × {ssp126, ssp370, ssp585} = 12 members/scenario. Value-checked 2026-07-25 (see WORKFLOW-ISSUES.md):
@@ -131,12 +234,20 @@ python scripts/generate_qa_report.py
 
 **Output**: `reports/qg_qa_report.json`
 
+### test_shared_baseline.py
+
+The layer contract verifier — the counterpart to `test_customer_delivery.py` one level up.
+Run after every processing run; exits non-zero on any OUTPUT-SPEC violation.
+
+```bash
+python scripts/test_shared_baseline.py data/processed/{layer_dir}
+```
+
 ## Dependencies
 
-These scripts require the same dependencies as the `isimip-pipeline` package:
-- xarray
-- plotly
-- numpy
-- pandas
+Same as the `isimip-pipeline` package: xarray, plotly, numpy, pandas, pyyaml.
+Install with `pip install -e isimip-pipeline/`.
 
-Install with: `pip install -e isimip-pipeline/`
+**Not present on this machine, and the report tooling is built around their absence**: no
+pandoc, weasyprint, wkhtmltopdf, kaleido, node or headless Chrome. Report figures are
+therefore inline SVG with zero JavaScript, and PDF is produced by printing from a browser.

@@ -6,12 +6,12 @@ files. See the composition model in [../README.md](../README.md).
 
 ```
 profiles/
-  asset/      what the thing is           timber-land-loblolly.md
-  region/     where it is                 us-southeast.md
-  persona/    who reads the report        sustainability-team.md
-  vertical/   what business they are in   investment-manager.md
-  use-case/   what decision they face     acquisition-screening.md
-  company/    the specific customer       (seeded from a delivery dossier)
+  asset/       what the thing is            data-center, timber-land-conifer, timber-land-loblolly, warehouse-logistics
+  region/      where it is                  central-europe, us-gulf-coast, us-mid-atlantic, us-southeast, us-west-california
+  persona/     who reads the report         sustainability-team
+  vertical/    what business they are in    investment-manager
+  use-case/    what decision they face      acquisition-screening, annual-disclosure
+  company/     the specific customer        (none yet — seeded from a delivery dossier)
 ```
 
 Loaded by `scripts/utils/report_profiles.py`; selected in a delivery's `report_config.yaml`

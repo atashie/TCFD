@@ -107,8 +107,15 @@ facets:        {asset, region, persona, vertical, use_case, company}
 frameworks:    {spine, mapped}
 ```
 
-`source: default` on either block raises a `must_disclose` caveat. That is the point of the
-field: IFRS S2 10(d) requires the *entity* to define its horizons, and a vulnerability
-threshold is a risk-appetite decision. Change the value and the source together — filling in
-`customer` without a customer actually saying so is the one failure the field exists to
-prevent, exactly as with `confirmed_on` in the asset catalog.
+`source: default` on the `horizons` block raises a `must_disclose` caveat. That is the point
+of the field: IFRS S2 10(d) requires the *entity* to define its horizons. Change the value and
+the source together — filling in `customer` without a customer actually saying so is the one
+failure the field exists to prevent, exactly as with `confirmed_on` in the asset catalog.
+
+**The `vulnerability` block is currently INERT.** The metric is deferred
+([../compliance/vulnerability-definition.md](../compliance/vulnerability-definition.md)), so a
+threshold sitting in that file is not an endorsement of one and nothing reads it for
+publication. It stays because the machinery on both sides of the decision is already written:
+remove the `vulnerability_metric` entry from `TBD_SECTIONS` and the block goes live, with the
+verifier switching from "must not publish" to "the published counts must match an independent
+recomputation".

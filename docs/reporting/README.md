@@ -121,7 +121,7 @@ citation is worse than no citation, because it looks like evidence.
 ## Running the stages
 
 ```bash
-# Stage 4 + 3a, chained onto the extract
+# Stage 2 + 4 + 3a in one command. Caveats runs before the compliance report.
 python scripts/generate_customer_delivery.py --customer "<name>" --input <sites.csv> --run --reports
 
 # or separately
@@ -138,6 +138,17 @@ python scripts/test_customer_delivery.py deliveries/<c>/<d>
 
 The bespoke report is deliberately **not** chained onto `--run`: it needs facets chosen and a
 narrative written, neither of which a batch run can supply.
+
+Re-running the extract marks any existing caveats or reports **stale** in the manifest, and
+the verifier refuses a stale artifact — a report built against an earlier extract no longer
+describes the data sitting next to it.
+
+Two measurements quoted in reports are reproducible on demand, and should be re-run after any
+change to the extraction parameters:
+
+```bash
+python scripts/measure_extraction_sensitivity.py
+```
 
 ## What the verifier checks about reports
 

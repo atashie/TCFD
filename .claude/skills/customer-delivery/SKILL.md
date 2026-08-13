@@ -82,9 +82,10 @@ is filling them silently.
 3. After the run, check `data_status`. `OUTSIDE_DOMAIN` on a site the customer believes is
    on land means the coordinate is wrong or the pair is reversed.
 
-Remember the footprint: extraction is a ~1° × 1° blend, and moving a site 0.25° changed one
-measured burnt-area value by 166%. A city-centroid coordinate for a large estate is a real
-approximation — say so.
+Remember the footprint: extraction is a ~1° × 1° blend, and shifting sites by 0.25° changed
+measured burnt-area values by 44–569% on one example portfolio
+(`python scripts/measure_extraction_sensitivity.py` reproduces it). A city-centroid
+coordinate for a large estate is a real approximation — say so.
 
 **Missing or vague asset type.** Ask. Do not guess. "Facility" is not an asset type; what
 matters is which hazards have a transmission channel to it, which is a question about what

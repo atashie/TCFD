@@ -15,9 +15,11 @@ How a customer's list of sites becomes a deterministic CSV extract and its QA da
 | `scripts/generate_delivery_dashboard.py` | the dashboard, also importable as `build_dashboard()` |
 | `scripts/test_customer_delivery.py` | the verifier |
 
-This is **stage 2** of the four-stage delivery pipeline. It produces numbers, provenance
-and a QA dashboard — never scores, rankings or narrative, which belong to stage 3. Stage 1
-(inputs) and stages 3-4 (reports, caveats) are owned by the skill; 3 and 4 are not built.
+This is **stage 2**. It produces numbers, provenance and a QA dashboard — never scores,
+rankings or narrative. Stage 1 (inputs) is owned by the skill; **stages 4 (caveats) and 3
+(compliance and bespoke reports) are built**, and their reference documentation is
+[docs/reporting/](docs/reporting/README.md). Note the ordering: caveats runs BEFORE the
+reports, because the caveat set is an input to them.
 
 ---
 
@@ -78,6 +80,10 @@ they collapse to one `location_id` and get three `asset_id`s.
 | `Country`, `State`, `City`, `Region`, `Subregion` | no | Carried into `locations.csv`. |
 | `Layers` | no | Semicolon-separated layer ids overriding the catalog for that row. |
 | `Coord_Source` | no | `supplied` (default), or how a missing coordinate was derived. |
+| `Asset_Value` | no | Carrying amount, a bare number. Unlocks the monetary half of the disclosure metrics. |
+| `Currency` | no | Required whenever `Asset_Value` is given. Mixed currencies are refused — an FX rate is a financial assumption with its own date and source. |
+| `Valuation_Date` | no | When the value was struck. |
+| `Value_Basis` | no | book / insured / market / replacement. **Matters as much as the figure** — the four give four different answers. |
 
 `Coord_Source` lands in `locations.csv`. Stage 1 of the workflow permits deriving a missing
 lat/lon, but a derived coordinate and a surveyed one must never be indistinguishable in the
@@ -519,9 +525,19 @@ site-specific in a customer narrative.
 
 ### Coordinate precision matters
 
-Because the footprint is ~1°, a wrong coordinate is not a rounding error. Moving a site by
-±0.25° — one grid cell — changed 2090s burnt area at Shasta from 1.248 to 3.979, a swing of
-**166% of the centre value**; Mobile swung 115%. Validate customer coordinates before a run.
+Because the footprint is ~1°, a wrong coordinate is not a rounding error. Measured
+2026-08-12, moving a site by ±0.25° — one grid cell — changed 2090s burnt area at Shasta from
+1.248 to 3.979, a swing of **166% of the centre value**; Mobile swung 115%.
+
+**Reproduce it rather than quoting it from here**, and re-measure after any reprocessing:
+
+```bash
+python scripts/measure_extraction_sensitivity.py
+```
+
+That script also reproduces the 4-cell-blend result below. Both figures used to live only in
+a session transcript, which for a number that reaches a customer document is indistinguishable
+from having been invented. Validate customer coordinates before a run.
 
 ### Not wired in
 
