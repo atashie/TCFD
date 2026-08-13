@@ -1,0 +1,6 @@
+Location,Lat,Lon,Asset_Type,Sub_Asset_Unit,Country,State,City,Layers,Coord_Source,Asset_Value,Currency,Valuation_Date,Value_Basis
+Bladen Tract,34.6266,-78.6136,Timber land,Loblolly pine,USA,North Carolina,Elizabethtown,conifer-npp;cyclone;wildfire;drought-3b,derived: county seat centroid (ILLUSTRATIVE - not a surveyed tract),14200000,USD,2026-06-30,book
+Sampson Tract,35.0021,-78.3233,Timber land,Loblolly pine,USA,North Carolina,Clinton,conifer-npp;cyclone;wildfire;drought-3b,derived: county seat centroid (ILLUSTRATIVE - not a surveyed tract),9800000,USD,2026-06-30,book
+Brunswick Coastal Tract,34.0688,-78.2417,Timber land,Loblolly pine,USA,North Carolina,Bolivia,conifer-npp;cyclone;wildfire;drought-3b,derived: county seat centroid (ILLUSTRATIVE - not a surveyed tract),21500000,USD,2026-06-30,book
+Onslow Tract,34.7541,-77.4302,Timber land,Loblolly pine,USA,North Carolina,Jacksonville,conifer-npp;cyclone;wildfire;drought-3b,derived: county seat centroid (ILLUSTRATIVE - not a surveyed tract),16300000,USD,2026-06-30,book
+Halifax Piedmont Tract,36.4621,-77.6541,Timber land,Loblolly pine,USA,North Carolina,Roanoke Rapids,conifer-npp;cyclone;wildfire;drought-3b,derived: county seat centroid (ILLUSTRATIVE - not a surveyed tract),11700000,USD,2026-06-30,book

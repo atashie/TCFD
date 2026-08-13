@@ -11,11 +11,17 @@ restate them, read them.
 
 | Read | For |
 |---|---|
-| [ASSET-CATALOG.md](../../../ASSET-CATALOG.md) | The reference doc — schemas, the Climate Score, the dashboard, spatial averaging, registry maintenance |
+| [ASSET-CATALOG.md](../../../ASSET-CATALOG.md) | Stages 1–2 — schemas, the Climate Score, the dashboard, spatial averaging, registry maintenance |
+| [docs/reporting/README.md](../../../docs/reporting/README.md) | **Stages 3–4** — the map to everything below |
+| [docs/reporting/technical/data-boundaries.md](../../../docs/reporting/technical/data-boundaries.md) | before writing any sentence about what a number means |
+| [docs/reporting/compliance/framework-map.md](../../../docs/reporting/compliance/framework-map.md) | before claiming a disclosure requirement is met |
+| [docs/reporting/research/method.md](../../../docs/reporting/research/method.md) | before looking anything up about a customer |
+| [docs/reporting/profiles/README.md](../../../docs/reporting/profiles/README.md) | before writing or editing a facet profile |
 | [OUTPUT-SPEC.md](../../../OUTPUT-SPEC.md) | What the underlying layers guarantee |
 | [GUARDRAILS.md](../../../GUARDRAILS.md) | §3 dynamic scenario discovery, §12 reference sites |
 | `config/asset_catalog.yaml` | asset type → hazard layers |
 | `config/layer_registry.yaml` | layer → disk location, status, which slope to read |
+| `config/hazard_taxonomy.yaml` | which hazard families exist, which we cover, and what each gap would take |
 
 ## The four stages
 
@@ -27,8 +33,16 @@ someone's memory of what they ran.
 |---|---|---|
 | **1. Inputs** | a confirmed location/asset list | yes — manual, guided below |
 | **2. Extract** | the CSV star schema **and** `dashboard.html` | yes |
-| **3. Reports** | compliance report + bespoke customer report | **not built** |
-| **4. Caveats** | per-delivery anomaly and caveat documentation | **not built** |
+| **4. Caveats** | `caveats.json` + `caveats.md` | yes |
+| **3a. Compliance report** | `report_compliance.html` — IFRS S2 spine | yes |
+| **3b. Bespoke report** | `report_bespoke.html` — composed for this reader | yes |
+
+**Stage 4 runs before Stage 3, and the row order above is not a typo.** The caveat set is a
+mechanical derivation from the manifest, the CSVs and `config/hazard_taxonomy.yaml`, and it
+is an *input* to both reports rather than a summary of them: each report is required to carry
+every `must_disclose` entry, the builder refuses without them, and the verifier re-checks
+afterwards. Generating them last would let two documents about one delivery disagree about
+what is wrong with it.
 
 Check where a delivery stands:
 
@@ -177,37 +191,91 @@ empty panel is information, not a bug.
 
 ---
 
-## Stage 3 — Reports *(not built)*
+## Stage 4 — Caveats
 
-Two distinct outputs, not one:
+```bash
+python scripts/generate_delivery_caveats.py deliveries/{customer}/{date}
+```
 
-- **Physical hazard compliance report** — TCFD/CDP disclosure framing, standardised
-  structure, auditable against the CSV.
-- **Bespoke customer report** — narrative for this customer's portfolio and decisions.
+Derives this delivery's caveat set mechanically and writes `caveats.json` + `caveats.md`.
+Nothing here is authored: it comes from the manifest, `layers.csv`, `values.csv`,
+`climate_score.csv`, `report_config.yaml` and `config/hazard_taxonomy.yaml`.
 
-Both are downstream of Stage 2 and must read `values.csv` / `climate_score.csv` rather than
-recomputing anything. When built, they record themselves via
-`record_stage(out_dir, "compliance_report" | "bespoke_report", "built")`.
+Ids are **semantic and stable** (`HAZARD-COVERAGE`, not `CAV-001`) because narratives cite
+them, and severity decides enforcement:
 
-Decisions already made that constrain them: RCP↔SSP harmonization belongs here, not in the
-CSV; the Climate Score is the portfolio-level headline; percentile is the only cross-hazard
-comparable axis.
+| Severity | Meaning |
+|---|---|
+| `must_disclose` | must appear in **every** report built from this delivery; the builder refuses and the verifier re-checks |
+| `should_note` | changes how one figure reads, rather than what the delivery can claim |
+| `informational` | context for whoever maintains the delivery |
+
+It does **not** judge materiality. Severity says how certainly something must be disclosed,
+never how much it matters to this customer — that needs business context and belongs in the
+bespoke narrative, with a citation.
 
 ---
 
-## Stage 4 — Caveats and anomalies *(not built)*
+## Stage 3a — Compliance report
 
-Per-delivery documentation of what is odd about *this* customer's data. Most of the raw
-material already exists and is currently scattered — the intent is to collect it:
+```bash
+python scripts/generate_compliance_report.py deliveries/{customer}/{date}
+```
 
-- layers with `qa_reviewed_on: null` (all of them today)
-- `OFF_LAYER_MASK` / `OUTSIDE_DOMAIN` sites, and derived coordinates
-- assets dropped from a balanced panel because a layer lacks a forcing tier
-- per-layer `delivery_note` and `interpretation_caveat`
-- incomplete `n_hazards` on any Climate Score row
-- the coastal-renormalization and ~1° footprint caveats
+IFRS S2 spine with a CDP / ESRS E1-9 / California SB 261 mapping appendix.
+**Fully deterministic** — no narrative, no researched claims, so an auditor can rebuild it
+byte-for-byte. Structure and rationale: `docs/reporting/technical/report-anatomy.md`.
 
-Records itself via `record_stage(out_dir, "caveats", "built")`.
+Two things to check before it goes anywhere:
+
+- **`report_config.yaml`.** While `horizons.source` or `vulnerability.source` reads
+  `default`, the report discloses that we chose them. IFRS S2 10(d) wants the *entity's*
+  horizons and the vulnerability threshold is a risk-appetite decision — get both from the
+  customer and set the value and the source together.
+- **Asset values.** Without `Asset_Value` in the input, 29(c)'s monetary half cannot be
+  reported and a `must_disclose` caveat says so.
+
+---
+
+## Stage 3b — Bespoke report
+
+```bash
+# 1. choose facets in report_config.yaml, then
+python scripts/generate_bespoke_report.py deliveries/{customer}/{date} --scaffold
+# 2. write narrative.md and dossier.yaml, then
+python scripts/generate_bespoke_report.py deliveries/{customer}/{date}
+```
+
+Not chained onto `--run`: it needs facet profiles chosen and a narrative written.
+
+**The generator owns the numbers; a person owns the narrative.** The boundary is enforced —
+an unfilled slot, a `TODO`, an uncited paragraph in a cited slot, or a citation that does not
+resolve all fail the build. Read `docs/reporting/research/method.md` before researching
+anything and `docs/reporting/profiles/README.md` before touching a profile.
+
+**Profiles guide the narrative and are never pasted into it.** The scaffold surfaces them as
+comments; comments are stripped before rendering and the verifier fails a report containing
+any. Pasting them would make every report of a given asset class identical while looking
+bespoke.
+
+---
+
+## Verify, then look
+
+```bash
+python scripts/test_customer_delivery.py deliveries/{customer}/{date}
+open deliveries/{customer}/{date}/report_compliance.html
+```
+
+The verifier recomputes the vulnerable-asset count independently and compares it to the
+number the report printed, checks every `must_disclose` caveat appears, re-validates the
+narrative and its citations, and refuses a report leaking internal vocabulary or an HTML
+comment.
+
+It does not check layout. **No browser can be driven on this machine**, so a report that has
+not been opened is *unreviewed* and must be reported as such — the same rule the layer
+workflow applies to maps. PDF is Safari's File ▸ Print ▸ Save as PDF; pagination has never
+been verified here.
 
 ---
 

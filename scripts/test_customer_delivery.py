@@ -115,6 +115,193 @@ def sha256(path: Path) -> str:
     return d.hexdigest()
 
 
+#: Vocabulary that belongs in our repository and not in a customer's filing. A report is a
+#: document somebody else reads under scrutiny; a stray module name or the word UNVERIFIED
+#: reads as either noise or an alarm, and neither is what it means internally.
+INTERNAL_VOCABULARY = (
+    "UNVERIFIED", "this pipeline", "this repository", "codebase", "backlog",
+    "(nan)", "process_", "viz_common", "RISK_BANDS", "delivery.py", "TODO",
+    "config/", "spatial_extract", "OUTPUT-SPEC", "GUARDRAILS",
+)
+
+
+def independent_vulnerable_counts(values, assets, hazard_layers, threshold):
+    """Recompute (tier, decade) -> vulnerable asset count, longhand.
+
+    Deliberately does NOT import report_common.vulnerability_frame. The rule, restated:
+    hazard layers only; mean percentile across the native scenarios inside a tier, per
+    hazard; MAX across hazards; vulnerable when that maximum reaches the threshold; an asset
+    with no finite hazard percentile is not assessed and is not counted either way.
+    """
+    v = values[values["layer_id"].isin(hazard_layers)].copy()
+    v["tier"] = v["scenario"].map(TIER)
+    out = {}
+    for (tier, decade), grp in v.groupby(["tier", "decade"]):
+        n_vuln = n_assessed = 0
+        for _asset, ag in grp.groupby("asset_id"):
+            worst = None
+            for _layer, lg in ag.groupby("layer_id"):
+                pcts = [p for p in lg["percentile"] if pd.notna(p)]
+                if not pcts:
+                    continue
+                mean_p = sum(pcts) / len(pcts)
+                worst = mean_p if worst is None else max(worst, mean_p)
+            if worst is None:
+                continue
+            n_assessed += 1
+            if worst >= threshold:
+                n_vuln += 1
+        out[(tier, int(decade))] = (n_vuln, n_assessed)
+    return out
+
+
+def check_reports(delivery: Path, manifest: dict, values, assets, layers) -> None:
+    """Stage 3 and 4 artifacts, when present."""
+    global checks_run
+    import yaml
+
+    stages = manifest.get("stages", {})
+    cav_path = delivery / "caveats.json"
+    compliance = delivery / "report_compliance.html"
+    bespoke = delivery / "report_bespoke.html"
+
+    # Stage record and artifact must agree, in BOTH directions.
+    #
+    # The second direction is the one that bites: re-running the extract rewrites the
+    # manifest and resets downstream stages, while the previous run's reports stay in the
+    # folder looking finished. A file whose stage is not `built` is a document that does not
+    # describe the data next to it.
+    for stage, path in (("caveats", cav_path),
+                        ("compliance_report", compliance),
+                        ("bespoke_report", bespoke)):
+        status = stages.get(stage, {}).get("status")
+        if status == "built":
+            check(path.exists(),
+                  f"manifest records stage {stage!r} as built but {path.name} is missing")
+        elif path.exists():
+            failures.append(
+                f"{path.name} exists but stage {stage!r} is {status!r} -- it was built "
+                f"against an earlier extract and no longer describes this delivery. "
+                f"Rebuild it.")
+            checks_run += 1
+
+    if not cav_path.exists():
+        if compliance.exists() or bespoke.exists():
+            failures.append(
+                "a report exists but caveats.json does not. Stage 4 runs BEFORE the "
+                "reports and is their input; a report built without it cannot have "
+                "carried the required disclosures.")
+            checks_run += 1
+        return
+
+    payload = json.loads(cav_path.read_text())
+    caveats = payload.get("caveats", [])
+    check(bool(caveats), "caveats.json contains no caveats")
+    ids = [c["id"] for c in caveats]
+    check(len(ids) == len(set(ids)), "caveats.json has duplicate ids -- citations are by id")
+    check(all(c.get("severity") in {"must_disclose", "should_note", "informational"}
+              for c in caveats),
+          "a caveat carries an unknown severity")
+    check(all(c.get("text", "").strip() for c in caveats), "a caveat has empty text")
+    check(stages.get("caveats", {}).get("status") == "built",
+          "caveats.json exists but the caveats stage is not recorded as built")
+    must = [c["id"] for c in caveats if c["severity"] == "must_disclose"]
+    check(bool(must), "no caveat is marked must_disclose -- every delivery has at least "
+                      "the coverage and resolution disclosures")
+    print(f"  caveats.json: {len(caveats)} caveats, {len(must)} must-disclose")
+
+    cfg_path = delivery / "report_config.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text()) if cfg_path.exists() else {}
+    check(bool(cfg), "report_config.yaml is missing or empty")
+
+    taxonomy = yaml.safe_load((PROJECT_ROOT / "config" / "hazard_taxonomy.yaml").read_text())
+    non_hazard = set(taxonomy.get("non_hazard_layers") or {})
+    hazard_layers = [l for l in layers.index if l not in non_hazard]  # layers is indexed by layer_id
+    check(len(hazard_layers) < len(layers) or not non_hazard,
+          "no layer was excluded as a non-hazard, but the taxonomy declares some")
+
+    for path in (compliance, bespoke):
+        if not path.exists():
+            continue
+        html_text = path.read_text()
+
+        missing = [cid for cid in must if cid not in html_text]
+        check(not missing,
+              f"{path.name} omits must-disclose caveat(s): {', '.join(missing)}")
+
+        stamp = re.search(r'class="stamp">build ([0-9a-f]{8})<', html_text)
+        check(stamp is not None, f"{path.name} carries no build stamp")
+
+        visible = re.sub(r"<[^>]+>", " ", html_text)
+        leaked = [t for t in INTERNAL_VOCABULARY if t in visible]
+        check(not leaked,
+              f"{path.name} leaks internal vocabulary into a customer document: "
+              f"{', '.join(leaked)}")
+
+        check("<h1>" in html_text and "</html>" in html_text,
+              f"{path.name} is not a complete HTML document")
+        check("<!--" not in html_text,
+              f"{path.name} contains an HTML comment -- narrative guidance must be stripped")
+        print(f"  {path.name} checked ({path.stat().st_size // 1024} KB)")
+
+    # The headline metric, end to end: recomputed here, compared with what was printed.
+    if compliance.exists():
+        threshold = float((cfg.get("vulnerability") or {}).get("threshold", 80))
+        expected = independent_vulnerable_counts(values, assets, hazard_layers, threshold)
+        html_text = compliance.read_text()
+        m = re.search(r"threshold[^<]*?(\d+)th percentile\.(.*?)</table>", html_text, re.S)
+        check(m is not None, "compliance report has no vulnerability table to check")
+        if m:
+            check(int(m.group(1)) == int(threshold),
+                  f"compliance report states threshold {m.group(1)} but report_config.yaml "
+                  f"says {threshold:.0f}")
+            rows = re.findall(r"<tr>(.*?)</tr>", m.group(2), re.S)
+            horizons = {
+                str(v.get("label", k)): int(v["decade"])
+                for k, v in (cfg.get("horizons") or {}).items()
+                if isinstance(v, dict) and "decade" in v
+            }
+            tiers = {"Low forcing": "low", "Medium forcing": "medium", "High forcing": "high"}
+            compared = 0
+            for row in rows:
+                cells = [re.sub(r"<[^>]+>", "", c).strip()
+                         for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)]
+                if len(cells) < 4 or cells[0] not in horizons or cells[1] not in tiers:
+                    continue
+                decade, tier = horizons[cells[0]], tiers[cells[1]]
+                exp_vuln, exp_assessed = expected.get((tier, decade), (0, 0))
+                check(int(cells[2]) == exp_assessed,
+                      f"compliance report says {cells[2]} assets assessed at "
+                      f"{tier}/{decade}s; independently computed {exp_assessed}")
+                check(int(cells[3]) == exp_vuln,
+                      f"compliance report says {cells[3]} assets vulnerable at "
+                      f"{tier}/{decade}s; independently computed {exp_vuln}")
+                compared += 1
+            check(compared > 0, "no vulnerability rows could be parsed and compared")
+            print(f"  vulnerability metric independently recomputed for {compared} "
+                  f"horizon x tier cells")
+
+    # The bespoke report's narrative must still be complete and every citation resolve.
+    if bespoke.exists():
+        narrative = delivery / "narrative.md"
+        check(narrative.exists(),
+              "report_bespoke.html exists but narrative.md does not -- the report cannot "
+              "be rebuilt or audited")
+        if narrative.exists():
+            sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from utils.report_common import check_narrative, load_delivery  # noqa: E402
+            problems = check_narrative(load_delivery(delivery), narrative.read_text())
+            check(not problems,
+                  "narrative.md no longer validates: " + "; ".join(problems[:5]))
+        html_text = bespoke.read_text()
+        anchors = {int(x) for x in re.findall(r'id="ref-(\d+)"', html_text)}
+        used = {int(x) for x in re.findall(r'href="#ref-(\d+)"', html_text)}
+        check(used <= anchors,
+              f"bespoke report cites reference(s) with no entry: {sorted(used - anchors)}")
+        check(anchors == set(range(1, len(anchors) + 1)) if anchors else True,
+              "bespoke report reference numbering is not contiguous from 1")
+
+
 def main(delivery: Path) -> int:
     global checks_run
     for name in ("locations.csv", "assets.csv", "layers.csv", "values.csv", "manifest.json"):
@@ -475,6 +662,15 @@ def main(delivery: Path) -> int:
     pending = [k for k, v in stages.items() if v.get("status") == "not_started"]
     if pending:
         print(f"  stages not started (expected, not built yet): {', '.join(sorted(pending))}")
+
+    # 11. Stage 3 and 4 artifacts ----------------------------------------------------------
+    #
+    # Same philosophy as everywhere else in this file: RESTATE what is expected rather than
+    # importing it. The vulnerable-asset count is recomputed here from values.csv with the
+    # rule written out longhand, and compared against the number the compliance report
+    # actually printed. That is the end-to-end proof for the headline disclosure metric --
+    # everything else about a report can be right while the table says something else.
+    check_reports(delivery, manifest, values, assets, layers)
 
     print(f"  {n_compared} metric values independently recomputed")
     print(f"  {checks_run} checks run")

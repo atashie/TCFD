@@ -513,6 +513,24 @@ def _layer_metadata(spec: LayerSpec, ds: xr.Dataset, scenarios: Sequence[str]) -
 # ---------------------------------------------------------------------------------------
 
 REQUIRED_INPUT_COLUMNS = ("Location", "Lat", "Lon", "Asset_Type")
+
+#: Optional per-asset carrying amount. IFRS S2 paragraph 29(c) and ESRS E1-9 both require
+#: the *monetary amount* -- not just the count -- of assets vulnerable to physical risk, and
+#: nothing in a NetCDF can supply it. So it is a customer input, and its ABSENCE is a
+#: disclosed limitation rather than a silent one: with values the compliance report meets
+#: 29(c) directly, without them it reports counts and percentages and states plainly that
+#: the monetary figure is customer-owned.
+#:
+#: `Value_Basis` matters as much as the number. A book value, an insured value and a market
+#: valuation give three different answers to "amount of assets vulnerable", and a report
+#: that does not say which was used is not auditable.
+ASSET_VALUE_COLUMNS = (
+    "Asset_Value",
+    "Currency",
+    "Valuation_Date",
+    "Value_Basis",
+)
+
 OPTIONAL_INPUT_COLUMNS = (
     "Sub_Asset_Unit",
     "Country",
@@ -522,7 +540,7 @@ OPTIONAL_INPUT_COLUMNS = (
     "Subregion",
     "Layers",
     "Coord_Source",
-)
+) + ASSET_VALUE_COLUMNS
 
 
 def load_input(path: Path) -> pd.DataFrame:
@@ -573,6 +591,50 @@ def load_input(path: Path) -> pd.DataFrame:
     if len(out_of_range):
         names = ", ".join(str(n) for n in out_of_range["Location"].tolist()[:5])
         raise DeliveryError(f"Row(s) with out-of-range coordinates: {names}")
+
+    # Same untrusted-text treatment as the coordinates. "$4.2M", "4,200,000" and "TBD" are
+    # all things customers put in a value column, and a monetary figure that silently
+    # becomes NaN would drop an asset out of the 29(c) denominator without anyone noticing.
+    value_raw = df["Asset_Value"]
+    stripped = value_raw.astype(str).str.replace(r"[,\s]", "", regex=True)
+    coerced = pd.to_numeric(stripped.where(value_raw.notna()), errors="coerce")
+    unparseable = df[coerced.isna() & value_raw.notna()]
+    if len(unparseable):
+        examples = ", ".join(
+            f"{r['Location']!s}={r['Asset_Value']!r}" for _, r in unparseable.head(5).iterrows()
+        )
+        raise DeliveryError(
+            f"{len(unparseable)} row(s) have a non-numeric Asset_Value: {examples}\n"
+            f"  Asset_Value must be a bare number -- put the unit in Currency and the\n"
+            f"  measurement basis (book / insured / market / replacement) in Value_Basis.\n"
+            f"  Leave the cell EMPTY if the value is unknown; an empty cell is reported as\n"
+            f"  a disclosed limitation, a wrong cell is reported as a fact."
+        )
+    df["Asset_Value"] = coerced
+
+    negative = df[df["Asset_Value"] < 0]
+    if len(negative):
+        names = ", ".join(str(n) for n in negative["Location"].tolist()[:5])
+        raise DeliveryError(f"Row(s) with a negative Asset_Value: {names}")
+
+    # A number with no currency cannot be aggregated or disclosed. Catch it here rather
+    # than letting the report print a bare total.
+    valued = df["Asset_Value"].notna()
+    no_currency = df[valued & df["Currency"].isna()]
+    if len(no_currency):
+        names = ", ".join(str(n) for n in no_currency["Location"].tolist()[:5])
+        raise DeliveryError(
+            f"{len(no_currency)} row(s) have an Asset_Value but no Currency: {names}"
+        )
+    currencies = sorted(df.loc[valued, "Currency"].astype(str).str.strip().str.upper().unique())
+    if len(currencies) > 1:
+        raise DeliveryError(
+            f"Asset values are given in {len(currencies)} currencies: {', '.join(currencies)}\n"
+            f"  This pipeline does not convert currency -- an FX rate is a financial\n"
+            f"  assumption with its own date and source, and inventing one would put an\n"
+            f"  unsourced number into a disclosure. Convert upstream to a single currency\n"
+            f"  and record the rate and date in Value_Basis."
+        )
     return df
 
 
@@ -639,6 +701,7 @@ def build_plan(
         for layer_id in layer_ids:
             registry.get(layer_id)  # fail fast on a typo, before any I/O
 
+        asset_value = row.get("Asset_Value")
         assets.append(
             {
                 "asset_id": f"AST-{len(assets) + 1:03d}",
@@ -648,6 +711,13 @@ def build_plan(
                 "sub_asset_unit": _clean(row.get("Sub_Asset_Unit")),
                 "layer_ids": layer_ids,
                 "layer_source": source,
+                # Optional and usually absent. Emitted as columns either way so the schema
+                # is fixed: a consumer should not have to discover whether this delivery
+                # happens to carry values.
+                "asset_value": None if pd.isna(asset_value) else float(asset_value),
+                "currency": _clean(row.get("Currency")).upper(),
+                "valuation_date": _clean(row.get("Valuation_Date")),
+                "value_basis": _clean(row.get("Value_Basis")),
             }
         )
 
@@ -794,13 +864,29 @@ def compute_climate_score(
 #: The customer-delivery pipeline. Stages 3 and 4 are not built yet; they are declared here
 #: so a half-finished delivery is visible in its own manifest rather than looking complete.
 #: See .claude/skills/customer-delivery/SKILL.md, which is the entry point for all of them.
+#:
+#: ORDER MATTERS AND `caveats` COMES BEFORE THE REPORTS. The caveat set is a mechanical
+#: derivation from this manifest, the CSVs and config/hazard_taxonomy.yaml, and it is an
+#: INPUT to both reports rather than a summary of them: each report is required to carry
+#: every `must_disclose` caveat, and the verifier checks that it does. Building it after the
+#: reports would mean each report derived its own list and the two drifted apart -- and the
+#: one thing a caveat list must not do is differ between two documents describing one
+#: delivery.
 DELIVERY_STAGES = (
     ("inputs", "Location/asset list assembled and confirmed with the user"),
     ("extract", "values.csv + climate_score.csv + the star schema"),
     ("dashboard", "dashboard.html"),
-    ("compliance_report", "Physical hazard compliance report -- NOT BUILT"),
-    ("bespoke_report", "Customer-focused bespoke report -- NOT BUILT"),
-    ("caveats", "Caveat / anomaly documentation for this delivery -- NOT BUILT"),
+    ("caveats", "caveats.json + caveats.md -- the disclosure input for both reports"),
+    ("compliance_report", "report_compliance.html -- IFRS S2 spine, mapped outward"),
+    ("bespoke_report", "report_bespoke.html -- composed for this reader"),
+)
+
+
+#: (stage, the file it produces). Used to detect artifacts left over from a previous extract.
+DOWNSTREAM_ARTIFACTS = (
+    ("caveats", "caveats.json"),
+    ("compliance_report", "report_compliance.html"),
+    ("bespoke_report", "report_bespoke.html"),
 )
 
 
@@ -829,6 +915,148 @@ def record_stage(out_dir: Path, stage: str, status: str, detail: str = "") -> No
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(manifest, indent=2) + "\n")
     tmp.replace(path)
+
+
+# ---------------------------------------------------------------------------------------
+# Report configuration
+# ---------------------------------------------------------------------------------------
+
+REPORT_CONFIG_FILENAME = "report_config.yaml"
+
+#: IFRS S2 paragraph 10(d) requires the ENTITY to define short/medium/long term and to
+#: explain how those definitions link to its own planning horizons. We cannot know a
+#: customer's investment horizon, so these are placeholders that map our decades onto the
+#: three buckets, and `source: default` on them raises a `must_disclose` caveat. Filling the
+#: customer's real horizons in is a Stage 1 conversation, not a Stage 3 guess.
+DEFAULT_HORIZONS = {
+    "short": {"decade": 2030, "label": "Short term (2030s)"},
+    "medium": {"decade": 2050, "label": "Medium term (2050s)"},
+    "long": {"decade": 2090, "label": "Long term (2090s)"},
+}
+
+#: The percentile at or above which an asset-hazard pair is called "vulnerable" for
+#: IFRS S2 29(c). 80 is the lower bound of the "Very High" band already used across this
+#: codebase (viz_common.RISK_BANDS), so a band label and a vulnerability call cannot
+#: disagree.
+#:
+#: There is no natural threshold here and pretending otherwise is how this report would
+#: become dishonest: the count of vulnerable assets is a monotone function of a number
+#: somebody chose. So the threshold is ALWAYS disclosed, and always disclosed alongside the
+#: counts it would produce at the two neighbouring bands.
+DEFAULT_VULNERABILITY_THRESHOLD = 80
+VULNERABILITY_SENSITIVITY = (60, 90)
+
+#: The facets a bespoke report composes from. `company` is per-engagement and lives in the
+#: delivery's dossier; the rest are library profiles under docs/reporting/profiles/.
+REPORT_FACETS = ("asset", "region", "persona", "vertical", "use_case", "company")
+
+
+def default_report_config(customer: str, assets_df: pd.DataFrame) -> dict:
+    """The starting report configuration for a delivery. Every default is marked as one."""
+    if "asset_value" in assets_df.columns:
+        values = pd.to_numeric(assets_df["asset_value"], errors="coerce")
+        supplied = bool(values.notna().any())
+        currencies = sorted(
+            {c for c in assets_df.get("currency", pd.Series(dtype=str)).fillna("") if c}
+        )
+        bases = sorted(
+            {b for b in assets_df.get("value_basis", pd.Series(dtype=str)).fillna("") if b}
+        )
+        n_valued = int(values.notna().sum())
+    else:  # pragma: no cover - a pre-schema delivery
+        supplied, currencies, bases, n_valued = False, [], [], 0
+
+    return {
+        "customer": customer,
+        "config_version": 1,
+        "_readme": (
+            "Written with DEFAULTS by the extract stage and never overwritten afterwards, "
+            "so edits survive regeneration. Every block carries `source:`; while it reads "
+            "`default` the reports disclose that we chose it rather than the customer. "
+            "Change the value AND the source together."
+        ),
+        "horizons": {
+            **{k: dict(v) for k, v in DEFAULT_HORIZONS.items()},
+            "source": "default",
+            "_note": (
+                "IFRS S2 10(d): the entity defines these and explains the link to its own "
+                "planning horizons. Replace with the customer's and set source: customer."
+            ),
+        },
+        "vulnerability": {
+            "metric": "percentile",
+            "threshold": DEFAULT_VULNERABILITY_THRESHOLD,
+            "sensitivity": list(VULNERABILITY_SENSITIVITY),
+            # Customer-facing: this string is printed verbatim in the compliance report's
+            # threshold disclosure, so it names the concept rather than the module.
+            "basis": "the lower bound of the 'Very High' risk band used throughout the assessment",
+            "source": "default",
+            "_note": (
+                "percentile is ranked against the shared 2020s GLOBAL land distribution, so "
+                "this threshold means 'worse than N% of global land in the 2020s' -- a "
+                "level, not a change. Trend is reported separately and the two are never "
+                "merged."
+            ),
+        },
+        "asset_values": {
+            "supplied": supplied,
+            "n_assets_valued": n_valued,
+            "n_assets_total": int(len(assets_df)),
+            "currency": currencies[0] if len(currencies) == 1 else None,
+            "basis": bases[0] if len(bases) == 1 else (bases or None),
+        },
+        "facets": {f: None for f in REPORT_FACETS},
+        "frameworks": {
+            "spine": "IFRS S2",
+            "mapped": ["CDP 3.1.1", "ESRS E1-9", "California SB 261"],
+        },
+    }
+
+
+def write_report_config(out_dir: Path, customer: str, assets_df: pd.DataFrame) -> Path:
+    """Seed `report_config.yaml` if it is absent. NEVER overwrites an existing one.
+
+    Re-running the extract must not silently revert a customer's stated time horizons or an
+    agreed vulnerability threshold back to our placeholders -- that would change what the
+    report claims without changing anything a reviewer would look at.
+    """
+    path = out_dir / REPORT_CONFIG_FILENAME
+    if path.exists():
+        return path
+    path.write_text(
+        yaml.safe_dump(
+            default_report_config(customer, assets_df), sort_keys=False, allow_unicode=True
+        )
+    )
+    return path
+
+
+def load_report_config(out_dir: Path) -> dict:
+    path = out_dir / REPORT_CONFIG_FILENAME
+    if not path.exists():
+        raise DeliveryError(
+            f"{path} not found. It is written by the extract stage; re-run it, or copy the "
+            f"defaults from delivery.default_report_config()."
+        )
+    cfg = yaml.safe_load(path.read_text()) or {}
+    for block in ("horizons", "vulnerability"):
+        if block not in cfg:
+            raise DeliveryError(f"{path} is missing the `{block}` block.")
+        if "source" not in cfg[block]:
+            raise DeliveryError(
+                f"{path}: `{block}` has no `source:`. It must say whether the value came "
+                f"from the customer or from our defaults -- the reports disclose which."
+            )
+    return cfg
+
+
+def horizon_decades(cfg: dict) -> Dict[str, int]:
+    """{'short': 2030, 'medium': 2050, 'long': 2090} from a report config."""
+    return {
+        k: int(cfg["horizons"][k]["decade"])
+        for k in ("short", "medium", "long")
+        if k in cfg["horizons"]
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -1004,9 +1232,35 @@ def run_delivery(
                 (scores_df["n_hazards"] < scores_df["n_hazards_expected"]).sum()
             ) if len(scores_df) else 0,
         },
+        "asset_values": {
+            "supplied": bool(pd.to_numeric(assets_df.get("asset_value"), errors="coerce").notna().any())
+            if "asset_value" in assets_df.columns else False,
+            "n_assets_valued": int(
+                pd.to_numeric(assets_df.get("asset_value"), errors="coerce").notna().sum()
+            ) if "asset_value" in assets_df.columns else 0,
+            "note": (
+                "IFRS S2 29(c) and ESRS E1-9 require the monetary AMOUNT of assets "
+                "vulnerable to physical risk. No processed layer can supply it. Where "
+                "values are absent the reports disclose counts and percentages only and "
+                "name the monetary figure as customer-owned."
+            ),
+        },
         "source_files": sources,
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    write_report_config(out_dir, customer, assets_out)
+
+    # A re-extract rewrites the manifest, which resets every downstream stage to
+    # not_started -- while the previous run's caveats and reports are still sitting in the
+    # folder, still openable, still shippable. Mark them STALE rather than letting a
+    # not_started manifest sit beside a finished-looking report; the verifier refuses a
+    # stale artifact, so the only way forward is to rebuild them against the new extract.
+    for stage, filename in DOWNSTREAM_ARTIFACTS:
+        if (out_dir / filename).exists():
+            record_stage(
+                out_dir, stage, "stale",
+                f"{filename} predates this extract ({manifest['generated_utc']}); rebuild it",
+            )
     record_stage(out_dir, "inputs", "confirmed",
                  f"{len(locations_df)} locations, {len(assets_df)} assets from "
                  f"{Path(input_path).name}")

@@ -736,6 +736,41 @@ The other six: `layers.csv` published one scenario's `n_members` as the layer's 
 
 ---
 
+### 2026-08-13: Stages 3 and 4 Built — The Dangerous Failure Is a Correct Report That Reads as a Complete One
+
+Stages 3 (reports) and 4 (caveats) were built on the IFRS S2 spine, mapped outward to CDP 3.1.1, ESRS E1-9 and California SB 261. Four findings worth keeping.
+
+**1. Coverage had to become a declared artifact, because omission is invisible.** A report that lists the hazards it assessed and stops reads as though the rest were assessed and found immaterial — every number correct, the document still misleading, and nothing in the pipeline able to detect it. `config/hazard_taxonomy.yaml` now enumerates the **19** physical-hazard families a disclosure is expected to address and records which each registry layer evidences. **Three are covered** (tropical cyclone, wildfire, drought). Riverine flood, coastal flood and extreme heat are absent, and for many built assets one of those is the dominant risk. A "hazards not assessed" section is now mandatory in every report.
+
+**2. `conifer-npp` is not a hazard, and its percentile hides that.** It measures the stand's own productivity, is `higher_is_better`, and was inverted at processing time — so it reads on the same 1–100 risk axis as a hazard and would silently become a fourth one in every count. `vulnerability_frame()` excludes it via the taxonomy's `non_hazard_layers`. The Climate Score still averages it in, which is now a `must_disclose` caveat rather than an unstated choice.
+
+**3. The vulnerability threshold is the single easiest way to make a true report misleading.** The count of vulnerable assets is a monotone function of a number somebody chose. Measured on the loblolly example: at percentile ≥ 60 **all five** tracts are vulnerable; at ≥ 80, **none**. The whole portfolio sits inside one band. So the threshold is disclosed in the same sentence as any count, the neighbouring thresholds are always reported, and `source: default` raises a caveat saying the threshold is ours rather than the customer's — the same protocol as `confirmed_on` in the asset catalog.
+
+**4. Four leaks found by looking at the rendered output, not by testing.** Each was correct code producing an inappropriate document:
+
+- **Multi-line HTML comments would have rendered.** The narrative scaffold hands the writer their facet-profile guidance as comments, and `markdown()` skipped only lines *starting* with `<!--` — so the second line onward of every guidance block, including the profiles' own "Do not claim" lists, would have appeared in the customer's report. Comments are now stripped in `parse_narrative()` and the verifier fails any report containing `<!--`.
+- **Internal vocabulary in a filing.** `UNVERIFIED`, `this pipeline`, `config/…yaml`, `viz_common.RISK_BANDS`, and an anecdote about the withdrawn sugarcane layer all reached the rendered compliance report. Fixed by splitting the taxonomy into `customer_note` (rendered) and `materiality_note`/`blocker`/`isimip_candidate` (internal), filtering caveat evidence per semicolon-separated segment against a delivered-file allowlist, and trimming `source_dataset` to its first clause. The verifier now fails on a leak list.
+- **`(nan)` in an asset label.** `str(x or "")` does not catch a missing optional column: `float('nan')` is **truthy**, so it survived to `str()` and printed. 
+- **"1 of 2 hazards assessed" read as a site gap.** It was `cyclone` publishing no high-forcing scenario. Both affected sections now name the layers absent at the displayed tier — without it, a coastal warehouse appears never to have been checked for cyclones when it was, at the two tiers where the layer exists.
+
+**5. A re-extract left stale reports looking finished.** `run_delivery()` rewrites `manifest.json`, which reset every downstream stage to `not_started` while the previous run's reports sat in the folder, openable and shippable. Downstream artifacts are now marked **`stale`** with the extract timestamp, and the verifier fails on a report whose stage is anything other than `built` — caught live, then fixed and re-caught.
+
+**Rule created**: stage order is `inputs → extract → dashboard → **caveats** → compliance_report → bespoke_report`. Caveats runs BEFORE the reports because the caveat set is an *input* to them, not a summary: each report must carry every `must_disclose` entry, enforced at build and re-checked by the verifier. Generating them last would let two documents about one delivery disagree about what is wrong with it.
+
+**Rule created**: a report contains exactly two kinds of sentence — derived from the delivery, or researched with a citation that **resolves**. `[data:…]` must name a real CSV row, `[dossier:…]` a source in `dossier.yaml`. The guarded failure mode is not laziness but **fluency**: a confident paragraph about a customer reads identically whether researched or invented. An unresolvable citation is worse than none, because it looks like evidence.
+
+**Rule created**: facet profiles (asset × region × persona × vertical × use case × company) **guide** the narrative and are never pasted into it. Pasting would make every report of a given asset class identical while looking bespoke — generic output nobody catches.
+
+**Verification**: 10 injected corruptions, all caught — must-disclose caveat removed, citation stripped, citation pointing at a nonexistent decade, slot reverted to `TODO`, threshold changed without rebuilding, vulnerable count altered in the HTML, internal vocabulary injected, HTML comment left in, manifest claiming a missing report, `caveats.json` deleted. Reference-site check per §12: the coastal NC tract carries **5.4×** the cyclone exposure of the piedmont tract (0.00332 vs 0.00062). Stage 2 outputs stayed byte-identical across the schema change. **4,418 checks** on the loblolly delivery, 3,301 on the forestry one.
+
+**Standing limitation**: no browser can be driven here, so **no report has been rendered or printed**. Layout and pagination are unreviewed and must be reported as such. PDF is Safari's Print ▸ Save as PDF; the environment has no pandoc, weasyprint, wkhtmltopdf, kaleido or headless Chrome, which is why figures are inline SVG with zero JavaScript.
+
+**Open**: every facet profile and every asset-catalog entry is `confirmed_on: null`. The `timber land` catalog entry omits `cyclone`, which is the dominant hazard for southeastern pine and irrelevant for Pacific Northwest pine — the catalog has no region dimension, so the loblolly delivery used a row-level override rather than changing it globally.
+
+**Files**: `config/hazard_taxonomy.yaml`, `scripts/generate_delivery_caveats.py`, `scripts/generate_compliance_report.py`, `scripts/generate_bespoke_report.py`, `scripts/utils/report_common.py`, `scripts/utils/report_figures.py`, `scripts/utils/report_profiles.py`, `scripts/utils/delivery.py`, `scripts/test_customer_delivery.py`, `docs/reporting/`, `.claude/skills/customer-delivery/SKILL.md`.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

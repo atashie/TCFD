@@ -1,0 +1,337 @@
+# Hazard taxonomy -- what a physical-risk disclosure is expected to address, and which of
+# it we can actually evidence.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# A compliance report that lists the hazards we assessed, and stops there, reads as though
+# the hazards we did NOT assess were assessed and found immaterial. That is the single most
+# damaging thing this pipeline could do to a customer, because it is invisible: every number
+# in the report is correct and the document is still misleading.
+#
+# So coverage is declared here, positively AND negatively, and the caveat generator reads
+# this file to emit a mandatory "hazards not assessed" section into every report. A hazard
+# family absent from this file is absent from that section -- which is why `families:` is
+# the full expected list, not the list we happen to cover.
+#
+# THE FIELDS THAT MATTER
+#   covered_by:       registry layer_ids that evidence this family. Empty list = not covered.
+#   esrs_class:       acute | chronic. ESRS E1-9 requires the acute/chronic split; IFRS S2
+#                     and CDP use the same two-way division.
+#   isimip_candidate: what would close the gap, named precisely enough to act on, with the
+#                     blocker that stopped it. "No candidate" is itself a finding.
+#
+# CUSTOMER-FACING vs INTERNAL -- the split matters and is enforced in code
+#   customer_note:    RENDERED INTO REPORTS. What a reader needs to know about the gap, in
+#                     their language: what is missing and what that means for their assets.
+#   materiality_note / blocker / isimip_candidate:
+#                     INTERNAL. Written for whoever would do the work. These carry repository
+#                     paths, dataset defects, phrases like "the most consequential gap in
+#                     this pipeline", and the word UNVERIFIED -- all of which mean something
+#                     precise to us and something alarming, or simply confusing, in a filing.
+#                     `report_common.coverage_summary()` exposes `customer_note` and the
+#                     compliance report reads only that field. Do not swap them.
+#
+# PROVENANCE OF THE FRAMEWORK VOCABULARY
+# --------------------------------------
+# The acute/chronic split and the family list follow the TCFD Table A1 physical-risk
+# taxonomy, which CDP and ESRS both inherit. `cdp_label` values below are our best mapping
+# onto CDP's question 3.1.1 hazard dropdown and are marked UNVERIFIED: as of 2026-08-13 the
+# 2026 questionnaire's dropdown options were NOT enumerated verbatim -- CDP's public
+# guidance pages return the acute/chronic definitions but not the option list. Before a
+# delivery is filed against CDP, open the live questionnaire, enumerate the dropdown, and
+# replace these with the exact labels (GUARDRAILS.md §11: a recorded claim needs its
+# receipt or the word UNVERIFIED).
+#
+# ISIMIP source facts are NOT unverified -- they are copied from
+# config/isimip_search_catalog.yaml, which carries its own enumeration dates.
+
+taxonomy_version: 1
+seeded_on: "2026-08-13"
+framework_basis: "TCFD Table A1 physical-risk taxonomy, as inherited by IFRS S2, CDP and ESRS E1"
+cdp_labels_verified: false
+cdp_labels_note: >-
+  UNVERIFIED as of 2026-08-13. The 2026 CDP question 3.1.1 hazard dropdown was not
+  enumerated; these labels are a mapping, not a transcription. Enumerate before filing.
+
+# ---------------------------------------------------------------------------------------
+# Layers that are NOT hazards
+# ---------------------------------------------------------------------------------------
+# `conifer-npp` measures the asset's own productivity, not a hazard acting on it. It is
+# `higher_is_better` and its percentile is already inverted, so it reads on the same 1-100
+# risk axis as the hazards -- which makes it easy to file as a fourth hazard and wrong to.
+# It answers "how is the asset performing under this scenario", not "what is the asset
+# exposed to". Reports must place it in an asset-condition section, and any statement of
+# hazard coverage must exclude it.
+non_hazard_layers:
+  conifer-npp:
+    role: asset_response
+    reports_as: "Asset condition / productivity"
+    why_not_a_hazard: >-
+      Net primary productivity is an outcome of climate acting on the stand, not a climate
+      hazard. Counting it as a hazard would inflate any "N hazards assessed" claim and would
+      put a productivity gain and a cyclone exposure in the same average without saying so.
+    note_for_climate_score: >-
+      The Climate Score DOES average it with the hazards, because percentile is the only
+      cross-layer comparable axis. That is a declared composition choice, not an oversight,
+      and every report carrying a Climate Score must state that the score mixes an
+      asset-condition axis with hazard-exposure axes.
+
+# ---------------------------------------------------------------------------------------
+# The families
+# ---------------------------------------------------------------------------------------
+families:
+
+  # -- COVERED ---------------------------------------------------------------------------
+
+  tropical-cyclone:
+    name: "Tropical cyclone (wind)"
+    esrs_class: acute
+    cdp_label: "Cyclone, hurricane, typhoon"        # UNVERIFIED
+    covered_by: [cyclone]
+    coverage_note: >-
+      Wind exposure only. Storm surge, rainfall flooding and the compound coastal event are
+      NOT in this layer and are not covered by any other. A cyclone-exposed coastal site is
+      therefore under-assessed, not fully assessed.
+    scenario_coverage: "rcp26, rcp60 only -- no high-forcing member exists for this hazard"
+
+  wildfire:
+    name: "Wildfire"
+    esrs_class: acute
+    cdp_label: "Wildfire"                            # UNVERIFIED
+    covered_by: [wildfire]
+    coverage_note: >-
+      Burnt-area fraction from the fire-enabled DGVM ensemble. Measures the modelled
+      probability that land burns, not ignition source, defensible space, or suppression
+      capacity -- so it is a landscape hazard signal, not a site fire risk.
+    scenario_coverage: "ssp126, ssp370, ssp585"
+
+  drought:
+    name: "Drought"
+    esrs_class: chronic
+    cdp_label: "Drought"                             # UNVERIFIED
+    covered_by: [drought-3b, drought-2b]
+    coverage_note: >-
+      Soil-moisture drought exposure: the frequency with which a cell falls below a fixed
+      preindustrial percentile. It measures DEPARTURE FROM A HISTORICAL REFERENCE, not
+      absolute aridity -- a permanently dry site can read low and a wettening-then-drying
+      site high. Two sibling layers are shipped and neither supersedes the other.
+    scenario_coverage: "drought-3b: ssp126/370/585. drought-2b: rcp26/rcp60."
+
+  # -- NOT COVERED, CANDIDATE EXISTS -----------------------------------------------------
+
+  flood-riverine:
+    name: "Riverine (fluvial) flood"
+    esrs_class: acute
+    cdp_label: "Flood (riverine)"                    # UNVERIFIED
+    covered_by: []
+    materiality_note: >-
+      The most consequential gap in this pipeline. Riverine flood is the hazard a reader is
+      most likely to assume was covered, and for built assets near a watercourse it usually
+      dominates.
+    customer_note: >-
+      Not assessed. River flooding is frequently the dominant physical risk for assets near a watercourse, and its absence here should not be read as a low result. A dedicated flood dataset is required.
+    isimip_candidate:
+      - "ISIMIP2b DerivedOutputData/Lange2020 `ler` -- 218 datasets, 8 GHM/land models x 4 CMIP5 GCMs, rcp26/rcp60. Same file structure as the shipped `led` layer, so process_led_drought.py adapts."
+      - "ISIMIP3b DerivedOutputData/Heinicke2026 `floodedarea` -- ssp126/370/585."
+    blocker: >-
+      `floodedarea` is binary {0,1} despite declaring units='1' (an occurrence flag, so its
+      decadal mean is a FREQUENCY, not an area) and is non-NaN over 94.7% of the globe
+      INCLUDING OCEAN -- a per-variable mask defect its own sibling `driedarea` does not
+      have. It needs a land mask applied and its nature declared before it could ship.
+      `ler` carries no known defect and is the cheaper route, at the cost of RCP scenarios.
+
+  heatwave:
+    name: "Heatwave / extreme heat"
+    esrs_class: acute
+    cdp_label: "Heat wave"                           # UNVERIFIED
+    covered_by: []
+    materiality_note: >-
+      Drives workforce safety, equipment derating and cooling demand. For a data centre it
+      is arguably the primary hazard and we do not carry it.
+    customer_note: >-
+      Not assessed. Extreme heat drives workforce safety limits, equipment derating and cooling demand, and is often the leading hazard for occupied buildings and data centres.
+    isimip_candidate:
+      - "ISIMIP2b DerivedOutputData/Lange2020 `leh` -- 30 datasets, hwmid-humidex derived index, rcp26/rcp60. Thin: one impact model."
+      - "ISIMIP3b DerivedOutputData/Zantout2025 `heatwave` -- SSP scenarios."
+    blocker: "Not yet enumerated or value-checked. No processor exists."
+
+  heat-stress-chronic:
+    name: "Chronic heat / rising mean temperature"
+    esrs_class: chronic
+    cdp_label: "Changing temperature (air, freshwater, marine water)"   # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Gradual warming of mean temperatures is reported here only indirectly, through its effect on the hazards that were assessed.
+    isimip_candidate:
+      - "ISIMIP InputData/climate bias-adjusted `tas` -- climate forcing rather than impact-model output."
+    blocker: >-
+      This is a forcing variable, not an impact. Processing it would put a raw climate
+      variable in a product whose every other layer is an impact-model output, and its
+      percentile would not mean what the others' means. A deliberate design question, not a
+      backlog item.
+
+  crop-failure:
+    name: "Crop failure"
+    esrs_class: acute
+    cdp_label: "Drought / heat -- crop loss"         # UNVERIFIED
+    covered_by: []
+    materiality_note: >-
+      The `agricultural land` catalog entry currently returns drought and wildfire exposure
+      with NO yield response. That entry's caveat says so; this file is where the gap is
+      counted.
+    customer_note: >-
+      Not assessed. Agricultural sites in this assessment carry hazard exposure only; no crop-yield response is modelled, so a drought result does not translate into a yield loss.
+    isimip_candidate:
+      - "ISIMIP2b DerivedOutputData/Lange2020 `lec` -- 90 datasets, gepic only (single impact model), rcp26/rcp60."
+      - "ISIMIP3b DerivedOutputData/Zantout2025 `cropfailure` -- SSP scenarios."
+      - "ISIMIP crop-yield variables `yield-{crop}` under the agriculture sector."
+    blocker: >-
+      `lec` is a single impact model, so its CI would carry no structural uncertainty. The
+      direct yield route is the one that failed: the ISIMIP2b LPJmL sugarcane layers were
+      WITHDRAWN 2026-08-11 because the run does not simulate cane in the cane belt. Any new
+      crop layer needs a GUARDRAILS §12 reference-site check before it is trusted.
+
+  water-stress:
+    name: "Water stress / availability"
+    esrs_class: chronic
+    cdp_label: "Water stress"                        # UNVERIFIED
+    covered_by: []
+    materiality_note: >-
+      Distinct from drought: drought here is departure from a historical reference, water
+      stress is demand against available supply. A data centre's water question is this one.
+    customer_note: >-
+      Not assessed. Water stress is the balance of demand against available supply and is a different question from the drought exposure reported here. It is the relevant metric where water is a process input.
+    isimip_candidate:
+      - "The Water Risk Index product in this repository already processes discharge, runoff, soil moisture, total water storage, evapotranspiration and precipitation monthly."
+    blocker: >-
+      SEPARATE PRODUCT, different output contract (20 value types, monthly, no percentile,
+      no trends) -- see CLAUDE.md. It cannot be joined to a TCFD delivery without a
+      deliberate bridge. Do not silently substitute it.
+
+  # -- NOT COVERED, NO CANDIDATE IN SCOPE ------------------------------------------------
+
+  flood-coastal:
+    name: "Coastal flood / storm surge"
+    esrs_class: acute
+    cdp_label: "Flood (coastal)"                     # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Coastal flooding and storm surge are not covered by any layer in this assessment, including the tropical cyclone layer, which measures wind exposure only.
+    isimip_candidate: []
+    blocker: >-
+      Not enumerated in this repository's ISIMIP catalog. Requires surge and sea-level
+      components the current search catalog does not record. UNVERIFIED as absent.
+
+  flood-pluvial:
+    name: "Pluvial (surface water) flood"
+    esrs_class: acute
+    cdp_label: "Flood (pluvial)"                     # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Surface-water flooding depends on local drainage and short-duration rainfall, below the resolution of this dataset.
+    isimip_candidate: []
+    blocker: >-
+      Needs sub-daily precipitation and local drainage, which a 0.5 deg annual product
+      cannot represent at all. Not closable within this pipeline's resolution.
+
+  sea-level-rise:
+    name: "Sea level rise"
+    esrs_class: chronic
+    cdp_label: "Sea level rise"                      # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. No sea-level component is included, so coastal sites carry no permanent-inundation or erosion signal.
+    isimip_candidate: []
+    blocker: "Not enumerated in this repository's ISIMIP catalog. UNVERIFIED as absent."
+
+  storm-wind-extratropical:
+    name: "Extratropical storm / severe wind"
+    esrs_class: acute
+    cdp_label: "Storm (including blizzards, dust and sandstorms)"   # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. The cyclone layer covers tropical cyclones only; mid-latitude windstorm is a separate hazard and is not represented.
+    isimip_candidate: []
+    blocker: >-
+      The `cyclone` layer is TROPICAL cyclone only. Mid-latitude windstorm is a different
+      hazard and is not covered. Not enumerated. UNVERIFIED as absent.
+
+  heavy-precipitation:
+    name: "Heavy precipitation, hail, snow and ice"
+    esrs_class: acute
+    cdp_label: "Heavy precipitation (rain, hail, snow/ice)"          # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Hail, snow, ice loading and short-duration extreme rainfall are below the resolution of this dataset.
+    isimip_candidate: []
+    blocker: "Sub-daily hazard; outside the resolution of this product."
+
+  cold-frost:
+    name: "Cold wave / frost"
+    esrs_class: acute
+    cdp_label: "Cold wave / frost"                   # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Cold waves and frost events are not covered by any layer in this assessment.
+    isimip_candidate: []
+    blocker: >-
+      Not in the Lange 2020 family (its six codes are drought, river flood, wildfire, crop
+      failure, heatwave, tropical cyclone -- enumerated 2026-07-24). Not otherwise
+      enumerated. UNVERIFIED as absent.
+
+  precipitation-pattern-change:
+    name: "Changing precipitation patterns"
+    esrs_class: chronic
+    cdp_label: "Changing precipitation patterns and types"           # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Shifts in rainfall seasonality are reflected here only indirectly, through the drought and wildfire layers.
+    isimip_candidate: []
+    blocker: "Forcing variable; same design question as chronic heat."
+
+  soil-coastal-erosion:
+    name: "Soil and coastal erosion"
+    esrs_class: chronic
+    cdp_label: "Soil erosion / coastal erosion"      # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Soil loss and coastal erosion are not covered by any layer in this assessment.
+    isimip_candidate: []
+    blocker: "Not enumerated. UNVERIFIED as absent."
+
+  permafrost-thaw:
+    name: "Permafrost thaw"
+    esrs_class: chronic
+    cdp_label: "Permafrost thawing"                  # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Ground stability in permafrost regions is not covered. Relevant only to high-latitude sites.
+    isimip_candidate:
+      - "ISIMIP3b permafrost sector publishes csoil-total; a thaw-specific variable was not enumerated."
+    blocker: >-
+      Not enumerated as a hazard variable. Note the cross-sector duplicate trap recorded in
+      the process-visualize skill: elm-eca csoil-total appears byte-identically under both
+      `biomes` and `permafrost`.
+
+  landslide:
+    name: "Landslide and subsidence"
+    esrs_class: acute
+    cdp_label: "Landslide"                           # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Slope failure and subsidence depend on terrain and geotechnical conditions that are outside this dataset.
+    isimip_candidate: []
+    blocker: "Outside ISIMIP's published impact sectors. Requires terrain and geotechnical data."
+
+  marine-warming-acidification:
+    name: "Marine warming and ocean acidification"
+    esrs_class: chronic
+    cdp_label: "Changing temperature (marine water) / ocean acidification"   # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Marine conditions are not covered; this assessment addresses land-based assets only.
+    isimip_candidate:
+      - "ISIMIP fisheries sector -- tcb and b30cm processors exist in scripts/ but no fisheries layer is in config/layer_registry.yaml."
+    blocker: >-
+      Relevant only to marine assets, which the asset catalog does not currently serve. The
+      fisheries processors predate the current output contract and are not registered.

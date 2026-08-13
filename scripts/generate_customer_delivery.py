@@ -26,6 +26,7 @@ OUTPUT: deliveries/{customer-slug}/{YYYYMMDD}/
 """
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -164,6 +165,10 @@ def main() -> int:
     p.add_argument("--no-dashboard", action="store_true",
                    help="Skip the dashboard. Leaves the delivery INCOMPLETE and is "
                         "recorded as such in the manifest; for debugging only.")
+    p.add_argument("--reports", action="store_true",
+                   help="Also build Stage 4 (caveats) and Stage 3a (compliance report). "
+                        "The bespoke report is NOT chained -- it needs facet profiles "
+                        "chosen and a narrative written.")
     p.add_argument("--layers", help="Semicolon-separated layer_ids overriding the catalog "
                                     "for EVERY row")
     p.add_argument("--out", type=Path, help="Override the delivery directory")
@@ -249,10 +254,43 @@ def main() -> int:
             print(f"  wrote {incomplete_marker.name} -- this delivery must not be shipped")
             return 1
 
+        # STAGE 4 THEN STAGE 3a. Caveats first, always -- the caveat set is an INPUT to the
+        # reports (each is required to carry every must-disclose entry) rather than a
+        # summary of them. The bespoke report is NOT chained: it needs facet profiles chosen
+        # and a narrative written, neither of which a batch run can supply.
+        if args.reports:
+            print()
+            # Flush before handing the terminal to a child: this process's stdout is block
+            # buffered when piped, the child's is not, so without this the child's output
+            # appears BEFORE the extraction log it actually followed.
+            sys.stdout.flush()
+            rc = 0
+            for script in ("generate_delivery_caveats.py", "generate_compliance_report.py"):
+                # Subprocess rather than an import: each stage owns its own argparse and
+                # its own exit code, and a failure in one must not leave this process
+                # holding half-initialised module state.
+                rc = subprocess.call(
+                    [sys.executable, str(Path(__file__).parent / script), str(out_dir)]
+                )
+                if rc != 0:
+                    break
+            if rc != 0:
+                incomplete_marker.write_text(
+                    "# DELIVERY INCOMPLETE -- do not ship\n\n"
+                    "Caveats or the compliance report failed to build.\n")
+                print(f"\n  wrote {incomplete_marker.name} -- this delivery must not be shipped")
+                return 1
+
         print(f"\n{out_dir}")
         print("Next: verify, then OPEN the dashboard --")
         print(f"  python scripts/test_customer_delivery.py {out_dir}")
         print(f"  open {out_dir}/dashboard.html")
+        if not args.reports:
+            print("\nStage 4 + 3a (caveats, compliance report) -- add --reports, or run:")
+            print(f"  python scripts/generate_delivery_caveats.py {out_dir}")
+            print(f"  python scripts/generate_compliance_report.py {out_dir}")
+        print("\nStage 3b (bespoke report) needs facets chosen in report_config.yaml first:")
+        print(f"  python scripts/generate_bespoke_report.py {out_dir} --scaffold")
         return 0
 
     except DeliveryError as exc:
