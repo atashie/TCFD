@@ -927,7 +927,7 @@ distribution trips its own threshold more readily than a chronically marginal re
 the crop analogue of the drought layer's "departure, not aridity". This layer must never be
 read as a food-security or absolute-yield map, and `interpretation_caveat` says so.
 
-**Open**: the index carries **no crop token** and the publication ships no sidecars, so
+**Open**: the index carries **no crop token** and its sidecar's `specifiers` block names only the variable, so
 *which* crops are aggregated into it, and how they are weighted, is not readable from the
 archive. That is material for site-level use — a crop-aggregated index over crops a site
 does not grow is not that site's risk — and it is recorded as

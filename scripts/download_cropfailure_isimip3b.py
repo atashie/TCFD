@@ -22,17 +22,21 @@ was projected at `$(NF-4)` rather than grepped for a believed-in token (GUARDRAI
   * GUARDRAILS 1 does not apply: `annual` is the ONLY cadence published here (all 160
     files are `..._global_annual_2015_2100.nc`), so there is no resolution to choose.
 
-NO `.json` SIDECARS. Unlike Heinicke2026 `driedarea` -- same round, same product type --
-Zantout2025 publishes no sidecars at all (`{stem}.nc.json` returns 404, verified
-2026-08-13). Two consequences, both real downgrades to state plainly rather than paper
-over:
+SIDECARS ARE AT `{stem}.json`, NOT `{stem}.nc.json` -- and the wrong probe looks exactly
+like "this publication has no sidecars".
 
-  * There is no upstream sha512 to verify against. Integrity is checked against the
-    `Content-Length` returned by a HEAD on the same URL, which catches truncation and
-    resumption errors but NOT silent corruption in transit.
-  * The sha512 recorded in `download_provenance.csv` is computed HERE, from the bytes on
-    disk. It is a self-consistency receipt for later re-verification (did this file change
-    since ingest?), NOT a confirmation that we received what the publisher intended.
+CORRECTED 2026-08-14. The first version of this script tested `{stem}.nc.json`, got a 404,
+and concluded Zantout2025 published none; the 120 files were ingested with Content-Length
+as the only integrity check. They are published, they carry `size`, `sha512` and a
+`netcdf_header` block, and every file is now verified against the publisher's checksum.
+
+The error is worth recording because the information needed to avoid it was already in
+hand: the SAME trap had been found hours earlier on ISIMIP2b `Lange2020/lec` during the
+crop-failure enumeration and written into
+`config/isimip_search_catalog.yaml` (`lec_isimip2b.sidecars`) -- and then not applied here.
+A 404 on a guessed sidecar path is `UNVERIFIED`, never a negative (GUARDRAILS 8, 11); it
+says the path is wrong at least as often as it says the file is absent. Try both forms, or
+read the directory listing, before recording "no sidecars" about a publication.
 
 FILENAME GRAMMAR WARNING: Zantout2025 filenames DO carry a leading publication token,
 where its 3b sibling Heinicke2026 does not --
@@ -61,6 +65,7 @@ Usage:
 import argparse
 import csv
 import hashlib
+import json
 import sys
 import urllib.error
 import urllib.request
@@ -107,22 +112,18 @@ def build_items():
                 items.append(dict(
                     fname=f"{stem}.nc",
                     url=f"{BASE}/{mdir}/{gcm}/future/{stem}.nc",
+                    # NOTE the naming: {stem}.json, NOT {stem}.nc.json. The latter 404s.
+                    sidecar=f"{BASE}/{mdir}/{gcm}/future/{stem}.json",
                     model=model, gcm=gcm, scenario=scen, soc=SOC,
                     member=f"{model}_{gcm}",
                 ))
     return items
 
 
-def head_size(url):
-    """Expected byte count from a HEAD. This is the ONLY upstream integrity signal
-    Zantout2025 offers -- there are no sidecars and therefore no published checksum."""
-    req = urllib.request.Request(url, method="HEAD",
-                                 headers={"User-Agent": USER_AGENT})
+def get_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=120) as r:
-        length = r.headers.get("Content-Length")
-        if length is None:
-            raise ValueError("no Content-Length on HEAD")
-        return int(length)
+        return json.loads(r.read().decode())
 
 
 def sha512_of(path):
@@ -163,11 +164,17 @@ def fetch(url, dest, expected_size):
 def one(item):
     dest = OUT_DIR / item["fname"]
     try:
-        size = head_size(item["url"])
+        meta = get_json(item["sidecar"])
     except urllib.error.HTTPError as e:
-        return dict(item, ok=False, msg=f"HEAD HTTP {e.code}")
+        return dict(item, ok=False, msg=f"sidecar HTTP {e.code}")
     except Exception as e:  # noqa: BLE001 - report, never abort the batch
-        return dict(item, ok=False, msg=f"HEAD {type(e).__name__}: {e}")
+        return dict(item, ok=False, msg=f"sidecar {type(e).__name__}: {e}")
+
+    size = int(meta["size"])
+    want = meta.get("checksum", "")
+    if meta.get("checksum_type", "sha512") != "sha512":
+        return dict(item, ok=False,
+                    msg=f"unexpected checksum_type {meta.get('checksum_type')}")
 
     try:
         wrote = fetch(item["url"], dest, size)
@@ -178,7 +185,11 @@ def one(item):
     if got != size:
         return dict(item, ok=False, msg=f"size {got} != {size}")
 
-    return dict(item, ok=True, bytes=size, sha512=sha512_of(dest),
+    digest = sha512_of(dest)
+    if want and digest != want:
+        return dict(item, ok=False, msg="sha512 MISMATCH")
+
+    return dict(item, ok=True, bytes=size, sha512=digest,
                 wrote=wrote, skipped=(wrote == 0), msg="")
 
 
@@ -190,8 +201,8 @@ def main():
     items = build_items()
     print(f"{len(items)} files = {len(MODELS)} models x {len(GCMS)} GCMs "
           f"x {len(SCENARIOS)} scenarios")
-    print("integrity: Content-Length only -- Zantout2025 publishes no .json sidecars, "
-          "so there is no upstream sha512 to verify against")
+    print("integrity: sha512 from each file's {stem}.json sidecar (NOT {stem}.nc.json, "
+          "which 404s and reads as 'no sidecars')")
     if args.dry_run:
         for it in items:
             print(it["url"])
@@ -211,7 +222,7 @@ def main():
     good = [r for r in results if r["ok"]]
     bad = [r for r in results if not r["ok"]]
     total = sum(r["bytes"] for r in good)
-    print(f"\n{len(good)}/{len(items)} size-verified, {total/2**20:.1f} MiB")
+    print(f"\n{len(good)}/{len(items)} verified by sha512, {total/2**20:.1f} MiB")
 
     if good:
         with open(OUT_DIR / "download_provenance.csv", "w", newline="") as fh:
@@ -221,9 +232,7 @@ def main():
             w.writeheader()
             for r in sorted(good, key=lambda x: x["fname"]):
                 row = {k: r[k] for k in w.fieldnames if k != "sha512_source"}
-                # Say where the digest came from. Heinicke2026 rows in a sibling layer's
-                # provenance mean "matched the publisher"; these mean "computed locally".
-                row["sha512_source"] = "computed-locally (no upstream sidecar)"
+                row["sha512_source"] = "matched publisher {stem}.json"
                 w.writerow(row)
         print(f"provenance -> {OUT_DIR / 'download_provenance.csv'}")
 

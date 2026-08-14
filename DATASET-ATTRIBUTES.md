@@ -148,9 +148,12 @@ cell with a stable regime scores LOW on the drought layers for the same reason.
   of land) derived from where the field is ever non-zero, so a non-agricultural site returns
   `OFF_LAYER_MASK` rather than zero and a percentile is a rank **among cropland**. Each
   member is additionally masked to its own footprint, because only 38.1% of cells have all 40
-  members simulating crops. The index carries **no crop token** and the publication ships no
-  sidecars, so which crops it aggregates is **undocumented** — for a specific crop, treat it
-  as a regional signal. Time axis declares **no `units` at all**.
+  members simulating crops. The index carries **no crop token** and the sidecar's
+  `specifiers` block names only the variable, so which crops it aggregates is
+  **undocumented** — for a specific crop, treat it as a regional signal. Time axis declares
+  **no `units` at all**. Sidecars are at `{stem}.json`, **not** `{stem}.nc.json` — the
+  latter 404s and reads convincingly as "this publication has no sidecars"; the ingest made
+  exactly that error and ran unverified until it was caught (corrected 2026-08-14).
 - **`wildfire`** — values are **not clipped at 100%**: a cell that reburns within a year can
   legitimately exceed full coverage (measured annual maxima ~575% for `elm-eca`).
 - **`cyclone`** — **single impact model** (`ke-tg-meanfield`), so its CI is inter-GCM spread

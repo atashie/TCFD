@@ -181,7 +181,8 @@ layers:
       PUBLISHED ON A CROPLAND FOOTPRINT (39,890 cells, 42.4% of land), NOT on all land. A
       non-agricultural site returns OFF_LAYER_MASK rather than zero, and a percentile here
       is a rank AMONG CROPLAND, not among all land. The index carries NO CROP TOKEN and the
-      publication ships no sidecars, so which crops it aggregates is UNDOCUMENTED --
+      publication's sidecar names only the variable, so which crops it aggregates is
+      UNDOCUMENTED --
       material for any site-level use, since an index over crops a site does not grow is not
       that site's risk. See the must-disclose RELATIVE-BASELINE caveat for how to read the
       score itself.

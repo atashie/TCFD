@@ -876,9 +876,9 @@ def main():
                     "baseline productivity and adaptive capacity before drawing any "
                     "conclusion about consequences. Do not read it as a yield map."),
                 "crop_composition_undocumented": (
-                    "THE INDEX CARRIES NO CROP TOKEN and Zantout2025 publishes no sidecars, "
-                    "so WHICH crops are aggregated into it, and how they are weighted, is "
-                    "not readable from the archive. This is material for site-level use: a "
+                    "THE INDEX CARRIES NO CROP TOKEN, and the sidecar `specifiers` block "
+                    "names only the variable `cropfailure`, so WHICH crops are aggregated "
+                    "into it, and how they are weighted, is not readable from the archive. This is material for site-level use: a "
                     "crop-aggregated index over crops a site does not grow is not that "
                     "site's risk. Resolve against the Zantout2025 publication before "
                     "quoting this layer for a specific crop or a specific farm."),
@@ -892,9 +892,11 @@ def main():
                     "ISIMIP3b DerivedOutputData/Zantout2025 -- the SSP re-issue of the Lange "
                     "2020 crop-failure-exposure concept, named by hazard word rather than "
                     "le* code. SEPARATE LAYER from the ISIMIP2b `lec` product (GEPIC + "
-                    "PEPIC x 4 CMIP5 GCMs, rcp26/rcp60), not a replacement. No .json "
-                    "sidecars are published, so downloads were verified by Content-Length "
-                    "and the recorded sha512 is computed locally, not publisher-confirmed."),
+                    "PEPIC x 4 CMIP5 GCMs, rcp26/rcp60), not a replacement. Every input "
+                    "file is verified against the publisher's sha512, published at "
+                    "{stem}.json -- NOT {stem}.nc.json, which 404s and reads as 'no "
+                    "sidecars'. The ingest made exactly that error and ran on "
+                    "Content-Length alone until it was caught and corrected 2026-08-14."),
                 "reference_sites": (
                     "GUARDRAILS 12, mean over 2015-2100 across all 120 members, all "
                     "non-zero and non-NaN: Iowa 0.1303, Punjab 0.1490, North China Plain "

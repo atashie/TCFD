@@ -323,7 +323,25 @@ lange2020_caraib_gfdl-esm2m_ewembi_rcp26_2005soc_co2_lew_global_annual_2006_2099
 ```
 
 This happened twice in one search and both times produced a plausible-looking matrix that
-had to be re-derived. From the end it is invariant: `variable=$(NF-4)`, `timestep=$(NF-2)`.
+had to be re-derived. From the end it is *usually* invariant: `variable=$(NF-4)`,
+`timestep=$(NF-2)`.
+
+**But "parse from the end" is a convention, not a guarantee — a publication can add fields
+in the MIDDLE.** ISIMIP2b `Zimmer2023` (CaMa-Flood) carries a protection level *and* a
+resolution between the variable and the region:
+
+```
+cama-flood_h08_gfdl-esm2m_ewembi_rcp60_2005soc_co2_flddph_none_150arcsec_global_annual_2006_2100.nc4
+                                                  variable  ^prot   ^res
+                    variable=$(NF-6)  protection=$(NF-5)  resolution=$(NF-4)  scenario=$(NF-9)
+```
+
+so the standard `$(NF-4)` projection reports a variable vocabulary of **`150arcsec`** —
+a clean-looking, completely wrong answer, from a harvest with zero failed listings.
+Measured 2026-08-13, first pass over this directory. **Eyeball one filename before trusting
+any offset**, and where a `.json` sidecar exists read its `specifiers` block instead: it
+names `variable`, `protection_level`, `resolution` and `climate_scenario` explicitly and
+cannot drift with the field count.
 
 **Mind token ORDER when grepping a filename.** The scenario precedes the variable, so
 `grep '_lew_.*rcp26'` matches **nothing** — it must be `'rcp26.*_lew_'` (or two `grep`s).

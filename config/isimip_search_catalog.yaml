@@ -839,13 +839,54 @@ search_results:
         soc_sens: "uniformly 2015soc / default -- no harmonization compromise"
         bias_adjustment: "w5e5"
         volume: "3.8-4.5 MB/file -> ~63 MB for all 15"
-        sidecars: ".json present WITH sha512 AND a netcdf_header block"
+        sidecars: >-
+          .json present WITH sha512 AND a netcdf_header block -- at `{stem}.json`, NOT
+          `{stem}.nc.json`. The `.nc.json` form 404s for the same file (verified
+          2026-08-13), which looks exactly like "this publication has no sidecars" and is
+          how the cropfailure ingest concluded Zantout2025 publishes none. It does.
         declared_header: "dims (time=86, lat=360, lon=720); variable `heatwave`, long_name 'heatwave area share', units '1', _FillValue 1.0000000200408773e+20"
         data_nature: >-
-          UNVERIFIED despite the declared long_name. Its Zantout2025/Heinicke2026 cousins are
-          the standing warning: `floodedarea` also declares units='1' and is binary {0,1},
-          and is non-NaN over ocean. Measure value set, exact-zero share and land mask
-          before choosing a decadal-statistic branch.
+          MEASURED 2026-08-13 across all 15 members (scripts/check_heatwave_nature.py):
+          BINARY {0,1} -- exactly 2 unique values per member, range [0,1], is_boolean=True
+          in 15/15. The declared long_name "heatwave area share" is a MISNOMER: the field
+          is an occurrence flag, so its decadal mean is a FREQUENCY, not an area. Same
+          trap as `floodedarea` (units='1', binary). -> pooled_mean_boolean branch.
+        zero_inflation_measured: >-
+          Annual exact-ZERO share 19.6%-69.1% (ensemble median 45.3%) -- nowhere near
+          `let`'s 97.84%, so pooled_mean_zero_inflated is NOT in scope. The degeneracy on
+          this layer is at the OTHER end; see saturation_measured.
+        saturation_measured: >-
+          THE DEFINING PROPERTY OF THIS LAYER, and one no other shipped layer has. Because
+          exposure is "HWMId above the 97.5th percentile of THIS cell's picontrol", warming
+          pushes cells permanently over the threshold and the flag pins at 1. Pooled
+          (year x member) decadal exposure frequency, measured on the ingested files:
+            2020s ~0.31 in all three SSPs (shared baseline consistent: 0.316/0.310/0.316)
+            ssp126  -> 0.473 (2050s) -> 0.462 (2090s), plateaus;  1.2% of cells at 1.0
+            ssp370  -> 0.607 (2050s) -> 0.846 (2090s);           32.6% of cells at 1.0
+            ssp585  -> 0.650 (2050s) -> 0.903 (2090s);           45.9% of cells at 1.0
+          Two consequences that must be decided before processing, NOT after:
+            * TREND IS CENSORED AT THE CEILING. A cell exposed every year of the decade in
+              every member has slope ~0 late century. That reads as "no trend" and means
+              "permanently and maximally exposed" -- the opposite. Both slopes fail here,
+              so the two-slope disagreement rule does not rescue it.
+            * PERCENTILE LOSES DISCRIMINATION. With 45.9% of ssp585 2090s cells tied at
+              exactly 1.0, a percentile-of-score ranking produces one enormous tie block at
+              the top. The tie treatment is an open decision.
+        mask_measured: >-
+          67,420 finite cells, IDENTICAL across all 15 members and time-invariant (so the
+          coverage-tier mask is degenerate: every cell is in 5 of 5 members). 26.0% of the
+          grid -- a land footprint, NOT the `floodedarea` ocean leak (94.7% of grid).
+          1,623 cells fall off the ISIMIP3b land-sea mask (945 coastal fringe, 678
+          isolated, half of those tropical islands the 0.5deg mask does not resolve); the
+          shipped `driedarea` carries 1,236 off the same mask and `led` 46, so this is a
+          mask-CONVENTION difference, not a defect. The 27,092 land cells the product never
+          covers are 100% Antarctica.
+        reference_sites_measured: >-
+          GUARDRAILS 12, 13 sites, all non-trivial in all 15 members, all rising to the
+          2090s. Kuwait 0.957->0.982, Singapore 0.889->0.952, Cordoba 0.688->0.818,
+          Chicago 0.688->0.836, Paris 0.406->0.636, Frankfurt 0.345->0.576,
+          Sydney 0.226->0.461, Yakutsk 0.271->0.509. Chicago reading ABOVE Delhi (0.548)
+          is the relative baseline working as designed, not a defect.
       an_tot_heat_health_2b:
         path: "ISIMIP2b/OutputData/health/TRM-Tsukuba/{gcm}/future/"
         variable: "an-tot-heat-all -- specifiers split it as variable=`an-tot-heat`, ages=`all`"
@@ -872,13 +913,26 @@ search_results:
           CONSTRUCTED INDEX -- a modelling decision to make with the user, per GUARDRAILS
           1-2, not an aggregation. Same standing as the sfcwind route recorded under
           tropical_cyclone.future_delivery.
-    method_difference_unverified: >-
-      The two exposure products carry DIFFERENT index tokens: 2b is `HWMId-humidex`, 3b is
-      `HWMID-NONE`. The tokens are observed on the file server; what they mean physically
-      (a humidex/humidity-adjusted HWMId vs one with no humidity correction) is NOT verified
-      from the files or from a paper as of 2026-08-13. It matters -- a humidity-inclusive
-      heat index and a temperature-only one are different hazards for workforce-safety
-      framing -- so verify before describing either to a customer.
+    method_difference_VERIFIED: >-
+      RESOLVED 2026-08-13 from the two publications' own methods. The index CHANGED between
+      rounds; this is not a version bump and the two products are not the same measurement.
+        ISIMIP2b  Lange2020 / `HWMId-humidex` -> HWMId (relative) AND Humidex (absolute)
+        ISIMIP3b  Zantout2025 / `HWMID-NONE`  -> HWMId ONLY; "NONE" is the humidity term
+      Lange et al. 2020 (Earth's Future, doi:10.1029/2020EF001616) combines a RELATIVE
+      indicator -- the Heat Wave Magnitude Index daily (HWMId), which depends only on daily
+      maximum temperature -- with an ABSOLUTE indicator, the Humidex (daily max and mean
+      temperature plus relative humidity), so the events counted "would also adversely
+      affect human health". Zantout et al. 2025 (Nat. Commun.,
+      doi:10.1038/s41467-025-65600-7, Methods) drops the absolute criterion: a cell is
+      exposed "if the HWMId of that year exceeds the 97.5th percentile of the picontrol
+      distribution of that grid cell", and "the exposed grid cell area fraction is one if
+      the percentile threshold is exceeded and zero else".
+      CONSEQUENCE FOR CUSTOMER TEXT: the 3b layer measures UNPRECEDENTED heat relative to a
+      per-cell preindustrial control, NOT dangerous-to-humans heat. Copy for this hazard
+      must not promise a workforce-safety or wet-bulb reading. It is also expected to flag
+      MORE area than 2b `leh`, especially in arid and high-latitude cells where the Humidex
+      gate would never have opened -- so a 3b-vs-2b difference is a definitional
+      difference, never a trend.
     negative_findings: |
       * NO health sector in ISIMIP3b. verified_absent_on: "2026-08-13 -- listed
         https://files.isimip.org/ISIMIP3b/OutputData/ = agriculture, biomes, fire,
@@ -896,25 +950,39 @@ search_results:
         forcing dirs (20crv3, 20crv3-era5, 20crv3-w5e5, gswp3-w5e5); every one contains
         historical/ and nothing else. Files are obsclim + counterclim, histsoc/default,
         annual 1901-2016." Value as a benchmark/validation reference only.
+    chosen_2026_08_13: |
+      ISIMIP3b `heatwave` (Zantout2025/HWMID-NONE) -- user decision, "prefer the more recent
+      data unless there is a strong reason not to". No strong reason was found: unlike the
+      drought pair, 3b is not the thinner ensemble here (5 members/scenario vs 2b's 4), and
+      it adds a third scenario and the CMIP6 generation. The one material difference is
+      definitional, not qualitative -- see method_difference_VERIFIED -- and it is carried
+      as disclosure, not as a reason to prefer 2b.
+      INGESTED 2026-08-13: 15/15 files, 62.3 MiB, every one sha512-matched against the
+      publisher sidecar. data/raw/heatwave-isimip3b_heatwave_annual/,
+      scripts/download_heatwave_isimip3b.py, provenance in download_provenance.csv.
+      VALUE-CHECKED 2026-08-13: scripts/check_heatwave_nature.py, results recorded under
+      representations.heatwave_exposure_3b (data_nature, saturation, mask, sites).
     open_decisions: |
       NOT pre-answered here; they are measurements or user decisions, not inheritances.
-      1. Data nature of `leh` and of 3b `heatwave` -- value-check both (GUARDRAILS 9).
-         Sibling members of these very publications disagree (led binary, let fractional,
-         floodedarea binary-despite-units-1), so nothing is transferable.
-      2. Exact-zero share -> which of the three decadal-statistic branches applies
-         (pooled median/IQR, pooled_mean_boolean, pooled_mean_zero_inflated). Measure it.
-      3. Land mask / ocean leak, per file and per member (floodedarea's defect is in this
-         same family of publications).
-      4. Smoothing decay length. BOTH exposure products are 1 impact model x 4-5 GCMs, so
-         4-5 members/scenario -- thin. L is a per-layer measurement, never a constant.
-      5. Publication mask. n_models = 1 for every heat option here, so the ">=2 impact
-         models" rule used by `led` has no meaning; a mask would have to be defined on
-         GCM count or dropped. Explicit decision required.
-      6. `leh` vs `peh` -- land-area-exposed vs population-exposed are different questions,
-         and only 2b offers the choice.
-      7. Whether to ship 2b and 3b as siblings (as drought does with led/driedarea) or
-         only one. Deeper CMIP5-forced pair of RCPs vs 5 CMIP6 GCMs across 3 SSPs.
-      8. Whether the health mortality count belongs in an asset-facing product at all
+      RESOLVED by the 2026-08-13 ingest + value check:
+        - data nature of 3b `heatwave`: BINARY, measured -> pooled_mean_boolean
+        - zero-inflation: 45.3% median, third branch NOT in scope
+        - land mask: land footprint, no ocean leak, mask identical across all 15 members
+      STILL OPEN, and the first two are new to this layer:
+      1. SATURATION / CENSORING. 45.9% of ssp585 2090s cells sit at exactly 1.0. Both
+         slopes go to ~0 there and mean "permanently exposed", not "no trend". Decide the
+         treatment before processing: publish the slope with a censoring flag, mask the
+         slope where the decade is saturated, or report a time-to-saturation instead.
+      2. PERCENTILE TIE TREATMENT under that saturation -- one tie block holding nearly
+         half the cells. The two-tier zero rule does not address a tie at the TOP.
+      3. Smoothing decay length. 5 members/scenario is thin. L is a per-layer measurement.
+      4. Publication mask. n_models = 1, so `led`'s ">=2 impact models" rule has no
+         meaning. Measured here the question may be moot -- the finite mask is identical
+         across all 5 GCM members, so every cell is in 5 of 5 and no tier exists to cut on.
+      5. Whether to ALSO ship 2b `leh` as a sibling (as drought does with led/driedarea).
+         Note `leh` remains UNVERIFIED on data nature and is a DIFFERENT index, so a
+         sibling pair here would not be two views of one measurement the way drought's is.
+      6. Whether the health mortality count belongs in an asset-facing product at all
          (see its caveat above).
 
   # -------------------------
@@ -949,7 +1017,15 @@ search_results:
       timestep: "annual"
       period: "2015-2100 (2020s baseline decade is complete)"
       volume: "2-9 MB/file, measured one file per model at gfdl-esm4/ssp370: promet 3.13, ldndc 3.78, lpjml 4.71, pepic 5.53, epic-iiasa 5.98, crover 7.26, cygma1p74 7.90, isam 8.74 MB. Sum x 15 (5 GCM x 3 SSP) = ~705 MB for the full SSP set."
-      sidecars: "NONE -- .json 404s (consistent with 3b). Verify downloads by HTTP status + Content-Length."
+      sidecars: >
+        PRESENT at `{stem}.json` with size + sha512 + parsed specifiers + a netcdf_header
+        block. CORRECTED 2026-08-14: this entry previously read "NONE -- .json 404s", which
+        was wrong and came from probing only `{stem}.nc.json` (that form does 404). The
+        crop-failure ingest therefore ran with Content-Length as its only integrity check
+        until the error was caught; all 120 files were then re-verified against the
+        publisher's sha512. The identical trap was recorded for `lec_isimip2b` in this same
+        file hours earlier and not applied here. A 404 on a GUESSED sidecar path is
+        UNVERIFIED, never a negative -- try both forms or read the directory listing.
       size_spread_flag: "CONFIRMED 2026-08-13: the 2.8x file-size spread is a real footprint difference -- promet simulates crops on 33,339 cells, isam on 39,249."
       data_nature: >
         MEASURED 2026-08-13 across all 120 members (scripts/check_cropfailure_nature.py):
