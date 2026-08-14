@@ -200,6 +200,13 @@ class LayerSpec:
     recommended_slope: str
     recommended_slope_rationale: str = ""
     delivery_note: str = ""
+    #: Why a layer sits at ``status: blocked`` -- built and contract-passing, but not
+    #: cleared for delivery. The registry header has always documented `blocked` as a legal
+    #: status while the loader had no field to carry the reason, so the first layer to use
+    #: it (``heatwave-3b``, 2026-08-14) raised a TypeError on load. A blocked layer is left
+    #: in the registry rather than deleted so it is discoverable instead of invisible; it
+    #: reaches no delivery because no asset type references it.
+    blocked_reason: str = ""
     #: True when the layer's value is defined against a FIXED HISTORICAL REFERENCE, so a
     #: high score means "unusual for this place" and NOT "bad in absolute terms". Three
     #: shipped layers are in this class and it is the single most misreadable property any

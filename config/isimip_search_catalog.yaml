@@ -561,8 +561,95 @@ search_results:
         - "Which protection level. A product decision, not a default."
         - "flddph or fldfrc, or both -- depth drives damage functions, fraction drives area exposed."
         - "The 150 arcsec grid does not fit the delivery tooling as-is: every shipped layer is 0.5 deg, and aggregating to 0.5 deg discards the floodplain detail that is the entire reason to use this product. Native-resolution delivery is a change to the extraction, dashboard and map path, not just to a processor."
-        - "RCP-only. No CaMa-Flood publication exists under ISIMIP3a or 3b (both DerivedOutputData roots listed 2026-08-13: 3b = Heinicke2026, Jaegermeyr2021, TipESM2025, Zantout2025; 3a = Quesada-Chacon2026, Zantout2025). ISIMIP2a carries a Zimmer2023 too -- observational forcing, contents NOT enumerated."
+        - "CORRECTED 2026-08-14 -- the line that stood here on 2026-08-13 said 'No CaMa-Flood publication exists under ISIMIP3a or 3b'. FALSE, and written from publication NAMES without opening them. CaMa-Flood appears in THREE further publications: ISIMIP3b TipESM2025 (fldfrcmax, 15arcmin, ssp126/370/585 -- see isimip3b_cama_flood_tipesm2025 below), ISIMIP3a Quesada-Chacon2026 (dis at GRDC gauges, daily, counterclim/obsclim, no future scenarios), and ISIMIP2a Zimmer2023 (flddph/fldfrc at 150 AND 300 arcsec, dis at 900 arcsec, gswp3 1971-2010 -- the observational counterpart for validation). What IS true of Zimmer2023 specifically: its 2b edition is the only CaMa-Flood DEPTH product carrying future scenarios."
         - "6 models, 4 GCMs = 24 members per scenario, but ensemble composition across protection levels and variables was verified by COUNT (432 = 6x4x3x2x3), not by per-file diff."
+
+    # =====================================================================================
+    # CaMa-Flood INUNDATION, ISIMIP3b/SSP -- found 2026-08-14 during the post-mortem on
+    # having missed the 2b one. The catalog had this publication recorded as "water models"
+    # since 2026-08-11: a note that identified its MODEL DIRECTORIES and never opened a file.
+    # =====================================================================================
+    isimip3b_cama_flood_tipesm2025:
+      path: "ISIMIP3b/DerivedOutputData/TipESM2025/MIT/{scenario}/{GHM}/{gcm}/"
+      enumerated_on: "2026-08-14 -- 21 GHM listings across 3 scenarios, 0 failures; leaf vocabularies sampled on 3 GHMs"
+      depth_warning: >-
+        FIVE levels, and the SCENARIO sits ABOVE the model -- MIT/{scenario}/{GHM}/{gcm}/,
+        not the {MODEL}/{gcm}/{period}/ shape every other publication uses. A three-level
+        walker reports this directory as EMPTY, which is how the first sweep pass saw it.
+      variable: "fldfrcmax -- annual MAXIMUM flooded fraction of the cell. Note this is a maximum, not a mean: a different statistic from 2b Zimmer2023's flddph/fldfrc, and it cannot be pooled with them."
+      resolution: "15 arcmin = 0.25 deg, 1440 x 720 -- 4x the linear resolution of our 0.5 deg layers, 12x coarser than 2b Zimmer2023's 150 arcsec"
+      scenarios: ["ssp126", "ssp370", "ssp585"]              # plus historical, picontrol
+      impact_models: ["CLASSIC", "CWATM", "H08", "JULES-W2", "MIROC-INTEG-LAND", "WATERGAP2-2E", "WEB-DHM-SG"]  # 7 GHMs
+      gcms: "5 CMIP6 (gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll) for 6 of 7 GHMs; CLASSIC publishes gfdl-esm4 + ukesm1-0-ll ONLY"
+      members_per_scenario: "32 = (6 GHMs x 5 GCMs) + (CLASSIC x 2). Composition VERIFIED IDENTICAL across ssp126/370/585, so a shared 2020s baseline is valid."
+      protection_levels: ["none", "2yr", "40yr", "flopros", "hanze"]   # 5, vs Zimmer2023's 3
+      soc_variants: "HETEROGENEOUS PER MODEL -- WATERGAP2-2E publishes 1850soc + 2015soc + 2015soc-from-histsoc (15 files/leaf), WEB-DHM-SG publishes 2015soc only (6 files/leaf). A soc choice is REQUIRED and it is not uniform; contrast Heinicke2026. NOT yet enumerated per model."
+      anomaly: "WEB-DHM-SG/gfdl-esm4/ssp585 lists TWO files at protection=none where every other combination has one. Cause NOT established -- inspect before ingesting that member."
+      timestep: "annual, 2015-2100"
+      volume: "~67 MB per file (h08/gfdl-esm4/ssp585/none). ONE protection level at ONE soc across all 3 scenarios = 96 files, ~6.4 GB."
+      vs_zimmer2023: >-
+        Recorded as facts, not as a ranking. TipESM2025: SSP/CMIP6, 32 members, 0.25 deg,
+        flooded FRACTION only, 5 protection levels, ~6.4 GB for a usable slice.
+        Zimmer2023 2b: RCP/CMIP5, 24 members, 150 arcsec, flood DEPTH in metres AND fraction,
+        3 protection levels, rcp85 available, ~3-9 GB for a slice. Depth drives damage
+        functions; fraction drives area exposed. They are different products of the same
+        model chain and neither supersedes the other.
+      # ---- FULLY ENUMERATED 2026-08-14: 96 leaves, 0 empty, 915 files. Supersedes the
+      # ---- 2026-08-14 first pass, which reported "32 members" by collapsing soc and sens.
+      composition_measured:
+        sens: "`default` (840 files) and `2015co2` (75). 2015co2 is ssp585 ONLY, from 3 GHMs -- it cannot enter a scenario-symmetric ensemble. Ingest separately if a CO2-sensitivity question is ever asked."
+        members_per_scenario: "protection=none -> 32 (7 GHMs). protection=2yr/40yr/flopros/hanze -> 27 (6 GHMs). CWATM PUBLISHES `none` ONLY."
+        ensembles_differ_by_protection: >-
+          The unprotected field and the protected fields DO NOT share an ensemble. A
+          none-minus-flopros difference is not a clean defence effect unless restricted to
+          the common 27 members. Say so wherever the two are compared.
+        soc_rule_applied: >-
+          Prefer 2015soc, fall back to 2015soc-from-histsoc, NEVER 1850soc (a preindustrial-
+          society counterfactual, not a projection). Selected: CLASSIC/H08/JULES-W2/
+          WATERGAP2-2E/WEB-DHM-SG = 2015soc; CWATM/MIROC-INTEG-LAND = 2015soc-from-histsoc.
+          All 7 models kept; strict 2015soc harmonisation would drop CWATM and MIROC.
+        soc_must_be_held_across_protection: >-
+          MIROC-INTEG-LAND publishes 2015soc for `none` but only 1850soc /
+          2015soc-from-histsoc for the protected variants. Choosing soc per
+          (member, protection) therefore hands that model a DIFFERENT SIMULATION unprotected
+          than protected, and every protection comparison for it silently conflates defences
+          with the socioeconomic run. The downloader intersects soc across protection levels
+          per member before applying the preference.
+      # ---- MEASURED 2026-08-14 on h08/gfdl-esm4/ssp585, three protection variants
+      measured:
+        metadata: "units='1', long_name='flooded fraction' -- HONEST, unlike floodedarea's 'Exposed Area Share'. Global attrs carry protection_level, resolution, soc, sens, cama_version=v400_20210119 (CaMa-Flood v4.0.0, NOT Zimmer2023's v3.6.2)."
+        time_axis: "`days since 1661-01-01`, proleptic_gregorian -- a FOURTH convention in this repo (Heinicke2026 days since 1601, Zimmer2023 seconds since 2006, Zantout2025 no units at all). Time handling is per-PUBLICATION, always."
+        data_nature: "CONTINUOUS [0,1] -- 283,749 unique values in the first 3M samples. NOT binary. Zero-inflation VARIES BY PROTECTION: 27.0% exact zeros unprotected, 87.5% under flopros. The decadal-statistic branch may therefore differ per protection variant and must be measured per variant, not chosen once."
+        mask: "Clean. Finite over 24.34% of the grid (~252k of 1,036,800 cells), land-shaped. NOT zero-filled like cropfailure, NOT ocean-leaking like floodedarea."
+        distribution: "Unprotected non-zero values: p50=0.0065, p90=0.1095, p99=0.9160."
+        signal: "Global land-mean, ssp585 h08/gfdl-esm4 flopros: 2020s 0.00495 -> 2050s 0.00566 -> 2090s 0.00900 (1.8x)."
+        reference_sites_GUARDRAILS_12: >-
+          Box means over 2091-2100, cells with any finite value, unprotected / 2yr / flopros:
+          Amazon main stem 0.0743 / 0.0161 / 0.0020 (640 cells, 100% ever flooded unprotected);
+          Ganges-Brahmaputra 0.3249 / 0.2059 / 0.0309; Mekong delta 0.4879 / 0.2950 / 0.1146;
+          Lower Mississippi 0.1192 / 0.0618 / 0.0001; Rhine NL/DE 0.0605 / 0.0413 / 0.0000;
+          Sahara control 0.0000 with only 4% of cells ever non-zero. PASSES -- and note the
+          Amazon, which floodedarea reads as 0.000, is fully wet here.
+        protection_behaves_correctly: "flopros <= none in EVERY cell (verified, not assumed). Spatial Spearman none-vs-flopros 0.367, none-vs-2yr 0.911 -- defences REORDER the map, they do not scale it."
+      defects_found_in_the_probe:
+        latitude_orientation_differs_between_protection_variants: >-
+          CRITICAL AND SILENT. `none` has DESCENDING lat (89.875 -> -89.875) with header
+          dims (time, lon, lat); `2yr` and `flopros` have ASCENDING lat with dims
+          (time, lat, lon) -- same publication, same member, same variable. A
+          .sel(lat=slice(hi, lo)) returns ZERO cells on half the files (it did, in this
+          probe), and any positional indexing builds an upside-down layer that would pass
+          every contract check. ALWAYS .sortby("lat") on load; never index by position.
+        permanent_water_reads_one: >-
+          515 cells sit at exactly 1.000 in the unprotected 2090s mean -- the Caspian and
+          other inland water bodies, permanently 'flooded'. They are not flood risk and they
+          will dominate a percentile ranking. A permanent-water mask decision is REQUIRED
+          before processing.
+        rhine_reads_zero_under_flopros: >-
+          NOT a defect -- the Netherlands and Germany carry very high FLOPROS standards, so
+          residual risk is ~0. But a customer reading a flopros layer sees ZERO at a
+          well-defended site, which means 'protected to standard', NOT 'no hazard'. This is
+          a must-disclose framing point for any flopros delivery, in the same class as the
+          relative-baseline caveat.
 
     # Build-your-own options, recorded so they are not re-derived
     discharge_route:
@@ -828,7 +915,41 @@ search_results:
         bias_adjustment: "ewembi"
         volume: "~4.4-4.5 MB/file -> 35 MB for the 8 `leh` projection files, 71 MB with `peh`"
         sidecars: ".json present WITH sha512, but NO netcdf_header block (2b Lange2020 sidecars carry specifiers only)"
-        data_nature: "UNVERIFIED -- no units/long_name obtainable without downloading. Do NOT inherit from `led` (binary) or `let` (fractional); those are siblings in the same publication and they DISAGREE. Value-check per GUARDRAILS 9."
+        data_nature: >-
+          MEASURED 2026-08-14 across all 8 members (scripts/check_leh_nature.py): BINARY
+          {0,1}, exactly 2 unique values per member, range [0,1]. NOT inherited -- the
+          sibling `let` in this same publication is a continuous fraction. Declared
+          units/long_name still unread (the 2b sidecars carry no netcdf_header) but the
+          nature is settled from the values. -> pooled_mean_boolean.
+          time axis `years since 1661-1-1` on a 360_day calendar, integer step 1 -- a THIRD
+          convention, different from Heinicke2026 (`days since 1601-01-01`) and Zantout2025
+          (`days since 2015-01-01`, mid-year stamps). Per-publication, always.
+        mask_measured: >-
+          NO MASK AT ALL -- finite on all 259,200 cells, i.e. the product ZERO-FILLS the
+          whole grid including ocean, exactly like its 3b cousin `cropfailure`. `isfinite`
+          is NOT a footprint here and any share must be quoted against land (67,420 ISIMIP2b
+          land cells). Time-invariant in all 8 members.
+        sparsity_measured: >-
+          THE DECISIVE MEASUREMENT FOR THIS LAYER, and it confirms the paper. The absolute
+          Humidex >= 45 gate is SILENT over most of the extratropics under rcp26/rcp60:
+          40,265 of 67,420 LAND cells (59.7%) are never non-zero in ANY member or year over
+          2006-2099, and 84.6% of those sit poleward of 35 degrees. By belt, silent share of
+          land: 60-90N 99%, 35-60N 81%, 23.5-35N 30%, tropics 18%, 23.5-35S 19%, 35-60S 68%.
+          Annual exact-zero share per member is 97.9%-99.3% (against 45% for the 3b layer).
+          Reference sites, mean over 2006-2099 -> mean over 2090s: Jacobabad 0.553->0.713,
+          Kuwait 0.548->0.575, Lagos 0.363->0.500, Delhi 0.134->0.225, Singapore
+          0.134->0.250, Phoenix 0.112->0.213, Cordoba 0.036->0.038, Sydney 0.019->0.025,
+          Chicago 0.0027->0.0125, Sao Paulo 0.0027->0.0125, and PARIS, FRANKFURT AND YAKUTSK
+          ARE EXACTLY ZERO IN EVERY MEMBER AND EVERY YEAR.
+          This is the absolute threshold behaving as designed, NOT a data defect -- contrast
+          sugarcane, where the model simply did not run. But a layer built on it reports no
+          heat hazard at all across most of a Northern-Hemisphere portfolio, and a zero here
+          means "never crosses Humidex 45", never "low heat risk". Any delivery using it
+          must say which. UNRESOLVED: whether it can be a primary heat layer on that basis.
+        ingested: >-
+          2026-08-14, 8/8 files sha512-matched against the publisher sidecars, 36.3 MiB ->
+          data/raw/heatwave-isimip2b_leh_annual/. scripts/download_leh_isimip2b.py.
+          NOT YET PROCESSED -- no processor exists; the sparsity question above is open.
       heatwave_exposure_3b:
         path: "ISIMIP3b/DerivedOutputData/Zantout2025/HWMID-NONE/{gcm}/future/"
         variables: "heatwave ONLY"
@@ -933,6 +1054,77 @@ search_results:
       MORE area than 2b `leh`, especially in arid and high-latitude cells where the Humidex
       gate would never have opened -- so a 3b-vs-2b difference is a definitional
       difference, never a trend.
+    absolute_vs_relative:
+      question: >-
+        "Which heatwave sources quantify events by ABSOLUTE impact (heat index, human
+        health) rather than by departure from a per-cell distribution?" Enumerated
+        2026-08-14. Three candidates carry an absolute criterion; NONE of them is purely
+        absolute, and the way each is not absolute differs. Read this before promising a
+        customer a heat-stress or wet-bulb reading.
+      leh_2b_is_an_INTERSECTION_not_an_absolute_index: >-
+        `leh` requires BOTH criteria to be exceeded, not either. Lange et al. 2020, as
+        restated by the nismod/isimip-exposure implementation: "Land area is exposed to
+        extreme heat if BOTH a relative indicator based on temperature (Russo et al. 2015,
+        2017) AND an absolute indicator based on temperature and relative humidity
+        (Masterton & Richardson, 1979) exceed their respective threshold values."
+        So the absolute Humidex gate makes the counted events health-relevant, but the
+        relative HWMId gate still has to open first -- `leh` does NOT escape the
+        per-cell-distribution framing, it ADDS a health filter on top of it.
+        HUMIDEX THRESHOLD = 45, which sits in Environment Canada's 40-45 "great
+        discomfort; avoid exertion" band. Lange et al. further report that below 2 degC
+        global warming the Humidex "hardly ever exceeds their threshold value of 45 in the
+        temperate regions" -- and ISIMIP2b publishes `leh` for rcp26/rcp60 ONLY, i.e.
+        exactly the forcing range where that gate mostly stays shut. EXPECT A SPARSE OR
+        NEAR-ZERO TEMPERATE FIELD. This is a claim from the paper, NOT a measurement:
+        the files are 35 MB and the temperate signal can and should be measured directly
+        before anything is built on it.
+      health_2b_is_an_absolute_OUTCOME_on_an_UNVERIFIED_temperature_reference: >-
+        `an-tot-heat-all` (TRM-Tsukuba) outputs "number of heat-related excess mortality"
+        -- an absolute health outcome, the only one in the repository. But the exposure
+        response is built on an "optimum temperature" (OT), the temperature at which
+        mortality is lowest, and WHETHER OT IS AN ABSOLUTE VALUE OR A LOCATION-SPECIFIC
+        PERCENTILE OF THE LOCAL TEMPERATURE DISTRIBUTION IS UNVERIFIED as of 2026-08-14.
+        The ISIMIP model page (isimip.org/impactmodels/details/57/) says only "heat-related
+        excess deaths based on the daily level temperature-mortality relation" and points
+        at Honda et al., Environ. Health Prev. Med. 2013, doi:10.1007/s12199-013-0354-6,
+        which is paywalled and could not be read here; the ISIMIP2a health protocol PDF is
+        published but this machine has no PDF text extractor (no poppler, no pypdf).
+        If OT is a local percentile then this layer is ALSO relative in its temperature
+        reference even though its output unit is deaths. Resolve before quoting it.
+        Separately it holds population fixed at 2005soc, so its spatial pattern carries
+        population density, and it is a COUNT per grid cell, not an intensity.
+      constructed_index_is_the_only_fully_absolute_route: >-
+        Humidex, heat index, WBGT or days-over-a-fixed-threshold computed from the
+        bias-adjusted forcing is absolute by construction and answerable at any threshold
+        the customer's standard names. It is a modelling decision, not an aggregation
+        (GUARDRAILS 1-2), and the volumes are large -- see forcing_routes_enumerated.
+      forcing_routes_enumerated: |
+        ENUMERATED 2026-08-14, every intermediate level listed.
+        (a) ISIMIP3b group I daily -- InputData/climate/atmosphere/bias-adjusted/global/
+            daily/{historical,picontrol,ssp126,ssp370,ssp585}/{5 GCMs}/
+            11 vars (hurs huss pr prsn ps rlds rsds sfcwind tas tasmax tasmin), 9 chunks.
+            tasmax 1.98 GB/decade, hurs 2.41 GB/decade, tas ~1.97 GB/decade.
+        (b) ISIMIP3b EXTENDED daily -- SecondaryInputData/climate/atmosphere/bias-adjusted/
+            global/daily/ -- TEN scenarios: hist-nat, historical, picontrol, ssp119,
+            ssp126, ssp245, ssp370, ssp460, ssp534-over, ssp585. Same 11 variables.
+            GCM depth varies BY SCENARIO -- ssp245 has 14 GCMs (CESM2-WACCM, CNRM-CM6-1,
+            CNRM-ESM2-1, CanESM5, EC-Earth3, GFDL-ESM4, IITM-ESM, IPSL-CM6A-LR, KACE-1-0-G,
+            MIROC6, MPI-ESM1-2-HR, MRI-ESM2-0, TaiESM1, UKESM1-0-LL) while ssp119 has 4
+            (GFDL-ESM4, IPSL-CM6A-LR, MRI-ESM2-0, UKESM1-0-LL). Count per scenario, never
+            pooled. This is by far the deepest GCM pool available for any heat product.
+        (c) ISIMIP3b HOURLY -- same SecondaryInputData path, hourly/{historical,ssp126,
+            ssp370,ssp585}/{5 GCMs}/ -- 7 vars (hurs pr ps rlds rsds sfcwind tas), 17
+            five-year chunks. NO tasmax (not meaningful hourly). tas 4.31 GB/chunk, hurs
+            4.95 GB/chunk -> ~157 GB per GCM-scenario for tas+hurs, ~2.4 TB for all 15.
+            The only route that supports a sub-daily heat-stress metric.
+        (d) ISIMIP2b daily -- NOT under InputData/climate/ (that path is a REAL 404). It is
+            InputData/GCM_atmosphere/biascorrected/global/{historical,piControl,rcp26,
+            rcp60,rcp85}/{GFDL-ESM2M,HadGEM2-ES,IPSL-CM5A-LR,MIROC5}/ -- 12 vars (adds psl;
+            sfcWind is CAMEL-CASED here), EWEMBI, 10 decade chunks 2006-2099.
+            tasmax 1.98 GB, hurs 2.22 GB, tas 1.97 GB per decade.
+            NOTE rcp85 EXISTS for the forcing even though `leh` publishes rcp26/rcp60 only.
+            FILENAME GRAMMAR IS DIFFERENT AGAIN: variable is the FIRST field
+            (tasmax_day_HadGEM2-ES_rcp60_r1i1p1_EWEMBI_20210101-20301231.nc4), not NF-4.
     negative_findings: |
       * NO health sector in ISIMIP3b. verified_absent_on: "2026-08-13 -- listed
         https://files.isimip.org/ISIMIP3b/OutputData/ = agriculture, biomes, fire,
@@ -950,6 +1142,24 @@ search_results:
         forcing dirs (20crv3, 20crv3-era5, 20crv3-w5e5, gswp3-w5e5); every one contains
         historical/ and nothing else. Files are obsclim + counterclim, histsoc/default,
         annual 1901-2016." Value as a benchmark/validation reference only.
+      * The HEALTH SECTOR EXISTS IN ISIMIP2b ONLY -- across all four rounds.
+        verified_absent_on: "2026-08-14 -- listed ISIMIP2a/OutputData/ (10 sectors),
+        ISIMIP3a/OutputData/ (8 sectors, incl. a `peat` sector 3b lacks) and
+        ISIMIP3b/OutputData/ (8 sectors). None contains health. Only
+        ISIMIP2b/OutputData/health/ exists, and it holds ONE model, TRM-Tsukuba."
+        So an SSP-scenario heat-MORTALITY layer cannot be built from ISIMIP output at all;
+        the mortality route is RCP-only and CMIP5-only.
+      * `an-tot-heat-all` is the ONLY health variable published, in future AND historical.
+        verified_absent_on: "2026-08-14 -- listed TRM-Tsukuba/{4 gcm}/future/ (12 files)
+        and gfdl-esm2m/historical/ (2 files); every file is `an-tot-heat-all`."
+        There is no cold-related twin and no age split despite the `ages` specifier.
+      * NO published heat-index / humidex / WBGT / UTCI product exists in ANY round's
+        DerivedOutputData. verified_absent_on: "2026-08-14 -- listed
+        ISIMIP2b/DerivedOutputData/ (Lange2020, Zimmer2023 = 9 WATER models),
+        ISIMIP3a/DerivedOutputData/ (Quesada-Chacon2026 = CaMa-Flood + GHM, Zantout2025)
+        and ISIMIP3b/DerivedOutputData/ (Heinicke2026, Jaegermeyr2021 = 12 CROP models,
+        TipESM2025 = MIT water models, Zantout2025)." An absolute heat index therefore has
+        to be CONSTRUCTED from forcing; none is published ready-made.
     chosen_2026_08_13: |
       ISIMIP3b `heatwave` (Zantout2025/HWMID-NONE) -- user decision, "prefer the more recent
       data unless there is a strong reason not to". No strong reason was found: unlike the
@@ -962,6 +1172,19 @@ search_results:
       scripts/download_heatwave_isimip3b.py, provenance in download_provenance.csv.
       VALUE-CHECKED 2026-08-13: scripts/check_heatwave_nature.py, results recorded under
       representations.heatwave_exposure_3b (data_nature, saturation, mask, sites).
+      PROCESSED 2026-08-14 -> data/processed/heatwave-isimip3b_heatwave_annual/,
+      scripts/process_heatwave_isimip3b.py. test_shared_baseline.py: ALL CHECKS PASSED
+      (2020s panel bit-identical across scenarios, 0 CI violations, 0 ocean leak, baseline
+      slopes NaN, n_members 5-5, n_models 1-1). Per-member contact sheet rendered and
+      VIEWED: five spatially coherent members, no block structure, seams, banding or mask
+      defect; GCM level spread 1.58x (gfdl-esm4 0.2583 -> ukesm1-0-ll 0.4073).
+      Registered as `heatwave-3b` in config/layer_registry.yaml with status BLOCKED -- it is
+      built and contract-passing but not cleared for delivery, pending the saturation
+      tie-ranking decision and a rewrite of the hazard's workforce-safety copy. No asset
+      type references it, so it cannot reach a delivery.
+      2026-08-14 user decision: prefer the ABSOLUTE, health-anchored quantification over the
+      out-of-distribution one, which is why `leh` was ingested alongside -- see
+      representations.leh_exposure_2b.sparsity_measured before assuming it can be primary.
     open_decisions: |
       NOT pre-answered here; they are measurements or user decisions, not inheritances.
       RESOLVED by the 2026-08-13 ingest + value check:
@@ -1143,6 +1366,195 @@ search_results:
         withdrawn ISIMIP2b LPJmL sugarcane layers passed the OUTPUT-SPEC contract while
         being identically zero across the entire cane belt. A crop yield product can be
         structurally valid and agronomically empty.
+
+  permafrost_thaw:
+    last_searched: "2026-08-14"
+    SHIPPED: >-
+      `permafrost-3b` shipped 2026-08-14 from the ISIMIP3b thawdepth route below
+      (scripts/process_thawdepth_permafrost.py; 12 members, ssp126/370/585). The layer
+      publishes thaw depth NORMALISED BY EACH MODEL'S OWN SOIL COLUMN, because the raw metres
+      are not poolable across models, and takes the OUTPUT-SPEC fourth branch
+      (`pooled_mean_multimodel`) because the normalised members form two clusters. Framing,
+      caveats and the measurements behind each choice are in DATASET-ATTRIBUTES.md and the
+      processor docstring; the ISIMIP2b route below is NOT ingested.
+    description: >
+      Permafrost thaw / ground stability. Exactly ONE published variable names the hazard:
+      `thawdepth` (seasonal thaw / active-layer depth, annual AND monthly). There is NO
+      permafrost-extent, ground-ice, subsidence or solifluction variable in any round, and
+      NO derived exposure index -- unlike drought, river flood, heatwave, wildfire and crop
+      failure, neither Lange2020 (2b) nor Heinicke2026 / Zantout2025 (3b) publishes a
+      permafrost member. A permafrost layer would be built from the PHYSICAL variable, not
+      from a ready-made "area exposed" index, which is the opposite starting point from
+      every exposure layer shipped so far.
+      Supporting variables: `tsl` (soil temperature BY LAYER -- carries a depth dimension the
+      (decade, lat, lon) contract cannot ingest without choosing a layer), `soilmoistfroz`
+      (frozen soil moisture), `snd` / `swe` (the insulating snow control).
+    enumerated: |
+      2026-08-14, serial listings, empty listing treated as failure, variable field projected
+      from the END ($(NF-4)), no target-token pre-filter. 1 empty listing found and re-checked
+      (see watergap2_empty_dir below); 0 retries needed elsewhere.
+        ISIMIP3b/OutputData/permafrost/  -> ELM-ECA, LPJmL5-7-10-fire
+        ISIMIP2b/OutputData/permafrost/  -> CLM45, LPJmL, ORCHIDEE, ORCHIDEE-DGVM
+        ISIMIP3a/OutputData/permafrost/  -> ELM-ECA, LPJmL5-7-10-fire, ORCHIDEE-MICT
+        ISIMIP2a/OutputData/permafrost/  -> IAPRAS-DSS, JULES-B1, LPJmL
+        3b permafrost {2 models} x {5 gcm}/future/  -> 140-token vocabulary (13,500 files)
+        2b permafrost {4 models} x {4|2 gcm}/future/ -> 229-token vocabulary (11,170 files)
+        3b biomes {JULES-ES-VN6P3 x5, CLASSIC x2, MC2-USFS x5, VISIT}/future/
+        2b biomes -> 11 models, one GCM probed each
+        3b water_global -> 10 models, one GCM probed each
+        2b water_global -> 17 models, one GCM probed each
+        3b DerivedOutputData -> Heinicke2026, Jaegermeyr2021, TipESM2025, Zantout2025
+        2b DerivedOutputData -> Lange2020, Zimmer2023
+    THE_SECTOR_TRAP: >
+      READ THIS BEFORE TRUSTING ANY PERMAFROST MODEL COUNT. `thawdepth` is NOT confined to
+      the `permafrost` sector, and walking only that sector understates the ensemble by
+      more than half. Measured 2026-08-14: 3b `permafrost` holds 2 models of which only ONE
+      (LPJmL5-7-10-fire) publishes thawdepth, while JULES-ES-VN6P3 and CLASSIC publish it in
+      `biomes` and are absent from the permafrost sector entirely -- so the sector-only
+      answer is "1 model, 5 members" and the true answer is "3 models, 12 members". Same in
+      2b: JULES-ES-55 publishes thawdepth in `biomes` and is not in the permafrost sector.
+      This is the mirror image of the "walk one sector, ingest one sector" rule: that rule
+      is about DUPLICATES and remains true (see cross_sector_duplication), but it is a rule
+      about what to INGEST, never about where to LOOK.
+    representations:
+      thawdepth_3b:
+        path: "ISIMIP3b/OutputData/{permafrost|biomes|water_global}/{MODEL}/{gcm}/future/"
+        publishing_models: >-
+          LPJmL5-7-10-fire (5 GCMs, in permafrost+biomes+water_global);
+          JULES-ES-VN6P3 (5 GCMs, biomes+water_global, NOT in permafrost);
+          CLASSIC (2 GCMs -- gfdl-esm4, ukesm1-0-ll -- biomes+water_global, NOT in permafrost).
+          ELM-ECA is in the permafrost sector and does NOT publish thawdepth (tsl/snd only).
+        ensemble: >-
+          At the one soc/sens combination all three share (2015soc-from-histsoc / default):
+          12 members per scenario, 3 impact models x {5,5,2} CMIP6 GCMs.
+          At 2015soc/default: 7 members, 2 models. At 1850soc/default: 5 members, 1 model.
+        scenarios: "ssp126, ssp370, ssp585 for all three models (+picontrol). No ssp245."
+        timestep: "annual (LPJmL5, JULES, CLASSIC) and monthly (JULES-ES-VN6P3 also)"
+        span: "2015-2100"
+        volume: "LPJmL5 6.7 MB, JULES 4.7 MB, CLASSIC 3.3 MB per annual file -> 36 files ~190 MB"
+        sidecars: "NONE -- {stem}.json 404s in the permafrost sector (verified 2026-08-14, both GCMs sampled). Verify downloads by HTTP status/Content-Length, not sha512."
+        extra_sens: "CLASSIC and JULES also publish ssp585-only nitrogen-deposition variants (nondep, nondep2015co2, ssp585ndep). Not members -- sensitivity runs."
+      thawdepth_2b:
+        path: "ISIMIP2b/OutputData/{permafrost|biomes|water_global}/{MODEL}/{gcm}/future/"
+        publishing_models: >-
+          CLM45 (4 GCMs), LPJmL (4), ORCHIDEE (4), ORCHIDEE-DGVM (2: gfdl-esm2m, ipsl-cm5a-lr)
+          -- all four in the permafrost sector -- plus JULES-ES-55 (4 GCMs) which publishes
+          thawdepth in `biomes`/`water_global` ONLY.
+        ensemble: >-
+          At uniform 2005soc/co2: rcp26 = 14 members / 4 models, rcp60 = 14 / 4,
+          rcp85 = 8 / 2 (CLM45 + ORCHIDEE only).
+          Accepting JULES-ES-55's scenario-tied soc (rcp26soc/rcp60soc -- it publishes NO
+          2005soc): rcp26 = 18 / 5, rcp60 = 18 / 5, rcp85 unchanged at 8 / 2.
+        scenarios: "rcp26, rcp60 for all five; rcp85 for CLM45 and ORCHIDEE only (+picontrol)"
+        timestep: "annual (all five); monthly also for JULES-ES-55"
+        span: "2006-2099"
+        volume: "CLM45 2.7 MB, ORCHIDEE 4.3, ORCHIDEE-DGVM 4.5, JULES-ES-55 5.8, LPJmL 8.8 -> ~44 files ~230 MB"
+        sidecars: "NONE -- {stem}.nc4.json 404s (verified 2026-08-14 on CLM45 rcp60). 2b sidecars are NOT universal; do not assume them from the Lange2020 publication."
+      supporting_variables:
+        tsl: >-
+          Soil temperature by layer. 3b: ELM-ECA, LPJmL5-7-10-fire, JULES-ES-VN6P3, CLASSIC,
+          MC2-USFS (annual, soc=nat), H08, JULES-W2, MIROC-INTEG-LAND. 2b: the four permafrost
+          models plus JULES-ES-55, LPJ-GUESS, H08, JULES-W1, MATSIRO, VIC. Deeper than
+          thawdepth in BOTH rounds -- but it carries a soil-layer dimension, so it is not a
+          drop-in for a (decade, lat, lon) layer.
+        soilmoistfroz: "Frozen soil moisture. 3b: LPJmL5, JULES-ES-VN6P3, CLASSIC, JULES-W2, MIROC-INTEG-LAND. 2b: CLM45, LPJmL, JULES-ES-55, MATSIRO."
+        snd_swe: "Snow depth / snow water equivalent -- the insulating control on ground temperature, not a hazard variable."
+    absent:
+      solifluction: >-
+        NO representation anywhere. Verified 2026-08-14 against the full 3b (140) and 2b (229)
+        permafrost-sector variable vocabularies and the biomes/water_global probes: no slope,
+        terrain, mass-movement, subsidence or soil-creep variable exists in any ISIMIP sector.
+        The missing ingredient (slope + geotechnical properties) is not ISIMIP data at all, so
+        this is a structural absence, not a gap to be closed by another listing.
+      permafrost_extent: "No permafrost-area / permafrost-fraction / ground-ice variable is published. `thawdepth` is the only representation, and no domain mask ships with it."
+      derived_index: >-
+        No permafrost publication under DerivedOutputData in either round (verified
+        2026-08-14 at publication-group level; Zantout2025/CLASSIC spot-checked one level
+        deeper and publishes `wildfire` only). The Lange 2020 six-hazard family is drought,
+        river flood, wildfire, crop failure, heatwave, tropical cyclone -- permafrost is not
+        and never was a member, in either round.
+    non_scenario_rounds: >-
+      ISIMIP3a permafrost (ELM-ECA, LPJmL5-7-10-fire, ORCHIDEE-MICT under gswp3-w5e5,
+      obsclim/counterclim, 1901-2019) and ISIMIP2a (IAPRAS-DSS/watch, JULES-B1/princeton,
+      LPJmL under 4 forcings) are HISTORICAL ONLY -- `future/` does not exist. ORCHIDEE-MICT
+      is a permafrost-specialised model found in NO other round; it publishes thawdepth, tsl
+      and soilmoistfroz, and it can serve evaluation but cannot carry a scenario layer.
+    watergap2_empty_dir: >-
+      ISIMIP2b/OutputData/water_global/WaterGAP2/gfdl-esm2m/future/ returns HTTP 200 with a
+      body containing only '../' -- a genuinely empty published directory, re-checked
+      2026-08-14, not a rate-limit artifact. Irrelevant to this hazard (WaterGAP2 has no soil
+      thermal physics) but recorded so the next harvest does not re-investigate it.
+    data_nature_measured: >-
+      INGESTED AND MEASURED 2026-08-14 (scripts/check_thawdepth_nature.py over all 36 files;
+      raw evidence in data/raw/permafrost-isimip3b_thawdepth_annual/value_check.json).
+      The download-time unknowns are now answered, and one of the answers disqualifies the
+      obvious processing route.
+        * units are uniformly `m`. `long_name` is "Annual Maximum Thaw Depth" (CLASSIC) and
+          "Maximum Thaw Depth" (JULES, LPJmL), so the annual value IS a maximum -- active
+          layer thickness, not an annual mean. `cell_methods` is ABSENT in all 36 files, so
+          that reading rests on long_name alone.
+        * A NON-PERMAFROST CELL IS PUBLISHED AT THE MODEL'S SOIL COLUMN DEPTH, not as NaN
+          and not as 0. Nairobi and Paris read exactly the ceiling in all three models.
+        * THE CEILING DIFFERS PER MODEL: CLASSIC 61.4 m, LPJmL 13.0 m, JULES 3.0 m. The
+          point mass at it is 85.2% / 69.2% / 80.2% of finite cell-years respectively. The
+          field is also censored at the bottom (exact 0 = never thaws: JULES 4.5%,
+          LPJmL 2.6%, CLASSIC 0.3%), so it is DOUBLY censored with the informative signal
+          in between.
+        * THE RAW DEPTHS ARE THEREFORE NOT COMMENSURABLE ACROSS MODELS. Yakutsk in the
+          2020s reads 8.03 m (CLASSIC), 2.995 m (JULES, i.e. already at 99.8% of its own
+          3 m column) and 0.94 m (LPJmL). An ensemble median over those three is an average
+          of three different soil discretisations, not a depth.
+        * MEASUREMENT NOTE, kept because it nearly inverted the finding: a ceiling test with
+          an ABSOLUTE 1e-4 tolerance reported LPJmL's at-ceiling share as 0.0% while its
+          median sat on the ceiling -- that model's max is 13.001 and the pinned mass is at
+          13.000. Any ceiling test on a float field needs relative slack.
+    domain_measured: >-
+      Permafrost domain proxied as "2020s annual maximum thaw stays strictly below the
+      model's ceiling", area-weighted (cells shrink with latitude; a count is not comparable
+      to anything published). Against Obu et al. 2019: ~14 M km2 permafrost AREA and ~21 M
+      km2 permafrost REGION (probability > 0) in the Northern Hemisphere.
+        CLASSIC        12.27 M km2 (2 members, range 12.02-12.51)  -- plausible
+        JULES-ES-VN6P3 14.72 M km2 (5 members, range 12.62-15.67)  -- plausible
+        LPJmL5-7-10-fire 29.08 M km2 (5 members, range 27.54-29.63) -- 2x the observed
+                       permafrost area and ABOVE the whole permafrost region
+      The 12 members agree far less than the totals suggest: only 7,563 cells (8.44 M km2)
+      are called permafrost-bearing by all 12, while the >=1-member union is 30.95 M km2.
+      For a SITE-level product that is the decisive number -- at a given customer site the
+      models frequently disagree on whether permafrost exists at all.
+      Reference sites: CLASSIC misses Tibetan-plateau permafrost entirely (Nagqu pinned at
+      ceiling throughout) and JULES is effectively censored across the continuous-permafrost
+      belt (Yakutsk 2.995 -> 2.998 m against a 3 m column).
+    open_decisions:
+      representation: >-
+        THE BLOCKING DECISION, and it is a framing question, not a defect. The raw depth
+        cannot be pooled across models (see data_nature_measured). What IS commensurable is
+        the binary PRESENCE of permafrost -- "did the column stay partly frozen this year" --
+        which each model answers on its own column. Turning the published depth into a
+        presence frequency is CONSTRUCTING AN INDEX (GUARDRAILS 1-2), not aggregating one,
+        so it needs the user's decision. The alternatives are a per-model normalised depth
+        (bounded but still not physically comparable: 0.5 of 3 m is not 0.5 of 61.4 m), a
+        single-model depth layer (keeps metres, loses structural uncertainty, and each
+        candidate model has a measured defect), or recording the hazard as unassessable.
+      trend_censoring: >-
+        Where a cell has lost its permafrost the depth pins at the ceiling and BOTH slopes go
+        to ~0 -- reading as "no trend" and meaning "no permafrost left". The two-slope
+        disagreement rule does not rescue this, the same way it did not rescue `heatwave`.
+      classic_time_varying_mask: >-
+        All 6 CLASSIC files have a TIME-VARYING finite mask; the other 30 do not. Any loader
+        must not assume a time-invariant footprint for this layer.
+      off_land_cells: >-
+        The finite-ever union is 71,251 cells (27.5% of the grid -- a land footprint, not the
+        `floodedarea` ocean leak), of which 5,454 fall off the ISIMIP3b land-sea mask. That is
+        larger than the shipped `driedarea` (1,236) and `led` (46) and is not yet explained.
+      round_tradeoff: >-
+        3b = newer forcing, SSPs, 3 models / 12 members, uniform soc available at no cost.
+        2b = 5 models / 18 members at rcp26+rcp60 but only 2 models / 8 members at rcp85, and
+        the fifth model costs soc uniformity. Neither dominates; this is a user decision.
+      dedup_mandatory: >-
+        thawdepth files are republished byte-identically across sectors. VERIFIED 2026-08-14:
+        2b CLM45 rcp60 permafrost vs biomes matched on Content-Length (2,714,904) AND ETag
+        ("5c3c5fab-296d18"); 3b LPJmL5 ssp370 permafrost vs biomes matched on 6,697,198 /
+        "6899d4e4-6630ee". Ingesting from two sectors would double-weight those models.
 
   # -------------------------
   # soil / subsurface carbon searches (biomes sector)
@@ -2632,6 +3044,60 @@ crop_availability_matrix:
 # 30 ISIMIP2b directory listings established, so the walk need not be repeated.
 # Depth is uniform in OutputData: {ROUND}/OutputData/{SECTOR}/{MODEL}/{GCM}/{future|historical}/
 # ---------------------------------------------------------------------------
+# =========================================================================================
+# PUBLICATION MAP -- the container listing that was never done
+# =========================================================================================
+# WHY THIS BLOCK EXISTS
+# Until 2026-08-14 no session had ever listed `ISIMIP2b/DerivedOutputData/`. We entered
+# `ISIMIP2b/DerivedOutputData/Lange2020/` on 2026-08-08 -- a path we already had the name of,
+# from a variable-code search -- and recorded its contents as though we had searched. The
+# directory has TWO entries. The second is the CaMa-Flood inundation suite, which is the
+# best river-flood product in the repository by a wide margin and was invisible for 3 weeks.
+#
+# HOW TO USE THIS BLOCK: start every hazard search here, not with a variable name. A
+# publication is identified by its FILES -- three of the nine below are CaMa-Flood and not
+# one of them says so above the file level. Directory names are institutions and first
+# authors. See GUARDRAILS 13.
+repository_publication_map:
+  swept_on: "2026-08-14"
+  method: >-
+    Listed https://files.isimip.org/ (4 rounds), then each round's DerivedOutputData/ root,
+    then descended each publication to its first directory containing .nc/.nc4 and read two
+    filenames. Publications are identified by FILE CONTENT, never by directory name.
+  rounds_present: ["ISIMIP2a", "ISIMIP2b", "ISIMIP3a", "ISIMIP3b"]
+  output_data_sectors:
+    ISIMIP3b: [agriculture, biomes, fire, lakes_global, lakes_local, marine-fishery_global, permafrost, water_global]
+    ISIMIP3a: [agriculture, biomes, fire, lakes_global, lakes_local, peat, permafrost, water_global]
+    ISIMIP2b: [agriculture, biodiversity, biomes, forestry, health, lakes_global, lakes_local, marine-fishery_global, marine-fishery_regional, permafrost, water_global, water_regional]
+    ISIMIP2a: "NOT LISTED as of 2026-08-14"
+  derived_output_data:
+    ISIMIP2a:
+      Zimmer2023: "CaMa-Flood. flddph/fldfrc at 150 AND 300 arcsec, dis at 900 arcsec. gswp3, nobc, annual 1971-2010. The observational counterpart to the 2b edition."
+    ISIMIP2b:
+      Lange2020: "The le*/pe* extreme-event exposure family, 12 codes, 0.5 deg, rcp26/rcp60."
+      Zimmer2023: "CaMa-Flood. flddph/fldfrc at 150 arcsec, protection none/100yr/flopros, rcp26/60/85. THE ONE THAT WAS MISSED."
+    ISIMIP3a:
+      Zantout2025: "cropfailure / heatwave / wildfire exposure, obsclim, historical."
+      Quesada-Chacon2026: "CaMa-Flood + GHM `dis` AT GRDC GAUGE LOCATIONS, daily 1901-2019, counterclim/obsclim. Gauge-referenced, not gridded -- a validation product."
+    ISIMIP3b:
+      Heinicke2026: "driedarea, floodedarea -- 0.5 deg binary exposure flags, ssp126/370/585."
+      Zantout2025: "heatwave, wildfire, cropfailure exposure, ssp126/370/585."
+      Jaegermeyr2021: "yieldchange-{crop} (mai, ric, ...), ssp126+, annual 2015-2099. NOT otherwise enumerated."
+      TipESM2025: "CaMa-Flood. fldfrcmax at 15 arcmin, 5 protection levels, ssp126/370/585, 32 members. Recorded as 'water models' from 2026-08-11 to 2026-08-14 -- the note identified its model dirs and never opened a file."
+  depth_is_not_uniform: >-
+    Most publications are {MODEL}/{gcm}/{period}/ (3 levels). TipESM2025 is
+    MIT/{scenario}/{GHM}/{gcm}/ -- FIVE levels with the scenario ABOVE the model. A walker
+    that assumes 3 levels returns it as empty, which is not a negative (GUARDRAILS 8).
+  resolutions_observed: >-
+    0.5 deg, 15 arcmin, 150 arcsec, 300 arcsec, 900 arcsec -- ALL WITHIN ONE HAZARD.
+    Resolution is a per-publication property and belongs in every availability matrix.
+    Every layer we ship being 0.5 deg is a fact about us, not about ISIMIP.
+  known_gaps_in_this_map:
+    - "ISIMIP2a OutputData sectors not listed."
+    - "Jaegermeyr2021 (3b) identified from 2 filenames only -- crop coverage not enumerated."
+    - "Quesada-Chacon2026 GHM/ subtree not enumerated (only its CaMa-Flood/grdc/counterclim leaf)."
+    - "InputData/ roots not swept. ISIMIP3b/InputData/climate/tropical_cyclones/ is already known to hold a hazard product, so this sweep is incomplete by construction."
+
 repository_structure_cache:
   generated_on: "2026-08-12"
   method: "variable-field projection ($(NF-4)) over every listing; no target-token pre-filter"
@@ -2679,6 +3145,15 @@ repository_structure_cache:
     known_pairs:
       - "biomes == fire == permafrost for LPJmL5-7-10-fire, CLASSIC, JULES-ES-VN6P3, ELM-ECA, VISIT"
       - "biomes == permafrost for elm-eca csoil-total (byte-identical, same sha512)"
+      - "biomes == permafrost == water_global for `thawdepth` -- 2b CLM45 rcp60 and 3b LPJmL5 ssp370 each matched on Content-Length AND ETag across sectors (2026-08-14)"
+    but_look_everywhere: >
+      DUPLICATION IS A RULE ABOUT WHAT TO INGEST, NEVER ABOUT WHERE TO LOOK. Measured
+      2026-08-14 on `thawdepth`: the 3b `permafrost` sector holds 2 models and only ONE of
+      them publishes the variable, while JULES-ES-VN6P3 and CLASSIC publish it in `biomes`
+      and are absent from the permafrost sector entirely -- so a sector-only walk reports
+      1 model / 5 members against a true 3 models / 12 members. Same in 2b, where
+      JULES-ES-55 publishes thawdepth in `biomes` only. Probe every sector's vocabulary
+      (one GCM per model is enough), then ingest from exactly one.
     exception: >
       `fire` publishes a few variables `biomes` does not (npp/gpp/fapar for LPJmL5 PFT
       classes) -- but for ukesm1-0-ll ONLY. Check per-GCM before treating it as coverage.

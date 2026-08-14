@@ -344,3 +344,63 @@ contradicting it was never reconciled**.
 - **Do not let a contract PASS stand in for a sanity check.** When a layer passes cleanly, the remaining risk is entirely in whether the input is about what you think; spend the two minutes there.
 
 **Related**: §9 (measure data nature, never infer it) — necessary and, as shown here, not sufficient.
+
+## 13. List the Container You Entered — a Known Path Is Not a Search
+
+**Rule**: Before you record anything from a directory, **list its parent** and record every
+sibling. Entering a path you already know the name of is retrieval, not enumeration, and it
+can only ever return what you already knew. This applies the moment you touch a path,
+regardless of what question you are answering — §8's "list every intermediate level" governs
+walking *down*; this governs the level you *started at*.
+
+**Why this matters** — measured 2026-08-14, the CaMa-Flood inundation suite:
+
+- Between 2026-07-24 and 2026-08-13 the repository held that river flood was evidenced only
+  by exposure flags: `ler` (2b) and `floodedarea` (3b), both 0.5°, both scoring *departure
+  from a preindustrial reference*. `config/hazard_taxonomy.yaml` recorded exactly those two
+  as the `isimip_candidate` list for the family it calls **the most consequential gap in
+  this pipeline**, and a blocker was written explaining why neither could ship.
+- **`ISIMIP2b/DerivedOutputData/` was never listed.** The catalog records
+  `enumerated: "2026-08-08 (ISIMIP2b/DerivedOutputData/Lange2020/{MODEL}/{gcm}/future/)"` —
+  we walked *into* the publication whose name we already had, from a variable-code search,
+  and never looked at the directory containing it. That directory has **two** entries.
+  The second, `Zimmer2023`, is CaMa-Flood hydrodynamic inundation at **150 arcsec (~4.6 km,
+  144× our grid)** with flood **depth in metres**, three protection variants, and **rcp85** —
+  a scenario the exposure family does not have at all.
+- The cost is not academic: `floodedarea` reads **0.000 across the Amazon floodplain** in all
+  45 members, while `Zimmer2023` puts the Amazon main stem at **6.11 m mean depth, 47.2% of
+  cells flooded** — the wettest box in a six-site check. A customer shown the first would
+  have rejected it on sight, correctly.
+- **The same failure then repeated inside the correction.** On 2026-08-13 a listing of the
+  3a and 3b `DerivedOutputData/` roots produced the claim *"no CaMa-Flood publication exists
+  under ISIMIP3a or 3b"* — written from **publication names**, not contents. Both were wrong:
+  `Quesada-Chacon2026` (3a) *is* CaMa-Flood, and `TipESM2025` (3b) is CaMa-Flood
+  `fldfrcmax` at 15 arcmin with **ssp126/370/585** and 32 members per scenario. The catalog
+  had `TipESM2025` filed as "water models" from a 2026-08-11 note that identified its models
+  and never asked what it published.
+
+**Required behavior**:
+
+- **List the parent before recording the child.** One request. `curl -s <parent>/ | grep -oE
+  'href="[^"]+/"'`. Do it even when you arrived at the child from a search hit, a citation,
+  or a path in our own notes.
+- **A publication is identified by its FILES, not its name or its model list.** Descend to
+  the first directory containing `.nc`/`.nc4` and read two filenames. `Zimmer2023`,
+  `TipESM2025` and `Quesada-Chacon2026` are all CaMa-Flood and none of them says so above
+  the file level. Directory names are institutions and first authors; they tell you nothing
+  about the variable.
+- **A candidate/option list is a positive claim of completeness.** It needs the same receipt
+  a negative does: which directory was listed, and when. Without one it is `INCOMPLETE`, not
+  a list. §11 covers absence claims and understated positives; an option list is the third
+  form and the most decision-bearing, because work is planned off it.
+- **Resolution and filename grammar are per-PUBLICATION properties, not round constants.**
+  Observed in one hazard: 0.5°, 15 arcmin, 150 arcsec, 300 arcsec and 900 arcsec, with field
+  counts differing between publications so that `$(NF-4)` reads the variable in one and the
+  *resolution* in another. Never carry an offset or a grid assumption across publications;
+  read the `.json` sidecar's `specifiers` block, which names fields explicitly.
+- **A variable-code or family search cannot discover a vocabulary you do not already have.**
+  `flddph`, `fldfrc` and `fldfrcmax` were unreachable by any search keyed on `le*` codes.
+  Directory listing is the only discovery mechanism; code search is confirmation.
+
+**Related**: §8 (never guess specifier codes; list every level going down), §11 (a recorded
+negative needs a receipt — as does a recorded option list).

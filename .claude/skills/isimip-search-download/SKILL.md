@@ -152,9 +152,56 @@ Before relaying a catalog recommendation, confirm the variable it names actually
 the resolution it claims — and when one turns out unusable, **withdraw it in the catalog**
 rather than leaving it to be found again.
 
+## Start From the Publication Map, Not From a Variable Name
+
+**`DerivedOutputData/` is where the best products in the repository live, and its
+publications are named after people, not hazards.** You cannot reach `flddph` by searching
+for flood, and no `le*`-family search will ever surface it. The only discovery mechanism is
+listing the directory. Start every hazard search with the map below, then confirm with a
+code search — never the other way round (GUARDRAILS §13).
+
+**Standing map — swept 2026-08-14, every round, `DerivedOutputData/` root listed.** Identify
+a publication by its FILES; the directory name tells you nothing:
+
+| Round | Publication | What it actually publishes |
+|---|---|---|
+| 2a | `Zimmer2023` | **CaMa-Flood** `flddph`/`fldfrc` at **150 + 300 arcsec**, `dis` at 900 arcsec; gswp3, 1971–2010 |
+| 2b | `Lange2020` | the `le*`/`pe*` exposure family (12 codes), 0.5°, rcp26/60 |
+| 2b | `Zimmer2023` | **CaMa-Flood** `flddph`/`fldfrc`, **150 arcsec**, 3 protection levels, **rcp26/60/85** |
+| 3a | `Zantout2025` | `cropfailure`/`heatwave`/`wildfire` exposure, obsclim |
+| 3a | `Quesada-Chacon2026` | **CaMa-Flood** + GHM `dis` at **GRDC gauges**, daily 1901–2019, counterclim/obsclim |
+| 3b | `Heinicke2026` | `driedarea`, `floodedarea` — 0.5° binary exposure flags, ssp126/370/585 |
+| 3b | `Zantout2025` | `heatwave`, `wildfire`, `cropfailure` exposure, ssp126/370/585 |
+| 3b | `Jaegermeyr2021` | `yieldchange-{crop}`, ssp126+, annual |
+| 3b | `TipESM2025` | **CaMa-Flood** `fldfrcmax` at **15 arcmin**, 5 protection levels, **ssp126/370/585** |
+
+Three of the nine are CaMa-Flood and **not one of them says so above the file level**. The
+catalog had `TipESM2025` recorded as "water models" for three days because a 2026-08-11 note
+identified its model directories and never asked what they contained.
+
+**Refresh the map — this is cheap and it is the first thing to do when a hazard is new:**
+
+```bash
+for R in ISIMIP2a ISIMIP2b ISIMIP3a ISIMIP3b; do
+  echo "== $R"; curl -s "https://files.isimip.org/$R/DerivedOutputData/" \
+    | grep -oE 'href="[^"]+/"' | sed -E 's/href="([^"]*)"/\1/'
+done
+# then descend each publication to its first .nc/.nc4 and read TWO filenames
+```
+
+Depth is not uniform: most publications are `{MODEL}/{gcm}/{period}/`, but `TipESM2025` is
+`MIT/{scenario}/{GHM}/{gcm}/` — **five** levels, with the scenario *above* the model. A
+walker that assumes three levels reports it as empty.
+
+**Resolution is a per-publication property and a first-class search dimension.** One hazard
+spans 0.5°, 15 arcmin, 150 arcsec, 300 arcsec and 900 arcsec in this repository. Ask "is
+there a finer product?" explicitly — every layer we ship being 0.5° is a fact about us, not
+about ISIMIP — and report resolution in the availability matrix alongside cadence and
+ensemble depth.
+
 Summary tables should include: variable code and description, simulation round
-(ISIMIP2a/2b/3a/3b), time step (annual/monthly/daily), land surface models available,
-climate scenarios, and dataset counts.
+(ISIMIP2a/2b/3a/3b), time step (annual/monthly/daily), **spatial resolution**, land surface
+models available, climate scenarios, and dataset counts.
 
 Reporting principles:
 1. Show all data sources (include all simulation rounds)
@@ -378,15 +425,25 @@ red flag, not a conclusion** (tropical-cyclone exposure is `let`, not the mnemon
   looks like the tropical-cyclone group (MIT = Emanuel's institution) and is **water models**
   (CWATM, H08, JULES-W2, MIROC-INTEG-LAND, …). The real TC data is under
   `InputData/climate/tropical_cyclones/MIT/`. Open the directory; do not infer from the name.
-- **List `DerivedOutputData/` before concluding a product has no newer-round version.** A
-  product can be re-issued in a later round under a different publication directory with
+- **List `DerivedOutputData/` in EVERY round — not only the round you are asking about.**
+  This bullet used to say "before concluding a product has no newer-round version", and that
+  scoping is exactly how the CaMa-Flood suite was missed for three weeks: the 3b root was
+  listed on 2026-08-11 because someone asked a newer-round question, while the **2b** root
+  was never listed at all, because we already "had" the 2b product and no question pointed
+  at its parent directory. See the publication map above and GUARDRAILS §13 — the trigger is
+  touching the round, not doubting it.
+
+  A product can be re-issued in a later round under a different publication directory with
   different variable names. Lange 2020's exposure concept *was* re-issued for ISIMIP3b,
   split across `Heinicke2026` (`driedarea`, `floodedarea`) and `Zantout2025` (`heatwave`,
   `wildfire`, `cropfailure`) — hazard words, not `le*` codes. The drought layer nearly
-  shipped on rcp26/rcp60 when ssp126/370/585 existed. One call:
+  shipped on rcp26/rcp60 when ssp126/370/585 existed. And a publication sitting *beside* the
+  one you know can be a better product entirely, not a re-issue of it: `Zimmer2023` sits next
+  to `Lange2020` in the same 2b directory and carries inundation depth at 144× the grid
+  resolution. One call per round:
 
   ```bash
-  curl -s https://files.isimip.org/ISIMIP3b/DerivedOutputData/ | grep -oE 'href="[^"]+/"'
+  curl -s https://files.isimip.org/ISIMIP2b/DerivedOutputData/ | grep -oE 'href="[^"]+/"'
   ```
 - **A variable can have more than one representation.** "Wildfire" is the `lew` exposure
   member, the `ffire` emissions flux, the ISIMIP3a-only `fire`-sector diagnostics, *and* the

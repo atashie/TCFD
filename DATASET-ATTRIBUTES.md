@@ -39,6 +39,8 @@ straight.
 | Tropical cyclone (exposure) | `cyclone` | `let` | 2b, rcp26/60 | `process_let_cyclone.py` (rebuilt 2026-08-11) |
 | Wildfire (burnt area) | `wildfire` | `burntarea-total` | 3b `fire`+`biomes`, ssp126/370/585 | `process_burntarea_isimip3b.py` |
 | Crop failure (exposure) | `cropfailure-3b` | `cropfailure` | 3b `Zantout2025`, ssp126/370/585 | `process_cropfailure_isimip3b.py` (2026-08-13) |
+| Heatwave (exposure), ISIMIP3b | `heatwave-3b` | `heatwave` | 3b `Zantout2025`, ssp126/370/585 | `process_heatwave_isimip3b.py` (2026-08-14) |
+| Permafrost thaw | `permafrost-3b` | `thawfrac` (from `thawdepth`) | 3b `permafrost`+`biomes`, ssp126/370/585 | `process_thawdepth_permafrost.py` (2026-08-14) |
 | Temperate conifer productivity | `conifer-npp` | `npp-tempnle` | 2b `biomes` CLM45+ORCHIDEE+LPJmL, rcp26/60/85 | `process_tempnle_npp.py` (2026-08-12) |
 
 `conifer-npp` is **not a hazard** — it is an asset-condition layer and is excluded from every
@@ -56,6 +58,8 @@ knob is not a reason for a third to adopt it.
 | `drought-2b` | 31 (8 × 4) | `pooled_mean_boolean` | **≥2 impact models** | none | two-tier, `higher_is_worse` |
 | `cyclone` | 4 (1 × 4) | `pooled_mean_zero_inflated` | — | **5×5, L=2.5** | two-tier, `higher_is_worse` |
 | `wildfire` | 22 (5 models) | `pooled_median` | — | none | `higher_is_worse` |
+| `heatwave-3b` | 5 (**1 index model** × 5 GCMs) | `pooled_mean_boolean` | full footprint; min-model rule **void**, not relaxed — `n_models`≡1 and all 5 GCM members share one 67,420-cell mask | none | single-tier, `higher_is_worse` |
+| `permafrost-3b` | 12 (3 models × {5,5,2} GCMs) | **`pooled_mean_multimodel`** | 2020s permafrost footprint, **≥2 of 3 models** | none | two-tier, `higher_is_worse` |
 | `conifer-npp` | — | `pooled_median` | 2% cover presence mask | none | **`higher_is_better`** — percentile is already inverted in the file |
 
 ### Which slope to read
@@ -71,12 +75,72 @@ first scenario. Reproduce with `python scripts/generate_customer_delivery.py --m
 | `drought-2b` | 66,741 | 1.000 | 0.000 | `ols_slope` |
 | `drought-3b` | 61,810 | 1.000 | 0.000 | `ols_slope` |
 | `wildfire` | 64,039 | 0.740 | 0.226 | `ols_slope` |
+| `heatwave-3b` | 67,171 | 1.000 | 0.000 | `ols_slope` — **but see the saturation caveat below; on this layer a near-zero slope is ambiguous** |
+| `permafrost-3b` | 14,455 | 0.152 | 0.844 | `ols_slope` — Sen has *not* collapsed here and is still wrong; see below |
 
-Measured 2026-08-12; `cropfailure-3b` added 2026-08-13.
+Measured 2026-08-12; `cropfailure-3b` added 2026-08-13; `heatwave-3b` and `permafrost-3b`
+added 2026-08-14.
+
+**`permafrost-3b` is the counter-example to "low `sen==0` means Sen is safe".** Its Sen share
+is the second-lowest of any layer (0.152, against `conifer-npp`'s 0.021) and sign agreement is
+high (0.844), which reads as a well-behaved field — and Sen is still the wrong estimator,
+for a reason none of the other layers exhibit. On a **multimodal** ensemble the pairwise
+sample is dominated by *cross-cluster* member pairs, whose slopes carry the level offset
+rather than the trend, and the median over those pairs is dragged toward the flat cluster.
+Measured on ssp585 over the published footprint: the 12 members' own OLS trends span
++0.0104…+0.0826 dec⁻¹, their mean is **+0.0326**, the published `ols_slope` is **+0.0326**
+(exact), and `sen_slope` is **+0.0069 — below every single member**. An estimator outside the
+range of the things it summarises is not robust. Read `ols_slope`, and read it with the
+Anomaly panel, because both slopes are censored where the column is fully thawed.
 
 `wildfire` is the one worth noting: its 29.2% grid-level zero fraction suggests Sen is safe
 and it is not — the collapse lives in the year-pair *differences*, not the values. That is
 why this is measured per layer rather than inferred from `field_nature`.
+
+### `heatwave-3b` saturates — the one layer where a flat slope means the opposite
+
+Every other layer here follows the standing rule: the two slopes fail in *opposite* regimes,
+so their disagreement flags a fragile trend. **`heatwave-3b` breaks that rule**, and it is the
+only shipped layer that does.
+
+Exposure is defined as the annual HWMId exceeding the 97.5th percentile of *that cell's own*
+preindustrial control, so warming pushes cells permanently over the threshold and the binary
+flag pins at 1. Measured on the shipped files — pooled decadal exposure frequency, and the
+share of published cells sitting at exactly 1.0:
+
+| scenario | 2020s | 2050s | 2090s | cells at 1.0, 2090s | percentile ≥ 99.5, 2090s |
+|---|---|---|---|---|---|
+| ssp126 | 0.314 | 0.473 | 0.462 | 1.2% | 2.1% |
+| ssp370 | 0.314 | 0.607 | 0.846 | 32.6% | 39.4% |
+| ssp585 | 0.314 | 0.650 | 0.903 | **45.9%** | **51.9%** |
+
+At 1.0 the pooled sample has no variance: the CI collapses to zero width, **both** slopes go
+to ~0 and **agree** there, and the percentile ties at 100. So on this layer a near-zero slope
+is ambiguous between "no trend" and "pinned at the ceiling", and agreement between the
+estimators is not reassurance.
+
+The censoring **inverts trend rankings between regions**. Measured on ssp585: the Amazon
+(10°S–0, 70–55°W) goes 0.601 → 1.000 and 0% → 100% saturated while its `ols_slope` *falls*
+from +0.160 to +0.046 dec⁻¹; Siberia (60–70°N, 80–120°E) never saturates and its slope *rises*
+from +0.069 to +0.098. On the 2090s panel Siberia out-trends the Amazon 2.1×, which reads as
+"the Amazon has stabilised" and means "the Amazon is exposed every year in every member".
+
+**Identify saturated cell-decades as `median == 1.0` (equivalently a zero-width CI at 1.0)**
+and treat their slopes and percentile ranks as censored. How the tied top block should be
+ranked, and whether to publish a time-to-saturation measure, are open decisions.
+
+### `heatwave-3b` is a relative index with no humidity term
+
+`HWMID-NONE` is HWMId **only** — the "NONE" is the humidity term. Its ISIMIP2b predecessor
+`leh` (`HWMId-humidex`) additionally required Humidex ≥ 45 so that counted events "would also
+adversely affect human health"; Zantout et al. 2025 drops that criterion. **This layer cannot
+evidence a wet-bulb, heat-stress, workforce-safety or equipment-derating claim.**
+
+It also carries a latitudinal artifact worth stating before anyone maps it: on the 2020s
+baseline, |lat| ≤ 23.5 reads **0.561** against **0.149** for |lat| > 50 — a 3.77× ratio before
+any warming has accumulated — because a relative threshold is crossed sooner where interannual
+variance is low, and the tropics have the lowest temperature variance on the planet. Measured
+site example: Chicago 0.688 reads *above* Delhi 0.548.
 
 `cropfailure-3b` reads 1.000 at ssp126 but its Sen slope does lift at higher forcing
 (96.5% zero at ssp370, 94.3% at ssp585) as non-zero years become common. `ols_slope` remains
@@ -107,6 +171,14 @@ it — two disjoint 20-member halves give roughness 0.351 and 0.359 and correlat
 (0.790 on footprint edges vs 0.304 in the interior). Reuse that test whenever roughness and
 ensemble depth disagree.
 
+`permafrost-3b` reuses the test and adds a caution about **how the halves are drawn**. Split
+alphabetically off a sorted member list, the two halves got 3 JULES + 2 LPJmL against 2 + 3 —
+different models, therefore different permafrost domains — and the test returned Pearson
+**0.376** with each half reading *smoother* than the full ensemble, which is the tell, since
+fewer members should be noisier. Stratified by model (alternating GCMs **within** each model)
+the same panels give roughness 0.114 with halves at 0.115 / 0.139 and **r = 0.929**. Draw the
+halves so every model appears in both, or the test measures composition rather than noise.
+
 **Read the layer's own `spatial_smoothing` attribute before interpreting its values.**
 
 ### The third decadal-statistic branch
@@ -121,6 +193,67 @@ precedent.
 | `cyclone` (`let`) | 97.84% | erases **93%** of exposed land — 2,684 exposed cells vs 15,122 |
 | `cropfailure-3b` | 60.9% within footprint (96.14% counting zero-fill) | erases **96.6%** of exposed cropland — 1,351 exposed cells vs 39,872 |
 | `wildfire` (`burntarea`) | 29.2% | **does not qualify** — took the median branch without difficulty |
+
+### The fourth branch, and why `permafrost-3b` needed it
+
+`pooled_mean_multimodel` exists because the median assumes the pooled sample has **one mode**.
+This layer's value is thaw depth divided by *each model's own soil column*, and the three
+models sit in two separated clusters on that axis in the 2020s:
+
+| | CLASSIC (61.4 m column) | LPJmL (13.0 m) | JULES (3.0 m) |
+|---|---|---|---|
+| 2020s normalised thaw | 0.035 | 0.046 | **0.951** |
+| members | 2 | 5 | 5 |
+
+Seven members low, five high. Under the median branch the ssp585 spatial median went
+**0.40 (2080s) → 0.93 (2090s)** — the median *crossing* between clusters as the high group
+gained the majority, which reads as thaw suddenly accelerating and is an artifact of the
+estimator. The mean moves smoothly and the SD carries the disagreement (2-SD width, median
+**0.748** on a [0,1] field). The percentile also behaves better: `corr(median, percentile)`
+rose from +0.712 to +0.973 on the same data.
+
+**A threshold on the central value inherits that choice.** "Area whose column is fully
+thawed" means *>half the members* under a median and *effectively all of them* under a mean:
+**7.97 M km² vs 0.40 M km²** for the same ensemble at ssp585 2090s. The invariant quantity is
+the **member share** — measured there as 0.478 of members on average, with 10.52 M km² where
+at least half agree and 0.69 M km² where all twelve do. Report the agreement spread, not one
+threshold.
+
+### `permafrost-3b` — what it is, and what it is not
+
+- **Value**: annual maximum thaw depth ÷ that model's soil column, in [0,1]. 0 = never thaws,
+  1 = nothing frozen left. **The endpoints are commensurable across models; the interior is
+  only ordinally so** — 0.5 of a 3 m column is not physically 0.5 of a 61.4 m column. The
+  customer-facing quantity is therefore the **change against the 2020s**: the share of the
+  column transitioning from permafrost to none (`transition_summary.json`, and the dashboard's
+  Anomaly panel). ssp585 reaches **0.250** area-weighted by the 2090s, against 0.182 (ssp370)
+  and 0.060 (ssp126).
+- **A permafrost-free cell is published AT the column depth, not as NaN** — Nairobi and Paris
+  read exactly the column in all three models — so `isfinite` covers 27.5% of the grid and
+  carries no domain information. The footprint is the **2020s permafrost domain** where ≥2 of
+  3 models find frozen ground: 15,509 cells, 18.17 M km², against Obu et al. 2019's ~14 M km²
+  permafrost area and ~21 M km² permafrost region. Union of all three would be 31.07 M km²,
+  above the entire observed region, because LPJmL alone claims 30.16.
+- **Do not judge a member by its headroom.** JULES sits near 1 and looks censored, but in raw
+  metres it is the *deepest-column* model, CLASSIC, that is unphysical: 2020s thaw p95 of
+  **28.0 m**, and no permafrost at all at Fairbanks. LPJmL is closest to observed active-layer
+  thickness (p50 0.83 m against an observed ~0.3–1.5 m), JULES next (p50 2.85 m, censored at
+  3), CLASSIC last (p50 2.15 m but p75 4.90). JULES's baseline pattern also agrees with the
+  others as well as they agree with each other (ρ 0.785 / 0.657, against 0.631 between CLASSIC
+  and LPJmL). All 12 members are retained on that evidence.
+- **The models agree on how much and disagree on where.** Over each model's own domain the
+  2090s ssp585 loss share is comparable (CLASSIC 31.0%, JULES 58.0%, LPJmL 32.3%) — but on the
+  cells CLASSIC and LPJmL *both* call permafrost, CLASSIC loses 28.6% and LPJmL 4.0%, a
+  **Jaccard overlap of 2.8%**. Comparable totals, different maps. This is what the wide CI is
+  reporting; a narrow CI here would mean the ensemble had been trimmed.
+- **Not a ground-stability or subsidence layer.** Thaw depth carries nothing about ground ice,
+  excess ice, thaw settlement or slope, and ISIMIP publishes no variable for any of them, so a
+  cell losing its permafrost is not thereby a foundation-damage forecast. **Solifluction** has
+  no representation anywhere in ISIMIP and remains uncovered.
+- **Sector trap**: `thawdepth` is published byte-identically under `permafrost`, `biomes` and
+  `water_global`, and the two models that are *not* in the permafrost sector (JULES, CLASSIC)
+  are two thirds of the ensemble. Walking one sector answers "1 model, 5 members" to a
+  question whose answer is 3 models and 12 members. Ingest from one sector, but look in all.
 
 ### Layers that score DEPARTURE FROM A LOCAL BASELINE
 

@@ -41,8 +41,8 @@ observations — see [Known consequences](#known-consequences).
 
 `median` keeps its name for backward compatibility even though it holds a **mean** on
 boolean layers. The layer must declare which branch was taken via the
-`decadal_statistic` global attribute (`pooled_median`, `pooled_mean_boolean`, or
-`pooled_mean_zero_inflated`).
+`decadal_statistic` global attribute (`pooled_median`, `pooled_mean_boolean`,
+`pooled_mean_zero_inflated`, or `pooled_mean_multimodel`).
 
 ### Boolean detection
 
@@ -84,6 +84,42 @@ record it. Each adoption is its own decision on its own measurement, and the cou
 precedent — **which layers qualify today, and on what numbers, is in
 [DATASET-ATTRIBUTES.md](DATASET-ATTRIBUTES.md)** (two, as of 2026-08-13).
 
+### The fourth branch: a multimodal ensemble
+
+The median assumes the pooled sample has **one** mode. When the members separate into
+clusters, the median does not summarise them — it *selects* the cluster holding more
+members, and it moves discontinuously when the balance tips. A layer in that regime may
+take **mean ± 1 SD**, declaring `decadal_statistic: pooled_mean_multimodel` plus a
+`decadal_statistic_rationale` carrying the measured numbers.
+
+Measured on `permafrost-3b` (added 2026-08-14, the only layer in this regime today). Its
+value is thaw depth normalised by each model's own soil column, and the three models sit at
+different fractions of their columns in the 2020s:
+
+| | CLASSIC (61.4 m column) | LPJmL (13.0 m) | JULES (3.0 m) |
+|---|---|---|---|
+| 2020s normalised thaw | 0.035 | 0.046 | **0.951** |
+
+Seven members in the low cluster, five in the high one. Under the median branch the ssp585
+spatial median went **0.40 (2080s) → 0.93 (2090s)** — not thaw accelerating, but the median
+crossing between clusters as the high cluster gained the majority. The mean moves smoothly
+through the same panels and the SD carries the disagreement, which on that layer is the
+honest content: the 2-SD width has a median of 0.748 on a [0,1] field.
+
+Two conditions distinguish this from reaching for the mean to improve contrast:
+
+- the separation is **between models**, not within one, so it is structural uncertainty
+  rather than a heavy tail — verify by measuring the per-model distributions separately;
+- the median is **discontinuous in the decade series**, which is visible as a jump no
+  physical process explains. Record the counterfactual at run time.
+
+**A threshold applied to the central value inherits this choice, so do not report one as if
+it were a property of the data.** On `permafrost-3b`, "area whose column is fully thawed"
+means *>half the members* under the median and *effectively all of them* under the mean —
+7.97 vs 0.40 M km² for the same ensemble and scenario. Where a layer needs such a count,
+compute it from the **member share** (the fraction of members over the threshold), which is
+invariant to the central statistic, and publish the agreement spread rather than one number.
+
 ### `percentile`
 
 Each cell's decadal `median` is ranked against the shared 2020s baseline land
@@ -105,6 +141,7 @@ Both are emitted because **they fail in opposite regimes**, and neither alone is
 | Well-behaved continuous field | correct | correct | either |
 | **Zero-inflated hazard** (`led`, `driedarea`, `let`) | correct | **collapses to exactly 0** — most year-pairs are 0→0; measured at 91.3% of `driedarea` ssp126 cells and **96.9% of `let`'s exposed land** | `ols_slope` |
 | **Unbalanced members with level offsets** | **biased** — measured +40% (0.70 vs true 0.50) when masking is uneven | correct | `sen_slope` |
+| **Multimodal ensemble** (`permafrost-3b`) | correct — reproduces the ensemble-mean member trend exactly (+0.0326 dec⁻¹ against a member mean of +0.0326) | **biased LOW** — +0.0069 dec⁻¹, *below every one of the 12 members* (range +0.0104…+0.0826), because the pairwise sample is dominated by cross-cluster pairs carrying the level offset rather than the trend | `ols_slope` |
 | Outliers / a single wild year | pulled off | robust | `sen_slope` |
 
 Units are **per year**. Multiply by 10 to declare per-decade, and record which in
@@ -128,6 +165,27 @@ over a decade the subject was absent from is not a trend. Measured on `npp-tempn
 (a 2%-cover conifer presence mask): 53 such cells at the 2030s rising to 374 by the 2090s,
 and they were the artifacts — dropping 53 of 25,821 moved the mean slope from **−1.89 to
 +0.64**, because a stand vanishing mid-window produces a wild trend.
+
+**The "opposite regimes" premise fails on a CENSORED field, and then agreement means
+nothing.** The table above is the reason both slopes are emitted: each is wrong where the
+other is right, so disagreement flags a fragile cell. A field pinned at a **bound** breaks
+that. Where every observation in the window is the maximum, the OLS slope and the Theil-Sen
+slope are both ~0 — not because the trend is zero but because there is no headroom left to
+measure — and the two **agree**. Agreement near zero is therefore ambiguous on such a layer
+between "no trend" and "maximally exposed, permanently".
+
+Measured on `heatwave-3b` (2026-08-14), a binary exposure flag defined against each cell's
+own preindustrial distribution: 45.9% of ssp585 2090s cells sit at exactly 1.0, and there
+the CI collapses to zero width and the percentile ties at 100 (51.9% of cells at ≥99.5).
+The censoring **inverts trend rankings between regions**: the Amazon's `ols_slope` *falls*
++0.160 → +0.046 dec⁻¹ as it saturates 0% → 100%, while never-saturating Siberia *rises*
++0.069 → +0.098, so the final panel has Siberia out-trending the Amazon 2.1×.
+
+A layer in this regime must declare it. Emit the contract fields unchanged — do **not**
+invent a statistic to hide the ceiling — and add a `saturation_caveat` naming how a
+saturated cell is identified from the published fields alone (`median` at the bound with a
+zero-width CI), plus per-panel shares. The bound need not be 1: any layer with a physical or
+definitional ceiling is a candidate, so check the share at the bound before reading a slope.
 
 **Judge slope agreement on ACTIVE cells only.** A cell that is permanently 0 — never
 burns, never sees a cyclone — has a genuinely zero slope under *both* estimators, so

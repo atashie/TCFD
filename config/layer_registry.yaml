@@ -187,6 +187,94 @@ layers:
       that site's risk. See the must-disclose RELATIVE-BASELINE caveat for how to read the
       score itself.
 
+  heatwave-3b:
+    folder: heatwave-isimip3b_heatwave_annual
+    file_prefix: heatwave
+    hazard: Heatwave
+    hazard_measure: Land area share exposed to unprecedented heat
+    # BUILT AND CONTRACT-PASSING, NOT CLEARED FOR DELIVERY. No asset type references it, so
+    # it cannot be selected today; this entry exists so the layer is discoverable rather
+    # than invisible. Two things must be settled before the status changes.
+    status: blocked
+    blocked_reason: >-
+      (1) THE FLAG SATURATES and the treatment is an open decision. 45.9% of ssp585 2090s
+      cells sit at exactly 1.0, where the CI collapses to zero width, BOTH slopes go to ~0
+      and AGREE there, and the percentile ties at 100 (51.9% of cells at >=99.5). A
+      near-zero slope on this layer is ambiguous between "no trend" and "pinned at the
+      ceiling", so the standing dual-slope disagreement rule does not apply. How the tied
+      top block should be ranked, and whether to publish a time-to-saturation companion,
+      have not been decided. (2) THE INDEX CARRIES NO HUMIDITY TERM -- `HWMID-NONE` is
+      HWMId only -- so it cannot evidence the workforce-safety or equipment-derating
+      framing the heatwave hazard note currently uses. That copy needs rewriting before
+      this ships. Identify saturated cell-decades as median == 1.0.
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on 100.0% of active cells in every scenario's final panel (469,508 of
+      471,940 active at ssp126; measured 2026-08-14), sign agreement 0.0%. The field is
+      BINARY, so every pairwise difference is -1, 0 or +1 and same-valued pairs dominate --
+      the same mechanism as `drought-2b`/`drought-3b`, not zero-inflation. READ ols_slope,
+      but read it together with `median` and `saturation_by_decade`: where the layer is
+      saturated, ols_slope is censored toward zero and understates the hazard.
+    relative_baseline: true
+    relative_baseline_note: >-
+      This layer scores how far a year's heat departs from that CELL'S OWN preindustrial
+      distribution -- the annual HWMId exceeding the 97.5th percentile of its picontrol --
+      not how hot it gets in absolute terms. A relative threshold is crossed sooner where
+      interannual variance is LOW, and the tropics have the lowest temperature variance on
+      the planet, so on the 2020s baseline |lat| <= 23.5 reads 0.561 against 0.149 for
+      |lat| > 50, a 3.77x ratio before any warming has accumulated. Site example: Chicago
+      0.688 sits ABOVE Delhi 0.548. Read a high score as "this place is moving furthest
+      from its own historical normal", never as "this place is hotter".
+    delivery_note: >-
+      NOT A HEAT-STRESS INDEX. `HWMID-NONE` is the Heat Wave Magnitude Index daily with NO
+      humidity term -- the ISIMIP2b predecessor `leh` additionally required Humidex >= 45
+      so that counted events "would also adversely affect human health", and Zantout et al.
+      2025 drops that criterion. This layer therefore cannot support a wet-bulb,
+      heat-stress, workforce-safety or equipment-derating claim, and it flags MORE area
+      than `leh` in arid and high-latitude cells where the Humidex gate would never open.
+      Published on a 67,420-cell land footprint; Antarctica is absent from the product.
+
+  permafrost-3b:
+    folder: permafrost-isimip3b_thawdepth_annual
+    file_prefix: thawfrac
+    hazard: Permafrost thaw
+    hazard_measure: Thawed fraction of the soil column (annual maximum)
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on only 15.2% of active cells (ssp126 2090s, 14,455 active; measured
+      2026-08-14) with 84.4% sign agreement, so Sen has NOT collapsed the way it does on the
+      zero-inflated layers -- and it is still the wrong read here. A NEW regime, measured on
+      this layer: on a MULTIMODAL ensemble Theil-Sen is biased LOW, because the pairwise
+      sample is dominated by cross-cluster member pairs whose slopes carry the level offset
+      rather than the trend. Measured on ssp585 over the published footprint, each member's
+      own OLS trend runs +0.0104 to +0.0826 per decade (JULES members +0.015 to +0.024,
+      CLASSIC +0.048/+0.083, LPJmL +0.010 to +0.082); the ensemble mean of those is +0.0326
+      and the published ols_slope is +0.0326 -- an exact match -- while sen_slope reads
+      +0.0069, BELOW EVERY SINGLE MEMBER. An estimator outside the range of the things it
+      summarises is not robust, it is wrong. ols also matches this layer's mean-based central
+      value by construction. BOTH are censored where the column is fully thawed, so read
+      either one WITH the Anomaly panel, never alone.
+    delivery_note: >-
+      PUBLISHED ON THE 2020s PERMAFROST FOOTPRINT (15,509 cells, 18.17 M km2, where >=2 of 3
+      models find frozen ground), NOT on all land. A site outside it returns OFF_LAYER_MASK
+      rather than a low score, because a place with no permafrost has no thaw hazard.
+      The value is thaw depth divided by EACH MODEL'S OWN soil column (CLASSIC 61.4 m, LPJmL
+      13.0 m, JULES 3.0 m), so 0 = never thaws and 1 = nothing frozen left. The endpoints
+      mean the same thing in all three models; intermediate values are comparable only
+      ORDINALLY, which is why the customer-facing quantity is the CHANGE against the 2020s --
+      the share of the column transitioning from permafrost to none.
+      READ THE CI. It is wide (2-SD width median 0.748 on a [0,1] field) because the models
+      genuinely disagree: on the cells CLASSIC and LPJmL both call permafrost, CLASSIC loses
+      28.6% of them by the 2090s under ssp585 and LPJmL loses 4.0% -- a Jaccard overlap of
+      2.8%. Comparable totals, different maps.
+      NOT A GROUND-STABILITY OR SUBSIDENCE LAYER. Thaw depth carries nothing about ground
+      ice, thaw settlement or slope, and ISIMIP publishes no variable for any of them, so
+      losing permafrost here is not a foundation-damage forecast. Solifluction has NO
+      representation anywhere in ISIMIP and remains uncovered.
+
 # Layers refused by the loader. A folder carrying INVALID-DO-NOT-USE.md is ALSO refused
 # automatically, so this list is belt-and-braces rather than the only guard.
 blocked:

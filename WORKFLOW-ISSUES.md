@@ -969,6 +969,109 @@ does not grow is not that site's risk — and it is recorded as
 
 ---
 
+### 2026-08-14: The CaMa-Flood Suite We Never Saw — Three Weeks of Treating a Known Path as a Search
+
+**Outcome first**: the best river-flood data in the ISIMIP repository — hydrodynamic inundation at up to **150 arcsec (~4.6 km, 144× our grid)**, with flood **depth in metres**, protection-level variants, and **rcp85** — sat one directory level above a path this repo had already walked, for **three weeks**, while `config/hazard_taxonomy.yaml` recorded a two-item candidate list and a blocker for the family it calls *the most consequential gap in this pipeline*. It surfaced only because the user asked "is there not a higher resolution option that speaks to actual inundation risk?"
+
+**What happened**:
+
+1. On **2026-08-08** the Lange2020 exposure family was enumerated as `ISIMIP2b/DerivedOutputData/Lange2020/{MODEL}/{gcm}/future/` — the catalog records that exact path. We reached it from a variable-code search (`le{d,r,w,c,h,t}`) and walked *down* correctly, listing every level below.
+2. **`ISIMIP2b/DerivedOutputData/` — the parent — was never listed.** It has two entries. The second is `Zimmer2023`: CaMa-Flood v3.6.2, `flddph`/`fldfrc`, 6 GHMs × 4 GCMs × rcp26/60/85 × 3 protection levels = 432 files.
+3. On **2026-08-11** the *3b* `DerivedOutputData/` root **was** listed — because someone asked a newer-round question about drought. The rule in the skill read "list `DerivedOutputData/` before concluding a product has no newer-round version", so it fired for 3b and never for 2b, where we believed we already had the answer.
+4. On **2026-08-13** `hazard_taxonomy.yaml` was seeded from the catalog, hardening the two-item list into a decision-grade artifact with a written blocker. Nothing in that file could express "this list has never been checked against a directory listing".
+5. On **2026-08-13**, reviewing flood options, I enumerated only the two products the candidate list named. I inherited the blind spot and re-published it.
+6. **The correction then repeated the mistake.** Having found `Zimmer2023`, I listed the 3a and 3b roots, read the *publication names*, and wrote into the catalog: *"No CaMa-Flood publication exists under ISIMIP3a or 3b."* Wrong twice. `Quesada-Chacon2026` (3a) **is** CaMa-Flood, and `TipESM2025` (3b) is CaMa-Flood `fldfrcmax` at 15 arcmin with **ssp126/370/585 and 32 members per scenario** — which the catalog had recorded as "water models" since 2026-08-11, from a note that identified its model directories and never opened a file.
+
+**Impact**: no bad data shipped — flood is not a delivered layer. What was damaged is worse in kind: the *option set*. A hazard the taxonomy calls the pipeline's most consequential gap was deferred against an incomplete list of what exists, and the reason it looked complete is that every individual fact in it was true.
+
+**Root cause — five distinct failures, all of which read green**:
+
+- **Entering a known path is retrieval, not enumeration.** Every enumeration rule we had (§8 "list every intermediate level", §11 "a negative needs a receipt") is triggered by *doubt* — by asking whether something is absent. Nothing was triggered by *touching a directory*. So the level we started at was never listed.
+- **A candidate list is an unreceipted positive.** §11 already covers absence claims and understated positives; an option list is the third form and the most decision-bearing, since work is planned off it. It had no `enumerated_on` field and no way to say "incomplete".
+- **A variable-code search cannot discover a vocabulary you do not have.** `flddph`, `fldfrc`, `fldfrcmax` are unreachable from any `le*` query. Directory listing is the only discovery mechanism; code search only confirms.
+- **Publications are named after people and identified by their files.** Three of the nine derived publications across all four rounds are CaMa-Flood, and **not one says so above the file level**. Two of our three mischaracterisations came from reading directory names.
+- **Resolution was never a search dimension.** Every layer we ship is 0.5°, so "is there a finer product?" was not a question the workflow could ask. One hazard spans 0.5°, 15 arcmin, 150 arcsec, 300 arcsec and 900 arcsec.
+
+**Rule created — GUARDRAILS §13, "List the Container You Entered — a Known Path Is Not a Search"**: list the parent before recording the child, regardless of the question; identify a publication by its files, never its name or model list; a candidate list needs the same receipt a negative does; resolution and filename grammar are per-publication properties; a code search is confirmation, not discovery.
+
+**Applied, not just written**: swept all four rounds' `DerivedOutputData/` roots and opened every publication to file level (2026-08-14). The result is `repository_publication_map` in the catalog — nine publications, what each actually publishes, the non-uniform directory depths, and an explicit `known_gaps_in_this_map` list naming what the sweep did *not* cover (2a OutputData sectors, `InputData/` roots, Jaegermeyr2021's crop coverage). The skill gains the map as a table plus the refresh command; `hazard_taxonomy.yaml` gains `candidates_enumerated_on`; the false "no CaMa-Flood in 3a/3b" line is corrected in place rather than deleted.
+
+**Also caught by the sweep**: `TipESM2025`'s directory is **five** levels deep with the scenario **above** the model (`MIT/{scenario}/{GHM}/{gcm}/`), unlike every other publication's `{MODEL}/{gcm}/{period}/`. A three-level walker returns it as empty — which under §8 is a wrong-depth signal, not a negative. And `Zimmer2023` filenames carry two extra fields (protection level, resolution), so the standard `$(NF-4)` projection reports a variable vocabulary of `150arcsec`; the fix is to read the `.json` sidecar's `specifiers` block, which names every field.
+
+**Files**: `GUARDRAILS.md` (§13, new), `.claude/skills/isimip-search-download/SKILL.md` (publication map + refresh procedure + resolution as a search dimension + the narrow newer-round rule rewritten + the mid-filename grammar warning), `config/isimip_search_catalog.yaml` (`repository_publication_map`, `search_results.river_flood` with all three CaMa-Flood editions, corrected 3a/3b claim), `config/hazard_taxonomy.yaml` (`candidates_enumerated_on`, flood candidates), `CLAUDE.md`, `WORKFLOW-ISSUES.md`.
+
+---
+
+### 2026-08-14: Heatwave Ingest — A Sidecar Trap That Downgraded a Shipped Layer's Provenance, a Layer Whose Flat Trend Means the Opposite, and an Index That Changed Between Rounds
+
+**What happened**: Three separate findings while ingesting both heatwave sources. Two are traps that will recur; one is a layer property that breaks a standing rule.
+
+**1. `{stem}.nc.json` 404s; the sidecar is at `{stem}.json`.** The crop-failure ingest (2026-08-13, same `Zantout2025` publication) recorded *"NO `.json` SIDECARS … `{stem}.nc.json` returns 404, verified"* and fell back to `Content-Length` for integrity, stamping `sha512_source: computed-locally (no upstream sidecar)` into `download_provenance.csv`. **Zantout2025 does publish sidecars**, with `size`, sha512 and a full `netcdf_header` — the probe just used the wrong suffix. Verified 2026-08-14 on both a `heatwave` and a `cropfailure` file: `.nc.json` → 404, `.json` → 200. The directory listing shows the `.json` files plainly.
+
+**Impact**: `cropfailure-3b`'s 120 files were verified against `Content-Length` only, which catches truncation but not silent corruption, and its provenance actively *records* that no publisher checksum existed. That is a self-inflicted downgrade on a shipped layer, and it reads to a reviewer as a property of the publisher rather than a bug in our probe.
+
+**Root cause**: A negative was drawn from **one** URL shape without listing the directory that would have shown the answer. GUARDRAILS §11 says a negative needs its receipt; the receipt here named a path that was never going to exist.
+
+**Correct action**: Before recording "this publication has no sidecars", list the directory and look. One request.
+
+**Fix applied**: `download_heatwave_isimip3b.py` and `download_leh_isimip2b.py` both verify against the publisher sidecar (15/15 and 8/8 sha512-matched). The trap is recorded in `search_results.heatwave.representations.heatwave_exposure_3b.sidecars`. `download_cropfailure_isimip3b.py` was independently corrected the same day and now verifies against `{stem}.json`; the catalog records the extension-REPLACING naming under `lec_isimip2b.sidecars` and `floodedarea.sidecars`. Whether `cropfailure-3b`'s existing `download_provenance.csv` was regenerated against the publisher checksums is a separate question for that layer's owner — the rows written on 2026-08-13 still say `computed-locally`.
+
+**2. `heatwave-3b` saturates, and a flat slope there means the opposite of what it means everywhere else.** Exposure is the annual HWMId exceeding the 97.5th percentile of *that cell's own* preindustrial control, so warming pushes cells permanently over the threshold and the binary flag pins at 1. On ssp585 the 2090s panel has **45.9% of published cells at exactly 1.0** (ssp370 32.6%, ssp126 1.2%). At 1.0 the pooled sample has no variance, so the CI collapses to zero width, **both** slopes go to ~0 and **agree** there, and the percentile ties at 100 (51.9% of cells at ≥99.5).
+
+This breaks the standing dual-slope rule from OUTPUT-SPEC — that the estimators fail in *opposite* regimes so their disagreement flags a fragile trend. Here they fail the *same* way, and agreement near zero is not reassurance. The censoring inverts regional rankings: the Amazon's `ols_slope` **falls** +0.160 → +0.046 dec⁻¹ as it goes 0% → 100% saturated, while never-saturating Siberia **rises** +0.069 → +0.098, so the 2090s panel has Siberia out-trending the Amazon 2.1×.
+
+**Correct action**: Do not invent a statistic to hide it. The contract fields are emitted as specified and the censoring is *declared* — `saturation_caveat` and `saturation_by_decade` in every scenario file, plus a worked example — and saturated cell-decades are identifiable from the published fields alone (`median == 1.0`, equivalently a zero-width CI at 1.0). Tie-ranking and a possible time-to-saturation companion are left as **open decisions** rather than answered unilaterally.
+
+**3. The index changed between rounds; the layers are not versions of each other.** ISIMIP2b `HWMId-humidex` requires the relative HWMId **AND** an absolute Humidex ≥ 45, so counted events "would also adversely affect human health" (Lange et al. 2020). ISIMIP3b `HWMID-NONE` drops the absolute criterion — the "NONE" *is* the humidity term. Reading `HWMID-NONE` as a newer `HWMId-humidex` would have shipped a temperature-only relative index under copy promising workforce-safety and equipment-derating relevance.
+
+Measured consequence, and it is large in both directions. `leh` under its absolute gate is **silent on 59.7% of land** across 2006–2099 and both RCPs — 81% of the 35–60°N temperate belt and 99% of the boreal belt never register a single exposed year in any member. Paris, Frankfurt and Yakutsk are **exactly zero in every member and every year**. That is the absolute threshold behaving correctly, not a defect, but a layer built on it reports *no heat hazard at all* for much of a Northern-Hemisphere portfolio, and "zero" there means "never crosses Humidex 45", not "low heat risk".
+
+**4. A land-mask variable name assumed instead of resolved.** `leh` zero-fills the entire 259,200-cell grid, so `isfinite` is not a mask. The first sparsity run tried to load the ISIMIP2b land mask by the variable name `mask` — which is the **3b** name; 2b publishes `LSM` — the load threw, the check silently fell back to the finite domain, and every sparsity share came out quoted against the whole globe (89.1% "silent") instead of against land (59.7%). Same dilution family as the ocean-diluted `sen_slope == 0` misreport of 2026-08-10.
+
+**Fix applied**: `check_leh_nature.py` resolves the mask variable name per round and prints the denominator it used.
+
+**5. A documented status value that the loader could not load.** `config/layer_registry.yaml` has always documented `status: preferred | alternate | superseded | blocked`, but no layer had ever used `blocked`, and `LayerSpec` had no field for the reason. Registering `heatwave-3b` as blocked with a `blocked_reason` raised `TypeError: __init__() got an unexpected keyword argument` and took the whole delivery planner down until `LayerSpec` gained the field. A vocabulary documented in a header is not a vocabulary the code accepts; the first user of an unexercised branch pays for it.
+
+**Rule created**: none new — this is GUARDRAILS §8 (never guess a specifier), §9 (measure, do not infer) and §11 (a negative needs a receipt naming what was actually enumerated) landing on three new surfaces: a sidecar URL shape, an index name, and a mask variable name. But OUTPUT-SPEC.md's dual-slope guidance IS amended: it now records that a CENSORED field breaks the "they fail in opposite regimes" premise, because at a bound both estimators fail the same way and agree at zero.
+
+**Files**: `scripts/download_heatwave_isimip3b.py`, `scripts/check_heatwave_nature.py`, `scripts/process_heatwave_isimip3b.py`, `scripts/download_leh_isimip2b.py`, `scripts/check_leh_nature.py` (all new), `config/isimip_search_catalog.yaml` (`search_results.heatwave`), `config/hazard_taxonomy.yaml`, `DATASET-ATTRIBUTES.md`.
+
+---
+
+### 2026-08-14: Permafrost Layer — Four Estimator Traps, Three of Them Mine, and a Model I Nearly Dropped for the Wrong Reason
+
+**What happened**: Building `permafrost-3b` from ISIMIP3b `thawdepth` surfaced four separate ways a correct-looking measurement produced a wrong conclusion. Each was caught, but three of them had already been written into a recommendation before the check that overturned them.
+
+**1. A sector-only walk would have under-counted the ensemble by two thirds.** `thawdepth` is published byte-identically under `permafrost`, `biomes` and `water_global` (Content-Length **and** ETag matched across sectors). The `permafrost` sector holds two models and only **one** of them publishes the variable; JULES-ES-VN6P3 and CLASSIC publish it in `biomes` and are absent from the permafrost sector entirely. Walking the obviously-named sector answers *"1 model, 5 members"* to a question whose answer is *3 models, 12 members*.
+
+**Root cause**: the standing "walk one sector, ingest one sector" rule (a *duplication* rule) was read as a rule about where to **look**. It is not. Recorded as `but_look_everywhere` under `repository_structure_cache.cross_sector_duplication`.
+
+**2. An absolute tolerance on a ceiling test inverted a finding.** A permafrost-free cell is published **at the model's soil column depth** — Nairobi and Paris read exactly the column in all three models — so detecting "fully thawed" means testing equality with that ceiling. The first check used `atol=1e-4` and reported LPJmL's at-ceiling share as **0.0%** while that model's *median* sat on the ceiling: its maximum is 13.001 m and the pinned mass is at 13.000, a 1 mm gap. The same bug made its permafrost domain read as the full finite extent. Any ceiling test on a float field needs slack **proportional to the ceiling**.
+
+**3. A split-half smoothing test that measured model composition instead of sampling noise.** The halves were taken as `members[::2]` / `members[1::2]` off a *sorted* member list, which gave one half 3 JULES + 2 LPJmL and the other 2 + 3. Different composition → different permafrost domains → Pearson **r = 0.376**, and each half read *smoother* than the full ensemble, which is the tell (fewer members should be noisier). Stratifying by model — alternating GCMs **within** each model — gave r = 0.784 with roughness stable across halves. The verdict text was also written as a conclusion before the number existed; it is now generated from the measurement with an explicit three-way branch.
+
+**4. The one I got most wrong: recommending a model be dropped on a normalised-space artifact.** After per-model column normalisation JULES sits at 0.95 of its 3 m column while CLASSIC and LPJmL sit at 0.035–0.046, so JULES looks censored and I recommended dropping it. Checked in **raw metres** against observed active-layer thickness (~0.3–1.5 m in continuous permafrost), the ranking reverses:
+
+| model | column | 2020s thaw p50 | p95 | Fairbanks |
+|---|---|---|---|---|
+| LPJmL5-7-10-fire | 13.0 m | **0.83 m** | 4.57 | 1.49 m |
+| JULES-ES-VN6P3 | 3.0 m | 2.85 m | 3.00 | 3.00 m (at its column) |
+| CLASSIC | 61.4 m | 2.15 m | **28.0 m** | **61.4 m — no permafrost** |
+
+The model with the most headroom is the least physical: a 28 m p95 seasonal thaw is not an active layer, and CLASSIC reports no permafrost at Fairbanks, which sits in the discontinuous zone. JULES's baseline pattern also correlates with the other two as well as they correlate with each other (ρ 0.785 / 0.657 against 0.631). **"Has room to move" is not evidence of quality**, and a member that looks degenerate after a transform should be re-checked in the units it was published in. The user proposed keeping JULES — for a reason that was itself inverted (its column is the *shallowest*, not the deepest) — and the conclusion was right where mine was wrong.
+
+**Impact**: no shipped artifact was affected — every one of these was caught before the layer was registered — but items 2–4 had each reached a stated recommendation before being overturned, and item 4 would have removed 5 of 12 members and the model closest to the ensemble's centre.
+
+**5. A threshold on the central value is a property of the estimator, not of the data.** The layer reports how much of the soil column transitions from permafrost to none, so "area whose column is fully thawed" looks like a natural headline. It is not stable: under a pooled **median** the criterion is *>half the members*, under a pooled **mean** it is *effectively all of them* — **7.97 vs 0.40 M km²** for the same ensemble at ssp585 2090s. Both numbers are correct implementations of different questions. The invariant is the **member share**: 0.478 of members on average by the 2090s, 10.52 M km² where at least half agree, 0.69 M km² where all twelve do.
+
+**6. Theil-Sen is biased LOW on a multimodal ensemble — a regime the two-slope table did not have.** `sen==0` on only 15.2% of active cells with 84.4% sign agreement reads as a healthy field, and Sen is still wrong here: the pairwise sample is dominated by *cross-cluster* member pairs whose slopes carry the level offset rather than the trend. Measured on ssp585, the 12 members' own OLS trends span +0.0104…+0.0826 dec⁻¹ with a mean of **+0.0326**; the published `ols_slope` is **+0.0326** (exact) and `sen_slope` is **+0.0069 — below every single member**. An estimator outside the range of the things it summarises is not robust. Caught only because `generate_customer_delivery.py --measure-slopes` flagged `REGISTRY DISAGREES` against a `sen_slope` entry that had been written from the *ols-bias* regime by analogy instead of measurement.
+
+**Rules created**: OUTPUT-SPEC gains a **fourth decadal-statistic branch** (`pooled_mean_multimodel`, with the conditions distinguishing it from reaching for the mean to improve contrast) and a **fifth row in the two-slope table** (multimodal ensemble → read `ols_slope`). CLAUDE.md's "three branches" rule is updated to four and now carries the threshold-inherits-the-estimator warning.
+
+**Files**: `scripts/download_thawdepth_isimip3b.py`, `scripts/check_thawdepth_nature.py`, `scripts/process_thawdepth_permafrost.py` (all new), `OUTPUT-SPEC.md`, `CLAUDE.md`, `DATASET-ATTRIBUTES.md`, `config/layer_registry.yaml`, `config/hazard_taxonomy.yaml`, `config/isimip_search_catalog.yaml`.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

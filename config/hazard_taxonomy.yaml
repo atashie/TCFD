@@ -19,6 +19,17 @@
 #                     and CDP use the same two-way division.
 #   isimip_candidate: what would close the gap, named precisely enough to act on, with the
 #                     blocker that stopped it. "No candidate" is itself a finding.
+#   candidates_enumerated_on:
+#                     WHEN the candidate list was last checked against a DIRECTORY LISTING,
+#                     and which. REQUIRED alongside any non-empty candidate list. Absent =
+#                     the list is INCOMPLETE, not complete (GUARDRAILS 13).
+#
+# A CANDIDATE LIST IS A POSITIVE CLAIM OF COMPLETENESS, AND IT IS THE MOST DECISION-BEARING
+# CLAIM IN THIS FILE -- work gets planned off it and hazards get deferred off it. From
+# 2026-07-24 to 2026-08-13 this family's flood entry named two 0.5 deg exposure products and
+# a blocker explaining why neither could ship, while the CaMa-Flood inundation suite sat
+# unlisted one directory level up from a path we had already walked. Nobody was wrong about
+# the two products named; the list was wrong by omission, and omission is invisible.
 #
 # CUSTOMER-FACING vs INTERNAL -- the split matters and is enforced in code
 #   customer_note:    RENDERED INTO REPORTS. What a reader needs to know about the gap, in
@@ -146,8 +157,16 @@ families:
       dominates.
     customer_note: >-
       Not assessed. River flooding is frequently the dominant physical risk for assets near a watercourse, and its absence here should not be read as a low result. A dedicated flood dataset is required.
+    candidates_enumerated_on: >-
+      2026-08-14 -- listed the DerivedOutputData/ root of ALL FOUR rounds and opened every
+      publication to file level (config/isimip_search_catalog.yaml repository_publication_map).
+      The 2026-08-13 version of this list named only the two 0.5 deg exposure products,
+      because no session had ever listed ISIMIP2b/DerivedOutputData/ -- only walked into
+      Lange2020/ inside it. NOT covered by this sweep: InputData/ roots.
     isimip_candidate:
-      - "ISIMIP2b DerivedOutputData/Zimmer2023 `flddph` / `fldfrc` (CaMa-Flood v3.6.2) -- ENUMERATED 2026-08-13. ABSOLUTE INUNDATION at 150 arcsec (~4.6 km), 144x finer than every shipped layer, in three protection variants (none / 100yr / flopros). 6 GHM x 4 CMIP5 GCM x rcp26/60/85 = 432 files. This is the only ISIMIP product that answers 'how deep does the water get here' rather than 'is this year unusual'; measured, it puts the Amazon main stem at 6.11 m mean depth where `floodedarea` reads 0.000."
+      - "ISIMIP2b DerivedOutputData/Zimmer2023 `flddph` / `fldfrc` (CaMa-Flood v3.6.2) -- ENUMERATED 2026-08-13. ABSOLUTE INUNDATION at 150 arcsec (~4.6 km), 144x finer than every shipped layer, in three protection variants (none / 100yr / flopros). 6 GHM x 4 CMIP5 GCM x rcp26/60/85 = 432 files. The only ISIMIP product carrying flood DEPTH in metres with future scenarios; measured, it puts the Amazon main stem at 6.11 m mean depth where `floodedarea` reads 0.000."
+      - "ISIMIP3b DerivedOutputData/TipESM2025 `fldfrcmax` (CaMa-Flood) -- ENUMERATED 2026-08-14, NOT yet value-checked. Annual maximum flooded FRACTION at 15 arcmin (0.25 deg), 7 GHMs x 5 CMIP6 GCMs = 32 members per scenario, ssp126/370/585, 5 protection levels, ~6.4 GB for one protection level across all three scenarios. The SSP-bearing inundation option; heterogeneous soc per model is an open decision."
+      - "ISIMIP2a DerivedOutputData/Zimmer2023 -- the observational (gswp3, 1971-2010) edition of the 2b CaMa-Flood product, at 150 AND 300 arcsec. Not a scenario source: use for validating whichever inundation layer is chosen."
       - "ISIMIP2b DerivedOutputData/Lange2020 `ler` -- 218 datasets, 8 GHM/land models x 4 CMIP5 GCMs, rcp26/rcp60. Same file structure as the shipped `led` layer, so process_led_drought.py adapts. NOT YET ENUMERATED as of 2026-08-13; the count is from the Lange2020 family block, not a listing."
       - "ISIMIP3b DerivedOutputData/Heinicke2026 `floodedarea` -- ENUMERATED and value-checked 2026-08-13. Complete 3 models x 5 CMIP6 GCMs x 3 SSPs = 45 files, uniform 2015soc/default, ~53 MB. Full measurement: config/isimip_search_catalog.yaml search_results.river_flood; reproduce with scripts/measure_floodedarea_characteristics.py."
     blocker: >-
@@ -174,7 +193,11 @@ families:
     covered_by: []
     materiality_note: >-
       Drives workforce safety, equipment derating and cooling demand. For a data centre it
-      is arguably the primary hazard and we do not carry it.
+      is arguably the primary hazard and we do not carry it. NOTE when this ships: the
+      chosen ISIMIP3b source is a temperature-only index with NO humidity term, so it does
+      not evidence the workforce-safety half of that sentence. Copy must not promise a
+      wet-bulb or heat-stress reading -- see search_results.heatwave.
+      method_difference_VERIFIED in the ISIMIP catalog.
     customer_note: >-
       Not assessed. Extreme heat drives workforce safety limits, equipment derating and cooling demand, and is often the leading hazard for occupied buildings and data centres.
     isimip_candidate:
@@ -183,13 +206,18 @@ families:
       - "ISIMIP2b OutputData/health/TRM-Tsukuba `an-tot-heat-all` -- gridded annual COUNT of heat-attributable excess deaths at a fixed 2005 population, 4 GCMs x rcp26/rcp60, ~113 MB. A different quantity, not an asset-facing exposure layer."
       - "ISIMIP3b InputData bias-adjusted daily `tasmax` (+`hurs`) -- a CONSTRUCTED index, not an aggregation (GUARDRAILS 1-2); ~254 GB for tasmax alone across 5 GCMs x 3 SSPs."
     blocker: >-
-      Enumerated 2026-08-13 (see search_results.heatwave in config/isimip_search_catalog.yaml);
-      both exposure matrices are complete and cheap. Still blocked on: data nature UNVERIFIED
-      for both (`floodedarea` in the same publication family declares units='1' and is binary,
-      so the declared 'area share' is not evidence); n_models = 1 in every option, so the
-      ">=2 impact models" publication mask has no meaning and must be redefined or dropped;
-      and the 2b/3b index tokens differ (HWMId-humidex vs HWMID-NONE) with the physical
-      difference UNVERIFIED. No processor exists.
+      SOURCE CHOSEN and INGESTED 2026-08-13, not yet processed. ISIMIP3b `heatwave`
+      (user decision: prefer the more recent data); 15/15 files sha512-verified into
+      data/raw/heatwave-isimip3b_heatwave_annual/. Value check (scripts/check_heatwave_nature.py)
+      settled three of the four unknowns: the field is BINARY {0,1} in all 15 members so
+      "area share" is a misnomer and the decadal mean is a FREQUENCY; it is a land
+      footprint with no ocean leak; and the finite mask is identical across all 5 GCM
+      members, which makes the missing ">=2 models" rule moot rather than unresolved.
+      What still blocks a processor is NEW and specific to this layer: the flag SATURATES.
+      45.9% of ssp585 2090s cells sit at exactly 1.0, where both slopes go to ~0 and mean
+      "permanently exposed" rather than "no trend", and a percentile-of-score ranking
+      collapses into one tie block holding nearly half the cells. Trend censoring and tie
+      treatment must be decided with the user before anything is written. No processor exists.
 
   heat-stress-chronic:
     name: "Chronic heat / rising mean temperature"
@@ -361,15 +389,52 @@ families:
     name: "Permafrost thaw"
     esrs_class: chronic
     cdp_label: "Permafrost thawing"                  # UNVERIFIED
-    covered_by: []
+    covered_by: [permafrost-3b]
+    coverage_note: >-
+      Thaw depth only, shipped 2026-08-14. The layer reports the share of each model's soil
+      column that is thawed at the end of the thaw season, and the change in that share
+      against the 2020s -- i.e. how much of the frozen column is lost. It says NOTHING about
+      ground ice, thaw settlement or slope, so it is not a ground-stability or subsidence
+      signal, and ISIMIP publishes no variable that would make it one. Published on the 2020s
+      permafrost footprint (18.17 M km2, >=2 of 3 models); a site outside that footprint is
+      OFF_LAYER_MASK, not a low score.
+    scenario_coverage: "ssp126, ssp370, ssp585"
+    materiality_note: >-
+      Covered as of 2026-08-14, but read the boundary. This closes "no permafrost variable is
+      carried"; it does NOT close the question a high-latitude asset owner actually asks,
+      which is whether the ground under a foundation, runway or pipeline will move. That
+      needs ground-ice content and terrain, neither of which exists in ISIMIP. The models
+      also agree on HOW MUCH permafrost is lost far better than on WHERE: over their own
+      domains the 2090s ssp585 loss share is 31/58/32%, but on the cells CLASSIC and LPJmL
+      both call permafrost the Jaccard overlap of their loss maps is 2.8%. Site-level use
+      must carry the CI.
     customer_note: >-
-      Not assessed. Ground stability in permafrost regions is not covered. Relevant only to high-latitude sites.
+      Assessed as thaw depth, not as ground stability. This assessment reports how much of the modelled soil column is thawed at each site and how much of it transitions from frozen to thawed over the century. It does not model ground ice, subsidence or settlement, so it indicates where permafrost is being lost, not how much a structure would move as a result -- for that, site-specific geotechnical investigation is required. Results are reported only for sites that lie within the modelled permafrost region; elsewhere the hazard does not apply and no score is given rather than a low one. The climate models disagree substantially about which specific locations lose permafrost first, so the reported uncertainty range is wide and should be read alongside the central value.
     isimip_candidate:
-      - "ISIMIP3b permafrost sector publishes csoil-total; a thaw-specific variable was not enumerated."
+      # ENUMERATED 2026-08-14. Full matrices in config/isimip_search_catalog.yaml
+      # search_results.permafrost_thaw. Supersedes the previous entry here, which said a
+      # thaw-specific variable "was not enumerated" and was read as though none existed.
+      - "ISIMIP3b `thawdepth` (annual, 2015-2100) -- 3 impact models x {5,5,2} CMIP6 GCMs = 12 members/scenario at the shared 2015soc-from-histsoc/default combination, ssp126/370/585, ~190 MB. LPJmL5-7-10-fire is in the permafrost sector; JULES-ES-VN6P3 and CLASSIC publish it in `biomes` and are NOT in the permafrost sector at all."
+      - "ISIMIP2b `thawdepth` (annual, 2006-2099) -- 4 models x 4/4/4/2 CMIP5 GCMs = 14 members at rcp26 and rcp60 under uniform 2005soc/co2, but only 2 models / 8 members at rcp85. A fifth model (JULES-ES-55, biomes only) adds 4 members per scenario at the cost of soc uniformity: it publishes rcp26soc/rcp60soc and no 2005soc. ~230 MB."
+      - "`tsl` (soil temperature by layer) is published by more models than thawdepth in both rounds, but carries a soil-layer dimension the (decade, lat, lon) contract cannot take without choosing a depth. `soilmoistfroz` and `snd`/`swe` are supporting fields, not hazard variables."
     blocker: >-
-      Not enumerated as a hazard variable. Note the cross-sector duplicate trap recorded in
-      the process-visualize skill: elm-eca csoil-total appears byte-identically under both
-      `biomes` and `permafrost`.
+      RESOLVED 2026-08-14 for the thaw-depth route -- `permafrost-3b` is shipped. The three
+      download-time unknowns were measured and are recorded in
+      config/isimip_search_catalog.yaml search_results.permafrost_thaw: a non-permafrost cell
+      is published AT the model's soil column depth (not NaN, not 0), the column differs per
+      model (CLASSIC 61.4 m, LPJmL 13.0 m, JULES 3.0 m) so raw metres are not poolable, and
+      the annual value is a MAXIMUM per long_name with cell_methods absent in all 36 files.
+      The layer normalises per model and reports the CHANGE; see DATASET-ATTRIBUTES.md.
+      STILL OPEN: (1) the ISIMIP2b route (5 models, 18 members at rcp26/rcp60, only 8 at
+      rcp85) is un-ingested and almost certainly has the same column-ceiling structure -- it
+      would need the same measurement before any cross-round comparison. (2) `tsl` (soil
+      temperature by layer) is published by more models than thawdepth in both rounds but
+      carries a soil-layer dimension the (decade, lat, lon) contract cannot take without
+      choosing a depth; it remains the only route to a ground-temperature framing.
+      SOLIFLUCTION IS A SEPARATE HAZARD AND STILL HAS NO CANDIDATE: no slope, terrain,
+      mass-movement or soil-creep variable exists in any ISIMIP sector, and the missing
+      ingredient is not ISIMIP data at all. It has no family of its own in this file yet --
+      see the AR 11 / CDP 3.1.1 gap review of 2026-08-14.
 
   landslide:
     name: "Landslide and subsidence"
