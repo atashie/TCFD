@@ -25,6 +25,32 @@ layer you are working on; see *Scope discipline* in CLAUDE.md before reading the
 
 # Product 1 — TCFD / CDP layers
 
+## Spatial support: every layer here is a REGIONAL result, not a site result
+
+**Read this before quoting any number at a location.** Every layer in this product is
+published on a **0.5° grid — roughly 55 km at the equator**. The value returned for a site
+is the statistic for the whole cell containing that site. It is not the value at the site,
+and no amount of precision in the number changes that.
+
+For hazards that vary over comparable distances — drought, heatwave, wildfire — that is a
+tolerable approximation and the cell value is a fair description of the site. For hazards
+that turn on **fine terrain it is not**, and `sealevel-2b` is the case in point: coastal
+inundation depends on metres of elevation over hundreds of metres of ground, so a quayside
+and a hillside two kilometres apart sit in the same cell and receive the **same number**.
+
+These layers are a **first-pass screen**. They rank which regions, coastlines and sites
+deserve investigation. They cannot support a site-level conclusion, a design elevation, an
+asset-level financial estimate, or any statement about an individual building or berth —
+those need a site-specific study at metre-scale elevation, and for coastal work that is
+expected in future deliveries rather than from this product.
+
+A layer may declare a `resolution_caveat` attribute; where present it is promoted to a
+**`must_disclose`** caveat and both reports refuse to render without it (added 2026-08-14
+with `sealevel-2b`). Note what a layer's resolution does and does **not** mean: `sealevel-2b`
+reads terrain at 15″ (~460 m) and uses the **full elevation distribution inside each cell**
+rather than a cell mean — the coarseness is in the *published support and the sea-level
+forcing*, not in the terrain that fed it.
+
 ## Identity
 
 The **`layer_id`** is the identifier the delivery workflow uses — `config/layer_registry.yaml`,
@@ -42,6 +68,7 @@ straight.
 | Heatwave (exposure), ISIMIP3b | `heatwave-3b` | `heatwave` | 3b `Zantout2025`, ssp126/370/585 | `process_heatwave_isimip3b.py` (2026-08-14) |
 | Heatwave (health threshold), ISIMIP2b | `heatwave-2b` | `leh` | 2b `Lange2020`, rcp26/60 | `process_leh_isimip2b.py` (2026-08-14) |
 | Permafrost thaw | `permafrost-3b` | `thawfrac` (from `thawdepth`) | 3b `permafrost`+`biomes`, ssp126/370/585 | `process_thawdepth_permafrost.py` (2026-08-14) |
+| Sea level rise (inundation) | `sealevel-2b` | `coastalinundation` | 2b `sealevelrise` x GEBCO_2026, rcp26/60 | `process_coastal_inundation.py` (2026-08-14) |
 | Temperate conifer productivity | `conifer-npp` | `npp-tempnle` | 2b `biomes` CLM45+ORCHIDEE+LPJmL, rcp26/60/85 | `process_tempnle_npp.py` (2026-08-12) |
 
 `conifer-npp` is **not a hazard** — it is an asset-condition layer and is excluded from every
@@ -62,6 +89,7 @@ knob is not a reason for a third to adopt it.
 | `heatwave-3b` | 5 (**1 index model** × 5 GCMs) | `pooled_mean_boolean` | full footprint; min-model rule **void**, not relaxed — `n_models`≡1 and all 5 GCM members share one 67,420-cell mask | none | single-tier, `higher_is_worse` |
 | `heatwave-2b` | 4 (**1 index model** × 4 GCMs) | `pooled_mean_boolean` | **explicit ISIMIP2b `LSM` land mask** — the source zero-fills all 259,200 cells, so `isfinite` is not a footprint; min-model rule void | none | two-tier, `higher_is_worse` |
 | `permafrost-3b` | 12 (3 models × {5,5,2} GCMs) | **`pooled_mean_multimodel`** | 2020s permafrost footprint, **≥2 of 3 models** | none | two-tier, `higher_is_worse` |
+| `sealevel-2b` | 4 (**1 sea-level model** × 4 GCMs) | `pooled_median` | GEBCO `TID==0` land, ocean-connected; **per-cell consensus mask** drops a member deviating >0.5 m from the all-member median | none | **absolute calibration**, `higher_is_worse` — NOT percentile-of-score |
 | `conifer-npp` | — | `pooled_median` | 2% cover presence mask | none | **`higher_is_better`** — percentile is already inverted in the file |
 
 ### Which slope to read
@@ -77,6 +105,7 @@ first scenario. Reproduce with `python scripts/generate_customer_delivery.py --m
 | `drought-2b` | 66,741 | 1.000 | 0.000 | `ols_slope` |
 | `drought-3b` | 61,810 | 1.000 | 0.000 | `ols_slope` |
 | `wildfire` | 64,039 | 0.740 | 0.226 | `ols_slope` |
+| `sealevel-2b` | 10,542 | 1.000 | 0.000 | `ols_slope` |
 | `heatwave-3b` | 67,171 | 1.000 | 0.000 | `ols_slope` — **but see the saturation caveat below; on this layer a near-zero slope is ambiguous** |
 | `permafrost-3b` | 14,455 | 0.152 | 0.844 | `ols_slope` — Sen has *not* collapsed here and is still wrong; see below |
 
@@ -156,7 +185,7 @@ Applied to every member's **annual** map before any pooling, and recorded in the
 | Layer | Stage-1 smoothing |
 |---|---|
 | `cyclone` (`let`) | **5×5 window, w = exp(−d/2.5) in grid cells**, cos(lat)-scaled longitude distance, longitude-wrapped, normalized over non-NaN land neighbours. A declared deviation. |
-| `cropfailure-3b`, `drought-3b`, `drought-2b`, `wildfire`, `conifer-npp` | **none**, each declared with a reason |
+| `cropfailure-3b`, `drought-3b`, `drought-2b`, `wildfire`, `conifer-npp`, `sealevel-2b` | **none**, each declared with a reason |
 
 Only `cyclone` is smoothed: raw `let` is sparse storm *tracks* one cell wide and a 4-member
 ensemble cannot average them into a projected impact field. `L=2.5` leaves **8.1%** of the
@@ -297,6 +326,27 @@ cell with a stable regime scores LOW on the drought layers for the same reason.
 - **`conifer-npp`** — reported **per tile** (per unit conifer-stand area), behind a 2% cover
   presence mask. Rising NPP is partly a CO₂-fertilisation response and that belongs in any
   narrative. Covers temperate needleleaf evergreen stands only.
+- **`sealevel-2b`** — **screening resolution: a regional result, not a site result** (see
+  *Spatial support* above; it carries the must-disclose `resolution_caveat`). Terrain is read
+  at 15″ and the within-cell elevation **distribution** is used, not a cell mean — but sea
+  level is one value per 0.5° cell, connectivity is decided at ~1.85 km, and the published
+  result is one value per cell. It is the only layer built from **two sources**: ISIMIP2b regional sea level
+  applied to GEBCO_2026 terrain, so it is not an ISIMIP output and has no ISIMIP variable
+  name. Three things about it invert a reader's expectation. (1) Its `percentile` is an
+  **absolute calibration** (0 m → 100, the 10 m LECZ bound → 1, between filled by the
+  empirical elevation distribution), not the contract's percentile-of-score, so it is **not
+  on the same axis** as any other layer's percentile and a Climate Score averaging them must
+  say so. (2) Absolute exposure is systematically **LOW**, because GEBCO is a digital
+  *surface* model carrying canopy and buildings — South Florida reads `0.00000` at every
+  decade despite 99.9% of its land lying below 10 m, and correcting the class of bias is
+  measured to *triple* exposure estimates. A zero means "no land below projected sea level in
+  this DEM", never "no coastal risk". (3) **Defences are invisible** at 460 m, so the
+  Netherlands — 33% of its coastal land below projected sea level by the 2090s — reads
+  exactly like an undefended coast. Highest exposure globally is **Arctic coastal tundra**,
+  which is land-area exposure with almost no assets behind it. Two connectivity levels are
+  used deliberately: 2 m decides what can flood, 10 m decides LECZ pool membership, because
+  one level cannot do both — at 10 m the Salton Sink connects through the Colorado delta, and
+  at 2 m coastal plain at 5 m would grade like a mountain.
 - **`drought-3b`** — the 60–80°N signal is largely one model (`jules-w2`); thin coverage
   concentrates in the arid belt.
 
@@ -317,7 +367,7 @@ GEPIC + PEPIC × 4 CMIP5 GCMs, rcp26/60).
 |---|---|
 | `yield-sug-noirr`, `yield-sug-firr` | **WITHDRAWN 2026-08-11, upstream data defect.** ISIMIP2b LPJmL does not simulate cane in the cane belt (São Paulo, UP India, Queensland, Florida all sentinel-zero). Passed the contract and meant nothing. No ISIMIP source supports a scenario-bearing sugarcane layer. Refused by the loader via `blocked:` in the registry. |
 | `burntarea` (2b `biomes`, rcp26/60/85) | **SUPERSEDED 2026-08-10** by the 3b layer. |
-| `csoil-total` | Processed but **not registered** for delivery. `process_csoil_soilcarbon.py` is the OUTPUT-SPEC **reference implementation**. |
+| `csoil-total` | **Processed 2026-07-25, output no longer on disk** (`data/processed/soilcarbon_csoil_annual/` is empty, no raw remains, and no `download_csoil*.py` exists). Never registered. `process_csoil_soilcarbon.py` is still the OUTPUT-SPEC **reference implementation** — its architecture is current, but its *evidence* predates five post-2026-07-25 standards. It is the named candidate for the `soil-degradation` family; the rebuild checklist is that family's `blocker` in `config/hazard_taxonomy.yaml`. |
 | Timber, fisheries, health, … | Various `process_*.py`, not registered. |
 
 ## Source families in the ISIMIP repository

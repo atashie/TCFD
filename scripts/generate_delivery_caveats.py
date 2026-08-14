@@ -336,6 +336,32 @@ def layer_caveats(delivery: Delivery) -> List[dict]:
                 )
             )
 
+        # A layer whose SPATIAL SUPPORT is coarser than the decision it will be used for.
+        # Every layer in this product is 0.5 deg -- roughly 55 km -- so a site value is the
+        # statistic for the whole cell containing the site, never for the site. For most
+        # hazards that is a tolerable approximation because the hazard itself varies over
+        # comparable distances. For hazards driven by fine terrain it is not: coastal
+        # inundation turns on metres of elevation over hundreds of metres of ground, so two
+        # assets in one cell can differ completely while sharing a published number.
+        # MUST-DISCLOSE for the reason `relative_baseline` was promoted on 2026-08-13 -- the
+        # number is correct and the reader's conclusion does not follow from it. Added
+        # 2026-08-14 with `sealevel-2b` (user decision): a coarse-support layer is an
+        # initial screen, and presenting it as a site assessment is the overclaim.
+        note = str(row.get("resolution_caveat") or "").strip()
+        if note and note.lower() != "nan":
+            out.append(
+                _cav(
+                    f"RESOLUTION-{lid.upper()}",
+                    SEVERITY_MUST,
+                    f"layer:{lid}",
+                    f"{lid} resolves a ~55 km region, not a site — screening only",
+                    note,
+                    evidence=f"layers.csv resolution_caveat, "
+                             f"read from {row.get('source_folder', '')}",
+                    affects=[lid],
+                )
+            )
+
         models = str(row.get("impact_models") or "")
         n_models = len([m for m in models.split(",") if m.strip()])
         if n_models == 1:

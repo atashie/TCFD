@@ -50,14 +50,20 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 import yaml
 
-from .spatial_extract import extract_by_point, normalize_longitude
+from .spatial_extract import (
+    extract_by_point,
+    grid_cell_size,
+    normalize_longitude,
+    search_radius_for,
+    sigma_for,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -147,6 +153,14 @@ LAYER_ATTRS_EXPORTED = (
     #: `sparsity_caveat` (65.7% of land at 0); before this both were invisible downstream.
     "saturation_caveat",
     "sparsity_caveat",
+    #: A layer whose SPATIAL SUPPORT is coarser than the decision it will be used for. Every
+    #: layer here is 0.5 deg (~55 km), so a site value is the statistic for the cell
+    #: containing the site, never for the site. Tolerable where the hazard varies over
+    #: comparable distances; NOT tolerable where it turns on fine terrain. Promoted to
+    #: MUST-DISCLOSE in `generate_delivery_caveats.layer_caveats()` -- added 2026-08-14 with
+    #: `sealevel-2b`, where metres of elevation over hundreds of metres of ground decide the
+    #: answer and two assets in one cell can differ completely while sharing a number.
+    "resolution_caveat",
 )
 
 #: Attributes that MUST be identical across a layer's scenarios. If they are not, the layer
@@ -365,22 +379,46 @@ def scenario_path(registry: Registry, spec: LayerSpec, scenario: str) -> Path:
 # Extraction
 # ---------------------------------------------------------------------------------------
 
-def _domain_mask(registry: Registry) -> xr.DataArray:
-    """Union of finite cells across EVERY available registry layer -- the modelled domain.
+class Domain(NamedTuple):
+    """The modelled domain, held as ONE MASK PER LAYER rather than one unioned grid.
+
+    WHY NOT A SINGLE UNIONED ARRAY -- this is not a style choice, it is a correctness fix.
+    The previous implementation built `union = finite_a | finite_b | ...` across every
+    registry layer. That is an xarray binary op, so it ALIGNS ON COORDINATES, and layers on
+    different grids share no coordinate values at all: 0.5 deg centres sit at +/-(k+0.25),
+    0.25 deg centres at +/-(k+0.125). Measured 2026-08-14:
+
+        half | quarter  ->  shape (0, 0), 0 True cells
+
+    So registering a single 0.25 deg layer would have collapsed the domain to EMPTY and
+    returned OUTSIDE_DOMAIN for every customer site in every delivery -- silently, with no
+    exception raised. Keeping the masks separate and OR-ing the per-layer ANSWERS makes the
+    domain grid-agnostic.
+
+    On an all-0.5-deg registry this is arithmetically identical to the union: every mask
+    shares one grid, so "any finite cell within the window of any layer" is the same set
+    either way.
+    """
+
+    masks: List[Tuple[str, xr.DataArray]]
+    consulted: List[str]
+
+
+def _domain_mask(registry: Registry) -> Domain:
+    """Per-layer finite-cell masks across EVERY available registry layer.
 
     Used only to tell OFF_LAYER_MASK ("on land, this layer does not model your site") apart
     from OUTSIDE_DOMAIN ("offshore or off-grid"). Built from the layers rather than a
     downloaded land mask, so a delivery needs no network and stays reproducible.
 
-    THE UNION IS OVER THE WHOLE REGISTRY, NOT OVER THE DELIVERY'S LAYERS. Scoping it to the
-    delivery makes the meaning of a status depend on what else the customer happened to
-    order: a conifer-only delivery for an Amazon site would report OUTSIDE_DOMAIN -- "your
-    site is offshore" -- when the truth is that no conifer stand is modelled on perfectly
-    good land. Layers that are registered but absent from disk are skipped, so a delivery
-    still runs on a partial data directory; the layers actually consulted are recorded in
-    the manifest.
+    THE DOMAIN IS THE WHOLE REGISTRY, NOT THE DELIVERY'S LAYERS. Scoping it to the delivery
+    makes the meaning of a status depend on what else the customer happened to order: a
+    conifer-only delivery for an Amazon site would report OUTSIDE_DOMAIN -- "your site is
+    offshore" -- when the truth is that no conifer stand is modelled on perfectly good land.
+    Layers registered but absent from disk are skipped, so a delivery still runs on a
+    partial data directory; the layers actually consulted are recorded in the manifest.
     """
-    union = None
+    masks: List[Tuple[str, xr.DataArray]] = []
     consulted: List[str] = []
     for layer_id, spec in sorted(registry.layers.items()):
         try:
@@ -388,32 +426,82 @@ def _domain_mask(registry: Registry) -> xr.DataArray:
         except DeliveryError:
             continue  # not on disk / withdrawn -- it just does not widen the domain
         with xr.open_dataset(scenario_path(registry, spec, scenario)) as ds:
-            finite = np.isfinite(ds["median"]).any(dim="decade")
-            union = finite if union is None else (union | finite)
+            finite = np.isfinite(ds["median"]).any(dim="decade").compute()
+        masks.append((layer_id, finite))
         consulted.append(layer_id)
-    if union is None:
+    if not masks:
         raise DeliveryError(
             "No registry layer is available on disk, so no modelled domain can be built."
         )
-    union = union.compute()
-    union.attrs["consulted_layers"] = ";".join(consulted)
-    return union
+    return Domain(masks=masks, consulted=consulted)
 
 
-def _point_in_domain(domain: xr.DataArray, lat: float, lon: float) -> bool:
+def _extraction_geometry_sentence(manifest: dict) -> str:
+    """Customer-facing description of the extraction geometry.
+
+    A single "0.5 deg grid" sentence was true of every delivery until 2026-08-14 and is
+    false the moment a delivery carries layers on different grids. When the grids agree it
+    reads exactly as before; when they do not it names each layer rather than picking one.
+    """
+    ex = manifest["extraction"]
+    if ex.get("sigma_degrees") is not None:
+        return (f"sigma = {ex['sigma_degrees']} deg, search radius "
+                f"{ex['search_radius_degrees']} deg on a {ex['grid_degrees']} deg grid")
+    parts = [
+        f"{layer_id}: sigma {g['sigma_degrees']} deg, radius {g['search_radius_degrees']} "
+        f"deg on a {g['cell_size_degrees']} deg grid"
+        for layer_id, g in sorted(ex.get("per_layer_geometry", {}).items())
+    ]
+    return ("geometry follows each layer's own grid -- " + "; ".join(parts))
+
+
+def _layer_geometry(domain: Domain) -> Dict[str, Dict[str, float]]:
+    """Cell size and derived extraction geometry per registry layer, read from its grid."""
+    out: Dict[str, Dict[str, float]] = {}
+    for layer_id, mask in domain.masks:
+        cell = grid_cell_size(mask)
+        out[layer_id] = {
+            "cell_size_degrees": round(cell, 6),
+            "search_radius_degrees": round(search_radius_for(mask), 6),
+            "sigma_degrees": round(sigma_for(mask), 6),
+        }
+    return out
+
+
+def _uniform_or_none(geometry: Dict[str, Dict[str, float]], key: str) -> Optional[float]:
+    """The shared value of `key` across layers, or None when they disagree.
+
+    None is the honest answer for a mixed-resolution delivery: a single "search radius =
+    0.5 deg" line in a manifest or a customer README would be false for half the layers.
+    """
+    values = {round(g[key], 6) for g in geometry.values()}
+    return values.pop() if len(values) == 1 else None
+
+
+def _point_in_domain(domain: Domain, lat: float, lon: float) -> bool:
+    """True if ANY registry layer models a cell within its own search window of the site.
+
+    The window is a multiple of each layer's OWN cell size, so a finer layer searches a
+    proportionally smaller degree window and does not silently widen the domain. At 0.5 deg
+    that multiple reproduces the historical constant exactly (EXTRACT_SEARCH_RADIUS = 0.5 =
+    one 0.5 deg cell), so the answer for every currently shipped layer is unchanged.
+    """
     lon = normalize_longitude(lon)
-    sub = domain.sel(
-        lat=slice(lat - EXTRACT_SEARCH_RADIUS, lat + EXTRACT_SEARCH_RADIUS),
-        lon=slice(lon - EXTRACT_SEARCH_RADIUS, lon + EXTRACT_SEARCH_RADIUS),
-    )
-    if sub.size == 0:
-        # lat is stored descending on some layers; fall back to a boolean selection.
-        sub = domain.where(
-            (np.abs(domain.lat - lat) <= EXTRACT_SEARCH_RADIUS)
-            & (np.abs(domain.lon - lon) <= EXTRACT_SEARCH_RADIUS),
-            drop=True,
+    for _layer_id, mask in domain.masks:
+        radius = search_radius_for(mask)
+        sub = mask.sel(
+            lat=slice(lat - radius, lat + radius),
+            lon=slice(lon - radius, lon + radius),
         )
-    return bool(np.asarray(sub).any())
+        if sub.size == 0:
+            # lat is stored descending on some layers; fall back to boolean selection.
+            sub = mask.where(
+                (np.abs(mask.lat - lat) <= radius) & (np.abs(mask.lon - lon) <= radius),
+                drop=True,
+            )
+        if bool(np.asarray(sub).any()):
+            return True
+    return False
 
 
 def _slopes_agree(ols: float, sen: float) -> Optional[bool]:
@@ -471,8 +559,12 @@ def extract_layer_for_points(
                     lat=lat,
                     lon=normalize_longitude(lon),
                     variables=list(CONTRACT_METRICS),
-                    search_radius=EXTRACT_SEARCH_RADIUS,
-                    sigma=EXTRACT_SIGMA,
+                    # Per-LAYER geometry, from that layer's own grid. Resolves to the
+                    # historical 0.5 / 0.25 on every 0.5 deg layer; a finer layer gets a
+                    # proportionally smaller window instead of silently blending cells
+                    # ~55 km away while claiming ~28 km resolution.
+                    search_radius=search_radius_for(ds),
+                    sigma=sigma_for(ds),
                 )
                 for decade in [int(d) for d in ds.decade.values]:
                     row = {
@@ -1232,11 +1324,18 @@ def run_delivery(
         "extraction": {
             "mode": "point",
             "weighting": "gaussian distance-weighted over cell centres",
-            "sigma_degrees": EXTRACT_SIGMA,
-            "search_radius_degrees": EXTRACT_SEARCH_RADIUS,
+            # Geometry is PER LAYER because layers may sit on different grids. The scalars
+            # below stay populated whenever every delivered layer shares one cell size --
+            # which is every delivery of only 0.5 deg layers -- and are null otherwise, so
+            # nothing can quote a single radius for a mixed-resolution delivery.
+            "sigma_degrees": _uniform_or_none(_layer_geometry(domain), "sigma_degrees"),
+            "search_radius_degrees": _uniform_or_none(
+                _layer_geometry(domain), "search_radius_degrees"),
+            "grid_degrees": _uniform_or_none(_layer_geometry(domain), "cell_size_degrees"),
+            "per_layer_geometry": _layer_geometry(domain),
             "nan_handling": "NaN cells excluded, remaining weights renormalized",
             "longitude_wrapping": "search window wraps the antimeridian",
-            "domain_mask_layers": domain.attrs.get("consulted_layers", ""),
+            "domain_mask_layers": ";".join(domain.consulted),
             "percentile_inversion_applied_here": False,
             "percentile_note": (
                 "Percentiles are delivered exactly as stored. Layers declaring "
@@ -1423,8 +1522,7 @@ the one exception, by necessity — see above.
 ## Extraction
 
 Point extraction, Gaussian distance weighting over grid-cell centres
-(sigma = {manifest['extraction']['sigma_degrees']} deg, search radius
-{manifest['extraction']['search_radius_degrees']} deg on a 0.5 deg grid). The search window
+({_extraction_geometry_sentence(manifest)}). The search window
 wraps the antimeridian. NaN cells are excluded and the remaining weights renormalized, so a
 coastal site can draw on its land neighbours.
 

@@ -37,10 +37,15 @@ ever delivered, which is exactly the failure this design removes.
 
 ## Resolution: what "at this site" actually means
 
-- The model grid is **0.5°** (~55 km at the equator).
-- Extraction blends the **four surrounding cell centres** with a Gaussian weighting —
-  20,000 random sites, 100% resolve to a 4-cell blend. Footprint ≈ **1° × 1°, 111 km
-  north–south**.
+- The model grid is **0.5°** (~55 km at the equator) **for most layers**. Resolution is a
+  per-layer property, not a product-wide constant — the CaMa-Flood inundation layers are
+  **0.25°** (~28 km). `manifest.json` records the grid and the extraction geometry for every
+  layer in the delivery, and the delivered README states them per layer whenever they differ.
+- Extraction blends the **four surrounding cell centres** with a Gaussian weighting, where
+  the search window scales with that layer's own cell size — 20,000 random sites, 100%
+  resolve to a 4-cell blend **on the 0.5° grid**, footprint ≈ **1° × 1°, 111 km
+  north–south**. A 0.25° layer blends four cells over a proportionally smaller footprint;
+  the figure above is measured on 0.5° and should not be quoted for finer layers.
 - `cyclone` is *additionally* smoothed at processing time, so its two stages compound. Its
   values are the least site-specific numbers in any delivery.
 - Moving a site **0.25°** changed 2090s burnt-area values at the example portfolio's own

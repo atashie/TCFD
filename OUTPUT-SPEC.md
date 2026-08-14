@@ -10,9 +10,35 @@ Supersedes the two divergent families that grew up in this codebase (see
 ## File
 
 `{variable}_{scenario}_processed.nc` — **one file per scenario**, dims
-`(decade, lat, lon)` = `(9, 360, 720)` at 0.5°. Decades `2010…2090` (layers whose source
-starts in 2015 begin at the `2020` baseline instead). All scenarios of a layer live in
-**one folder**; never split folders per scenario.
+`(decade, lat, lon)`. Decades `2010…2090` (layers whose source starts in 2015 begin at the
+`2020` baseline instead). All scenarios of a layer live in **one folder**; never split
+folders per scenario.
+
+### Grid
+
+**0.5° (`360 × 720`) is the default and preferred grid**, and it is what every layer
+shipped before 2026-08-14 uses. It is not the only permitted one: where a source publishes
+genuinely finer data we use it rather than discarding resolution we paid for. What the
+contract requires of *any* layer is that the grid be
+
+- **regular** — uniform lat and lon spacing, square cells;
+- **global** — `nlat × cell = 180°`, `nlon × cell = 360°`;
+- **descending in latitude**, the product convention;
+- **identical across every scenario** of the layer, since the shared baseline and the
+  percentile compare panels cell-by-cell; and
+- **declared**, via the `spatial_resolution_degrees` global attribute, which must match the
+  coordinates.
+
+`scripts/test_shared_baseline.py` enforces all six. Before 2026-08-14 it asserted nothing
+about the grid at all, and the first 0.25° layer passed every check while contradicting this
+document — a silent mismatch, which is worse than a loud one.
+
+A non-default grid must say **why** in its processor docstring, and it changes behaviour
+downstream: extraction geometry, the delivery domain and map payloads all follow each
+layer's own cell size (`scripts/utils/spatial_extract.py`, `grid_cell_size()`). Never union
+masks across layers on different grids — they share no coordinate values, so xarray's
+alignment silently yields an empty result. `scripts/test_extraction_resolution.py` pins both
+that trap and the guarantee that the 0.5° path is bit-identical.
 
 ## The sample
 

@@ -85,6 +85,49 @@ def main():
     check("percentile_direction declared", "percentile_direction" in d0.attrs,
           d0.attrs.get("percentile_direction", ""))
 
+    # ---- Grid ------------------------------------------------------------------------ #
+    # 0.5 deg is the DEFAULT and preferred grid, not the only permitted one. What is
+    # required is that the grid be REGULAR, GLOBAL and IDENTICAL ACROSS SCENARIOS, and that
+    # the file say what it is. Until 2026-08-14 nothing here asserted anything about the
+    # grid at all, so the first 0.25 deg layer passed every check while contradicting
+    # OUTPUT-SPEC.md -- a silent mismatch is worse than a loud one.
+    print("\nGrid")
+    lat0, lon0 = d0["lat"].values, d0["lon"].values
+    dlat, dlon = np.abs(np.diff(lat0)), np.abs(np.diff(lon0))
+    regular = (dlat.size and dlon.size
+               and np.allclose(dlat, dlat[0], rtol=0, atol=1e-6)
+               and np.allclose(dlon, dlon[0], rtol=0, atol=1e-6))
+    check("lat/lon spacing is regular", bool(regular),
+          "" if regular else f"lat {dlat.min():.6f}-{dlat.max():.6f}, "
+                             f"lon {dlon.min():.6f}-{dlon.max():.6f}")
+    cell = float(dlat[0]) if regular else float("nan")
+    square = regular and abs(cell - float(dlon[0])) <= 1e-6
+    check("cells are square", bool(square),
+          f"{cell:.4f} deg" if square else f"lat {cell:.6f} vs lon {float(dlon[0]):.6f}")
+    check("grid covers the globe",
+          bool(regular) and abs(lat0.size * cell - 180.0) < 1e-3
+          and abs(lon0.size * float(dlon[0]) - 360.0) < 1e-3,
+          f"{lat0.size} x {lon0.size}")
+    check("latitude is descending (product convention)",
+          lat0.size > 1 and lat0[0] > lat0[-1],
+          f"{lat0[0]:.3f} -> {lat0[-1]:.3f}")
+    # Every scenario must sit on the SAME grid: the shared-baseline and percentile
+    # machinery compares panels cell-by-cell across scenarios.
+    same_grid = all(np.array_equal(ds[s]["lat"].values, lat0)
+                    and np.array_equal(ds[s]["lon"].values, lon0) for s in scen)
+    check("all scenarios share one grid", same_grid)
+    declared = d0.attrs.get("spatial_resolution_degrees")
+    if declared is None:
+        check("spatial_resolution_degrees declared", False,
+              f"<absent> -- measured {cell:.4f} deg; add it to the processor's attrs")
+    else:
+        check("spatial_resolution_degrees matches the coordinates",
+              abs(float(declared) - cell) <= 1e-6, f"declared {declared}, measured {cell:.4f}")
+    if regular and abs(cell - 0.5) > 1e-6:
+        print(f"  [INFO] non-default grid: {cell:.4f} deg ({lat0.size}x{lon0.size}). "
+              "0.5 deg is the product default; this layer must declare why in its "
+              "processor docstring, and delivery geometry follows its own grid.")
+
     # The baseline is NOT always decade index 0. Layers sourced from ISIMIP3b start at
     # 2020 (baseline == index 0), but ISIMIP2b layers such as `let`/`led` carry a full
     # 2010s panel first. Locate it from the declared attribute; assuming index 0 reads

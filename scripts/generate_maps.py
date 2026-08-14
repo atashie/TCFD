@@ -125,6 +125,41 @@ COORD_DECIMALS = 2
 VALUE_SIGFIGS = 4
 MEMBERS_GRID_STRIDE = 2
 
+#: 0.5 deg is the default grid and the numbers above are tuned to it EXACTLY -- a layer on
+#: that grid must keep producing byte-identical pages, so it takes the constants unchanged.
+#: A finer grid cannot: 2 dp resolves 0.5 deg centres exactly (x.25 / x.75) but only
+#: approximates 0.25 deg centres (x.125 -> x.13), and at 150 arcsec adjacent centres would
+#: collide into one marker. Decimals therefore scale with cell size, and the stride grows so
+#: a denser grid does not multiply the marker count the payload budget was set against.
+DEFAULT_CELL_SIZE = 0.5
+
+
+def payload_settings(cell_size: float) -> dict:
+    """Coordinate decimals and Members-tab stride for a grid of this cell size.
+
+    At 0.5 deg this returns exactly the historical constants; the 0.5 deg path is pinned by
+    an equality test rather than by rounding luck.
+    """
+    if abs(cell_size - DEFAULT_CELL_SIZE) < 1e-6:
+        return {"coord_decimals": COORD_DECIMALS, "stride": MEMBERS_GRID_STRIDE}
+    # Enough decimals that adjacent cell centres remain DISTINCT after rounding. This is a
+    # legibility bound, not an exactness one: at 0.25 deg it yields 2 dp, which keeps
+    # x.125 / x.375 / x.625 / x.875 separate while displacing a marker by up to 0.005 deg
+    # (2% of a cell) -- invisible at map scale, and the values themselves are untouched.
+    decimals = max(COORD_DECIMALS, int(np.ceil(-np.log10(cell_size))) + 1)
+    # Keep the Members tab near the marker count the 0.5 deg budget was measured against.
+    stride = max(1, int(round(MEMBERS_GRID_STRIDE * DEFAULT_CELL_SIZE / cell_size)))
+    return {"coord_decimals": decimals, "stride": stride}
+
+
+def grid_cell_size_of(ds) -> float:
+    """Cell size from a dataset's own lat coordinate; DEFAULT_CELL_SIZE if unavailable."""
+    try:
+        lat = np.asarray(ds["lat"].values, dtype=float)
+    except (KeyError, TypeError):
+        return DEFAULT_CELL_SIZE
+    return float(np.abs(np.diff(lat)).mean()) if lat.size > 1 else DEFAULT_CELL_SIZE
+
 # Non-projection scenarios to exclude from report generation
 # These are used to enhance baseline robustness but not shown as separate projections
 EXCLUDED_SCENARIOS = {"picontrol", "historical"}

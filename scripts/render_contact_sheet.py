@@ -173,6 +173,23 @@ def main():
         panels = [(var, da.values)]
         title = Path(args.src).name
 
+    # ORIENT NORTH-UP BEFORE RENDERING. Array row 0 is whatever the file happens to store
+    # first, and ISIMIP files disagree: the sea-level and GEBCO grids ascend (row 0 = -90),
+    # the ISIMIP2b land mask descends. Drawing rows top-down without checking renders an
+    # ascending file upside down -- which is worse here than anywhere else, because this
+    # sheet exists to catch hemisphere flips and would instead manufacture one. Caught
+    # 2026-08-14 on `sealevel-2b`: its dense Arctic coastline (7,141 cells at 60-90N,
+    # against 0 in Antarctica) drew as a bright band along the BOTTOM edge and read as
+    # Antarctic contamination.
+    lat_name = next((c for c in ("lat", "latitude", "y") if c in ds.coords), None)
+    flip = False
+    if lat_name is not None:
+        lv = np.asarray(ds[lat_name].values, float)
+        flip = lv.size > 1 and lv[1] > lv[0]
+    if flip:
+        panels = [(n, np.asarray(v)[::-1, :]) for n, v in panels]
+        print("  latitude ascends in this file -> flipped to render north-up")
+
     grids = [block_mean(np.asarray(v, float), args.stride) for _, v in panels]
     allv = np.concatenate([g[np.isfinite(g)] for g in grids])
     if allv.size == 0:

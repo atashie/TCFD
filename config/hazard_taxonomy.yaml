@@ -303,6 +303,125 @@ families:
       no trends) -- see CLAUDE.md. It cannot be joined to a TCFD delivery without a
       deliberate bridge. Do not silently substitute it.
 
+  soil-degradation:
+    name: "Soil degradation"
+    esrs_class: chronic
+    cdp_label: "Soil degradation"                    # UNVERIFIED
+    covered_by: []
+    definition_note: >-
+      INTERNAL. NO FRAMEWORK DEFINES THIS HAZARD, which is why this field exists and why the
+      customer_note below is narrower than the family name. Read 2026-08-14: ESRS E1 AR 11
+      NAMES soil degradation and defines nothing -- it is a bare classification table
+      attributed to Commission delegated regulation (EU) 2021/2139, whose Appendix A *is*
+      that table. The citation chain is circular. Four definitions circulate, none written
+      for a climate-hazard purpose:
+        * ESRS Annex II glossary defines LAND degradation on the IPBES framing ("the many
+          processes that drive the decline or loss in biodiversity, ecosystem functions or
+          their benefits to people"). The causality is INVERTED -- that is the E4 world, the
+          undertaking degrading nature, not climate degrading the undertaking's soil.
+          UNVERIFIED: read from a search summary, not from Annex II itself (PDF, and this
+          machine has no PDF text extractor).
+        * IPCC SRCCL: "a negative trend in land condition, caused by direct or indirect
+          human-induced processes including anthropogenic climate change, expressed as
+          long-term reduction or loss of at least one of: biological productivity, ecological
+          integrity, or value to humans." Closest to a hazard framing -- it names climate as a
+          driver -- but attaches no measurable quantity.
+        * UNCCD Art. 1: restricted to "arid, semi-arid and dry sub-humid areas". Geographically
+          useless for a temperate portfolio.
+        * Directive (EU) 2025/2360 (Soil Monitoring Law, in force 2025-12-16, Member State
+          transposition due ~2028-12) defines soil health, soil resilience and soil descriptor
+          but NOT "soil degradation" -- it operates through descriptors and trigger values.
+          Its recital 4 is the only EU enumeration of what the term covers, verbatim: physical
+          degradation (soil sealing and artificialisation, soil erosion, soil compaction,
+          reduction of soil water retention and infiltration) and chemical or biological
+          degradation (excess and depletion of nutrients, acidification, salinisation, soil
+          contamination, loss of soil organic carbon, soil biodiversity and soil biological
+          activity).
+      OF THOSE TEN PROCESSES A CLIMATE MODEL CAN DRIVE AT MOST FIVE, and the one that dominates
+      EU soil policy -- sealing -- is pure land use. Sealing, compaction, contamination and
+      nutrient management are not climate-driven at all. Any layer shipped here therefore
+      addresses a SUBSET and must name which subset, or the family name overclaims by a factor
+      of two. AR 11 also lists soil EROSION and COASTAL erosion as separate chronic hazards;
+      those sit in the `soil-coastal-erosion` family, and solifluction has no family at all.
+    materiality_note: >-
+      Material where the soil IS the asset or its productive base -- agricultural land, timber
+      land, soil-carbon and land-restoration projects, and any holding whose valuation rests on
+      land condition. For a warehouse or an office it is not material and should not be routed.
+      Note the framing question this family has not resolved: soil organic carbon stock is
+      `higher_is_better` with an inverted percentile, structurally identical to `conifer-npp`,
+      which this file classifies under `non_hazard_layers` as ASSET CONDITION rather than a
+      hazard. Declining soil carbon on a farm reads more like the asset's condition than a
+      hazard acting on it. Whether the eventual layer files as a hazard family here or as an
+      asset-condition layer under non_hazard_layers is an OPEN USER DECISION, and it changes
+      what every coverage statement says.
+    customer_note: >-
+      Not assessed. Soil degradation covers the loss of the soil's capacity to function -- through erosion, compaction, sealing, salinisation, contamination, nutrient imbalance and the loss of soil organic carbon -- and is material wherever land condition underpins the value of the asset. Most of those processes are driven by land use and management rather than by climate, so a climate assessment can speak to only part of the question, and none of that part is reported here yet.
+    candidates_enumerated_on: >-
+      2026-07-25 -- files.isimip.org biomes sector enumerated directly, because the API listing
+      was INCOMPLETE for the carbon variables; see config/isimip_search_catalog.yaml
+      search_results.soil_carbon (GUARDRAILS §8). THIS PREDATES THE 2026-08-14 SECTOR-TRAP
+      FINDING and is therefore incomplete in the same way the permafrost enumeration was:
+      csoil-total is published under more than one sector (the catalog records elm-eca
+      csoil-total appearing in biomes AND permafrost), and `thawdepth`'s ensemble went from
+      1 model / 5 members to 3 models / 12 members once every sector was listed. The
+      "3 models, 12 members" count below is UNVERIFIED AS A MAXIMUM and must be re-listed
+      across sectors before any rebuild.
+    isimip_candidate:
+      - "ISIMIP3b OutputData/biomes `csoil-total` (soil organic carbon stock, annual 2015-2100) -- 3 models x {2,5,5} CMIP6 GCMs = 12 members/scenario, ssp126/370/585, raw kg C m-2. Value-checked 2026-07-25: per-model 2020s medians 5.76 (classic) / 10.28 (jules-es-vn6p3) / 7.67 (mc2-usfs), same unit, exact-zero shares 4.48/0.00/0.00%. THE ENTRY-LEVEL INDICATOR: more soil carbon = healthier soil, less = degrading soil. Addresses exactly ONE of recital 4's ten processes -- loss of soil organic carbon."
+      - "ELM-ECA and VISIT also publish csoil in ISIMIP3b but MONTHLY only; excluded from the annual layer 2026-07-25. Re-check whether an annual aggregation is defensible before treating 3 models as the ceiling."
+      - "ISIMIP2b biomes `csoil` -- ~8 annual models (lpj-guess, lpjml, orchidee, orchidee-dgvm, caraib, dlem, jules-es-55, mc2-usfs) plus visit monthly, rcp26/60/85. A DEEPER ensemble on older scenarios; entirely un-ingested."
+      - "NO ISIMIP VARIABLE EXISTS for soil sealing, compaction, contamination, nutrient balance, acidification or salinisation. Nine of recital 4's ten processes have no candidate in this repository and are not closable from it. Soil erosion would be a CONSTRUCTED index from rainfall erosivity (SPARCCLE2025 `pr-extreme-99-9` / `pr-annual-max`), which is GUARDRAILS §1-2 territory, and belongs to the `soil-coastal-erosion` family in any case."
+    blocker: >-
+      A PROCESSOR EXISTS AND ITS OUTPUT DOES NOT. `scripts/process_csoil_soilcarbon.py` is the
+      OUTPUT-SPEC reference implementation and ran 2026-07-25, but as of 2026-08-14
+      data/processed/soilcarbon_csoil_annual/ is EMPTY, no raw csoil remains under data/, and
+      there is no download_csoil*.py -- every other shipped layer has one. The catalog's
+      `processed:` field still names the three files; it is stale. Nothing can be registered,
+      contract-tested or delivered until the layer is re-downloaded and re-run, and
+      `covered_by` STAYS EMPTY until it is (the permafrost entry is the counter-example: it
+      declares coverage while no asset type routes to it, so a report lists the hazard as
+      assessed and delivers nothing for it).
+      THE PROCESSOR ITSELF ALSO PREDATES FIVE STANDARDS ADOPTED AFTER 2026-07-25, all of which
+      apply on rebuild:
+        (1) GUARDRAILS §12 reference-site check -- the docstring records per-model medians but
+            NO named locations. Added 2026-08-11 after the sugarcane withdrawal. Soil carbon
+            has obvious references: West Siberian and Hudson Bay peatlands, Congo peat, Irish
+            and Scottish blanket bog high; Sahara, Atacama, Arabian desert low.
+        (2) Which slope to read is INFERRED, not measured. The docstring argues sen_slope from
+            the 68.7x level-offset ratio (OUTPUT-SPEC cites the same number). The standard is
+            now `generate_customer_delivery.py --measure-slopes` on ACTIVE cells; csoil is
+            absent from that table in DATASET-ATTRIBUTES.md.
+        (3) The FOURTH decadal-statistic branch (`pooled_mean_multimodel`, added 2026-08-14)
+            was never tested against. csoil takes `pooled_median` on a 3-model ensemble with
+            per-model medians 5.76 / 10.28 / 7.67 and UNEVEN GCM counts (2 / 5 / 5) -- less
+            separated than permafrost's 0.035 / 0.046 / 0.951, so it probably is unimodal, but
+            that must be MEASURED (per-model distributions plus discontinuity in the decade
+            series), not assumed.
+        (4) Smoothing is declined on an ensemble-depth argument alone ("12 members is thick
+            enough"). `cropfailure-3b` showed depth alone does not settle it; measure roughness
+            and, if roughness and depth disagree, run the split-half test STRATIFIED BY MODEL
+            (permafrost, 2026-08-14).
+        (5) The `co2_treatment` attribute is NOT on `LAYER_ATTRS_EXPORTED` in
+            scripts/utils/delivery.py, which is a CLOSED allowlist, so it would be silently
+            dropped before reaching layers.csv, the caveat generator or either report. That
+            attribute carries this layer's single most consequential limitation -- jules-es-vn6p3
+            publishes only the fixed-2015-CO2 run, so a third of the ensemble has a muted
+            soil-carbon trend. Re-express it as `interpretation_caveat` (already on the
+            allowlist) or extend the allowlist, in the same change as the rebuild.
+      WHAT IS ALREADY CURRENT, so nobody re-derives it: the processor calls the shared
+      `decadal_stats.pooled_decadal_stat`, detects boolean-ness from VALUES via
+      `is_boolean_field` (§9), pools a shared 2020s baseline bit-identically across scenarios,
+      asserts baseline slopes are NaN and that no slope is finite where the median is NaN (the
+      ocean-leak guardrail), applies the x10 per-decade scaling exactly once and declares
+      `slope_units: kg m-2 decade-1`, floors the CI at 0 for a non-negative stock, and sets
+      `percentile_direction: higher_is_better` so a low stock earns a HIGH risk percentile.
+      BEFORE THE FIRST DELIVERY QUOTES IT, rewrite customer_note into the "assessed as X, not
+      as Y" form the crop-failure and permafrost entries use, and name the boundary explicitly:
+      soil ORGANIC CARBON is one of ten degradation processes, land use is held FIXED
+      (2015soc-from-histsoc / nat) so the layer cannot see management-driven loss by
+      construction, and the layer must therefore be named soil organic carbon, not soil
+      degradation.
+
   # -- NOT COVERED, NO CANDIDATE IN SCOPE ------------------------------------------------
 
   flood-coastal:
@@ -311,11 +430,27 @@ families:
     cdp_label: "Flood (coastal)"                     # UNVERIFIED
     covered_by: []
     customer_note: >-
-      Not assessed. Coastal flooding and storm surge are not covered by any layer in this assessment, including the tropical cyclone layer, which measures wind exposure only.
-    isimip_candidate: []
+      Not assessed. Storm surge, tides and wave action are not covered by any layer in this assessment. The tropical cyclone layer measures wind exposure only, and the sea level layer measures permanent inundation from mean sea level, which is a different question -- most coastal flood damage occurs at extreme water levels well above mean sea level. A site can show low permanent inundation and still face severe coastal flooding.
+    materiality_note: >-
+      STILL UNCOVERED, and the gap narrowed rather than closed on 2026-08-14. `sealevel-2b`
+      answers the chronic half (permanent inundation) and is filed under sea-level-rise;
+      the acute half -- surge, tide, wave setup -- has no layer. Do not let the presence of
+      a coastal-looking layer be read as coverage here.
+    candidates_enumerated_on: >-
+      2026-08-14 -- listed OutputData/ for all four rounds (2a 11 sectors, 2b 13, 3a 9,
+      3b 9: no coastal or surge sector in any), every DerivedOutputData publication
+      (Lange2020 15 model dirs, Zimmer2023 9, Heinicke2026 3, ISIMIP2a Zimmer2023 only),
+      ISIMIP3a/SecondaryInputData/climate/tropical_cyclones_flooding/ to file level, and
+      ISIMIP3b/SecondaryInputData/climate/ (no tropical_cyclones_flooding branch).
+    isimip_candidate:
+      - "ISIMIP3a SecondaryInputData/climate/tropical_cyclones_flooding/1mslr/global/storm/historical/GeoClaw -- `fldarea` (binary flooded-cell mask per storm) and `flddph` (depth), each at tidesmax/tidesmean/tidesmin, 30 arcsec, 456 files, ~113 GB. Enumerated 2026-08-14. HISTORICAL ONLY (1950-2025) and `1mslr` is a fixed +1 m sensitivity, not a scenario, so it cannot produce a decadal projection panel. VERIFIED ABSENT in ISIMIP3b on 2026-08-14 -- listed ISIMIP3b/SecondaryInputData/climate/ = atmosphere_composition, atmosphere, ocean."
+      - "ISIMIP3b DerivedInputData/TipESM2025/MIT `yearlymaxwind` -- 5 arcmin, 100 stochastic realizations/year, knots, ssp126/245/370/585, H08-wind only. The TC wind field, not surge; a surge layer from it is a CONSTRUCTED MODEL under GUARDRAILS 1-2, not an aggregation."
     blocker: >-
-      Not enumerated in this repository's ISIMIP catalog. Requires surge and sea-level
-      components the current search catalog does not record. UNVERIFIED as absent.
+      No coastal-flood impact model exists anywhere in ISIMIP. Verified 2026-08-14 by
+      listing OutputData/ for all four rounds (2a 11 sectors, 2b 13, 3a 9, 3b 9 -- no
+      coastal or surge sector in any) and every DerivedOutputData publication (Lange2020 15
+      model dirs, Zimmer2023 9, Heinicke2026 3, 2a Zimmer2023 only). The only true
+      coastal-flood product is the ISIMIP3a GeoClaw set above, which is historical-only.
 
   flood-pluvial:
     name: "Pluvial (surface water) flood"
@@ -333,11 +468,39 @@ families:
     name: "Sea level rise"
     esrs_class: chronic
     cdp_label: "Sea level rise"                      # UNVERIFIED
-    covered_by: []
+    covered_by: [sealevel-2b]
+    coverage_note: >-
+      SCREENING RESOLUTION: published on a 0.5 deg (~55 km) grid, so a site's value is its
+      whole region's value and the layer ranks coastlines rather than assessing sites.
+      Permanent-inundation potential: the share of each site's coastal land lying at or
+      below projected mean sea level, from ISIMIP2b regional sea-level projections applied
+      to GEBCO terrain. Shipped 2026-08-14. It is an ELEVATION exposure measure, not a
+      flood-frequency measure -- no tide, surge or wave setup -- and it does not cover
+      coastal erosion, which remains unassessed under soil-coastal-erosion.
+    materiality_note: >-
+      Covered as of 2026-08-14, but read the boundary. This closes "coastal sites carry no
+      permanent-inundation signal"; it does NOT close flood-coastal, which needs surge and
+      tide. The layer's absolute exposure is systematically LOW because GEBCO is a surface
+      model -- South Florida reads 0.00000 at every decade despite 99.9% of its land lying
+      below 10 m -- so a zero must never be relayed as "no coastal risk". Coastal defences
+      are invisible at 460 m, so the Netherlands reads as undefended.
     customer_note: >-
-      Not assessed. No sea-level component is included, so coastal sites carry no permanent-inundation or erosion signal.
-    isimip_candidate: []
-    blocker: "Not enumerated in this repository's ISIMIP catalog. UNVERIFIED as absent."
+      Assessed at REGIONAL SCREENING RESOLUTION, and as permanent inundation rather than flooding. Results are produced on a grid of roughly 55 km, so the figure reported for a site describes the wider coastal region containing it, not the site itself. Coastal inundation depends on differences of a few metres in ground elevation over distances of a few hundred metres, so two locations in the same region can face very different exposure while sharing the same reported number. Use these results to identify which coastlines and which sites warrant closer study; a site-specific assessment using high-resolution elevation data is required before any decision about an individual building, berth or design level. This assessment reports how much of the coastal land at each site lies at or below projected mean sea level, and how that share changes by decade. It does NOT model storm surge, tides or wave action, which is where most coastal flood damage arises, and it does not represent sea walls, dikes or other defences -- a well-defended coast is scored exactly like an undefended one. The elevation data includes buildings and vegetation, which makes land appear higher than it is near the coast, so the exposed areas reported here should be read as a LOWER BOUND. A site can read zero exposure and still face serious coastal risk. Scenario coverage is limited to lower and intermediate emissions pathways, so the high end of possible sea-level rise is not represented.
+    scenario_coverage: "rcp26, rcp60 only -- no high-forcing member exists for this product"
+    candidates_enumerated_on: >-
+      2026-08-14 -- listed files.isimip.org root and, for every round, OutputData/,
+      DerivedOutputData/, InputData/ and SecondaryInputData/ plus each intermediate level
+      below them; ISIMIP2b/InputData/sealevelrise/{historical,rcp26,rcp60} enumerated file
+      by file; ISIMIP3b/InputData/climate/ocean/.../ssp585/ vocabulary projected for all 5
+      GCMs (no sea-surface-height variable).
+    isimip_candidate:
+      - "SHIPPED: ISIMIP2b InputData/sealevelrise `total` -- 6 components x 4 CMIP5 GCMs x {rcp26,rcp60} + historical, gridded 0.5 deg annual 2006-2099 in metres with a 7-level percentile axis. Enumerated and value-checked 2026-08-14; see search_results.sea_level_rise."
+    blocker: >-
+      RESOLVED 2026-08-14 for the inundation route. Remaining gaps: no rcp85/SSP sea-level
+      product exists in ISIMIP (2b InputData only, verified 2026-08-14 -- ISIMIP3b/InputData/
+      has no sealevelrise/ and the 3b ocean forcing publishes no sea-surface-height variable
+      across all 5 GCMs); no local subsidence, which exceeds the climate signal in several
+      deltas; and no defence inventory anywhere in ISIMIP.
 
   storm-wind-extratropical:
     name: "Extratropical storm / severe wind"

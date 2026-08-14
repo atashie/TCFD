@@ -615,35 +615,79 @@ search_results:
           than protected, and every protection comparison for it silently conflates defences
           with the socioeconomic run. The downloader intersects soc across protection levels
           per member before applying the preference.
+      ingested:
+        on: "2026-08-14"
+        layer_id: "flood-isimip3b_fldfrcmax_annual"
+        files: "258 = none 96 (32 members x 3 scenarios) + 40yr 81 + flopros 81 (27 x 3)"
+        volume: "9.9 GB on disk"
+        integrity: "ALL 258 sha512-verified against published .json sidecars (sha512_source=sidecar for every row of provenance.csv). No locally-computed checksums."
+        scripts: "scripts/download_fldfrcmax_isimip3b.py (enumerates at run time, refuses to download on asymmetric scenario composition); scripts/check_fldfrcmax_nature.py (single-pass GUARDRAILS 9 + 12 + orientation + permanent-water survey)"
+        not_ingested: "2yr and hanze protection levels; the ssp585-only 2015co2 sens runs; 1850soc everywhere."
       # ---- MEASURED 2026-08-14 on h08/gfdl-esm4/ssp585, three protection variants
       measured:
         metadata: "units='1', long_name='flooded fraction' -- HONEST, unlike floodedarea's 'Exposed Area Share'. Global attrs carry protection_level, resolution, soc, sens, cama_version=v400_20210119 (CaMa-Flood v4.0.0, NOT Zimmer2023's v3.6.2)."
         time_axis: "`days since 1661-01-01`, proleptic_gregorian -- a FOURTH convention in this repo (Heinicke2026 days since 1601, Zimmer2023 seconds since 2006, Zantout2025 no units at all). Time handling is per-PUBLICATION, always."
-        data_nature: "CONTINUOUS [0,1] -- 283,749 unique values in the first 3M samples. NOT binary. Zero-inflation VARIES BY PROTECTION: 27.0% exact zeros unprotected, 87.5% under flopros. The decadal-statistic branch may therefore differ per protection variant and must be measured per variant, not chosen once."
-        mask: "Clean. Finite over 24.34% of the grid (~252k of 1,036,800 cells), land-shaped. NOT zero-filled like cropfailure, NOT ocean-leaking like floodedarea."
+        data_nature: >-
+          CONTINUOUS [0,1], NOT binary. Measured across ALL 258 ingested members
+          2026-08-14, and the zero share VARIES BY PROTECTION LEVEL:
+          none 17.05% exact zeros (926,388 unique values per 1M sampled),
+          flopros 83.11% (181,917), 40yr 87.27% (130,892); exact-1 share 0.10-0.21%.
+          So the decadal-statistic branch is a PER-VARIANT decision and this layer may
+          legitimately ship on two different branches -- the median branch is plausible
+          unprotected and almost certainly collapses under protection. Measure what the
+          median would publish on the decade pool before deviating (OUTPUT-SPEC).
+          (The single-member probe read 27.0%/87.5%; the ensemble figures above supersede it.)
+        mask: >-
+          Clean AND UNIFORM. Finite over exactly 24.34% of the grid in every one of the 258
+          members -- min equals max, so unlike led / driedarea / cropfailure there is NO
+          heterogeneous coverage and NO minimum-model question to resolve: every member
+          publishes the same ~252k of 1,036,800 cells. NOT zero-filled like cropfailure,
+          NOT ocean-leaking like floodedarea.
         distribution: "Unprotected non-zero values: p50=0.0065, p90=0.1095, p99=0.9160."
         signal: "Global land-mean, ssp585 h08/gfdl-esm4 flopros: 2020s 0.00495 -> 2050s 0.00566 -> 2090s 0.00900 (1.8x)."
         reference_sites_GUARDRAILS_12: >-
-          Box means over 2091-2100, cells with any finite value, unprotected / 2yr / flopros:
-          Amazon main stem 0.0743 / 0.0161 / 0.0020 (640 cells, 100% ever flooded unprotected);
-          Ganges-Brahmaputra 0.3249 / 0.2059 / 0.0309; Mekong delta 0.4879 / 0.2950 / 0.1146;
-          Lower Mississippi 0.1192 / 0.0618 / 0.0001; Rhine NL/DE 0.0605 / 0.0413 / 0.0000;
-          Sahara control 0.0000 with only 4% of cells ever non-zero. PASSES -- and note the
-          Amazon, which floodedarea reads as 0.000, is fully wet here.
+          PASSES on the FULL 258-member ensemble (2026-08-14). Box means over the last
+          decade, ensemble mean, none / 40yr / flopros:
+          Amazon main stem 0.11496 / 0.01077 / 0.01607;
+          Ganges-Brahmaputra 0.30458 / 0.06853 / 0.05664;
+          Mekong delta 0.47296 / 0.04698 / 0.11950;
+          Lower Mississippi 0.14505 / 0.01273 / 0.00358;
+          Rhine NL/DE 0.05909 / 0.00546 / 0.00122;
+          Niger inland delta 0.25573 / 0.05824 / 0.15075;
+          Sahara control 0.00119 / 0.00086 / 0.00121;
+          Atacama control 0.00162 / 0.00086 / 0.00091.
+          The Amazon -- which `floodedarea` reads as 0.000 in all 45 of its members -- is
+          the third-wettest box here. The dry controls are not EXACTLY zero (~0.001); small
+          but non-zero, worth knowing before anyone reads a desert value as a bug.
+          40yr vs flopros ORDER REVERSES BY REGION (Amazon 0.011 < 0.016, Ganges 0.069 >
+          0.057): a uniform 40-year standard is more protection than the empirical standard
+          in some places and less in others. Neither is a scaled version of the other.
         protection_behaves_correctly: "flopros <= none in EVERY cell (verified, not assumed). Spatial Spearman none-vs-flopros 0.367, none-vs-2yr 0.911 -- defences REORDER the map, they do not scale it."
       defects_found_in_the_probe:
         latitude_orientation_differs_between_protection_variants: >-
-          CRITICAL AND SILENT. `none` has DESCENDING lat (89.875 -> -89.875) with header
-          dims (time, lon, lat); `2yr` and `flopros` have ASCENDING lat with dims
-          (time, lat, lon) -- same publication, same member, same variable. A
-          .sel(lat=slice(hi, lo)) returns ZERO cells on half the files (it did, in this
-          probe), and any positional indexing builds an upside-down layer that would pass
-          every contract check. ALWAYS .sortby("lat") on load; never index by position.
+          CRITICAL AND SILENT, and SYSTEMATIC -- verified across all 258 ingested members
+          2026-08-14: `none` is DESCENDING lat (89.875 -> -89.875) in all 96 files,
+          `40yr` and `flopros` are ASCENDING in all 162. Same publication, same member,
+          same variable.
+          PRECISELY WHAT DIFFERS: the latitude COORDINATE ORDER, and the order the file
+          declares its dimensions in (ds.sizes reads (time, lon, lat) for `none` and
+          (time, lat, lon) for the protected variants). The VARIABLE's own dim order is
+          ('time','lat','lon') in every file -- the arrays are NOT transposed. An earlier
+          note here said "header dims (time, lon, lat)" without that distinction, which
+          would send someone hunting for a transpose that does not exist.
+          The real hazard is the coordinate order: .sel(lat=slice(hi, lo)) returns ZERO
+          cells on whichever half does not match (it did, in this probe), and positional
+          indexing builds an upside-down layer that passes every contract check. ALWAYS
+          .sortby("lat"); never index by position. Verified separately that each file's
+          DATA agrees with its own declared coordinates (Caspian wet, Sahara dry in
+          coordinate space): 0 of 258 disagree.
         permanent_water_reads_one: >-
-          515 cells sit at exactly 1.000 in the unprotected 2090s mean -- the Caspian and
-          other inland water bodies, permanently 'flooded'. They are not flood risk and they
-          will dominate a percentile ranking. A permanent-water mask decision is REQUIRED
-          before processing.
+          Cells fully flooded in EVERY year, measured across all 258 members: unprotected
+          median 511 (range 494-531, ~373 of them inside the Caspian box); protected median
+          230-235 (range 140-259). Inland water bodies, permanently 'flooded'. They are not
+          flood risk and they will sit at the top of any percentile ranking. A
+          permanent-water mask decision is REQUIRED before processing. Note the count is
+          stable across members, so this is structural, not member noise.
         rhine_reads_zero_under_flopros: >-
           NOT a defect -- the Netherlands and Germany carry very high FLOPROS standards, so
           residual risk is ~0. But a customer reading a flopros layer sees ZERO at a
@@ -1245,6 +1289,239 @@ search_results:
          (see its caveat above).
 
   # -------------------------
+  # chronic heat / rising mean temperature -- "days above a threshold"
+  # -------------------------
+  chronic_heat:
+    last_searched: "2026-08-14"
+    description: >
+      DISTINCT FROM `heatwave` above. That hazard asks "was this year's heat extreme for
+      this cell"; this one asks "how many days does an asset sit above a fixed, externally
+      defensible limit". The two rank places in OPPOSITE orders and neither substitutes for
+      the other.
+      THE HEADLINE FINDING: ISIMIP publishes NO days-above-a-temperature-threshold variable
+      anywhere. Any such layer is a CONSTRUCTED INDEX -- a modelling decision under
+      GUARDRAILS 1-2, not an aggregation. What IS published is (a) the daily bias-adjusted
+      forcing to construct it from, and (b) two ready-made annual TEMPERATURE INTENSITY
+      indicators (TXx and a variability metric) that are not day counts.
+    enumerated: |
+      2026-08-14, serial listings, every intermediate level listed, variable field projected
+      from the END, no target-token pre-filter. 0 empty listings.
+        https://files.isimip.org/                    -> 4 rounds
+        {2a,2b,3a}/                                  -> DerivedOutputData, InputData,
+                                                        OutputData, SecondaryInputData,
+                                                        SecondaryOutputData
+        3b/                                          -> DerivedInputData (!), DerivedOutputData,
+                                                        InputData, OutputData, SecondaryInputData
+        3b/InputData/climate/                        -> atmosphere, atmosphere_composition,
+                                                        lightning, ocean, tropical_cyclones
+        3b/InputData/.../bias-adjusted/global/       -> daily ONLY (no monthly, no annual)
+        3b/InputData/.../daily/                      -> historical, picontrol, ssp126, ssp370, ssp585
+        3b/SecondaryInputData/climate/atmosphere/bias-adjusted/global/ -> daily, hourly
+        3b/SecondaryInputData/.../daily/             -> 10 scenarios
+        3b/DerivedInputData/                         -> SPARCCLE2025, TipESM2025
+        3a/InputData/climate/atmosphere/             -> counterclim, obsclim, spinclim, transclim
+        3a/.../obsclim/global/daily/historical/      -> 6 forcings
+      All GCM directories were listed for every scenario, and files listed PER GCM (not
+      sampled) for both daily roots -- required, because tasmax coverage is not uniform.
+    representations:
+      sparccle2025_annual_indicators:
+        path: "ISIMIP3b/DerivedInputData/SPARCCLE2025/{scenario}/{GCM}/"
+        relevance: "READY-MADE, contract-shaped, and CHEAP -- but an INTENSITY, not a day count."
+        variables_for_this_hazard: "temp-annual-max (TXx, K) and temp-variability (TV, K)"
+        ensemble: "5 GCMs (GFDL-ESM4, IPSL-CM6A-LR, MPI-ESM1-2-HR, MRI-ESM2-0, UKESM1-0-LL)"
+        scenarios: "historical, ssp126, ssp370, ssp585. NO ssp245, NO picontrol."
+        matrix: "COMPLETE 5 x 3 = 15 projection files per variable; 10 variables per dir"
+        timestep: "annual, 0.5 deg, 2015-2100 (86 steps)"
+        volume: "18.5 MB (temp-annual-max) / 20.3 MB (temp-variability) per file -> ~580 MB for both across the 3 SSPs"
+        sidecars: "PRESENT at {stem}.json with checksum and full netcdf_header"
+        caveat: >-
+          TXx is one day per year, so it says nothing about DURATION -- the quantity a
+          days-above-threshold index is for. Units declared K; NOT value-checked.
+          Full variable list in repository_publication_map.derived_input_data.
+      constructed_from_group_I_daily:
+        path: "ISIMIP3b/InputData/climate/atmosphere/bias-adjusted/global/daily/{scenario}/{GCM}/"
+        ensemble: "5 GCMs x ssp126/ssp370/ssp585 (+historical 1850-2014, picontrol 1601-2100)"
+        variables: "11 -- hurs huss pr prsn ps rlds rsds sfcwind tas tasmax tasmin"
+        matrix: >-
+          VERIFIED PER GCM 2026-08-14 (not sampled): every one of the 5 GCMs publishes all
+          11 variables in 9 decade chunks for each of ssp126/ssp370/ssp585 = 99 files.
+          tasmax coverage 5/5 in all three scenarios. No gaps.
+        timestep: "daily, 0.5 deg, 2015-2100 in 9 chunks"
+        volume_measured: "tasmax 2.06-2.07 GB per 10-yr chunk (HEAD) -> ~18.6 GB per GCM-scenario -> ~279 GB for tasmax across 5 GCMs x 3 SSPs"
+      constructed_from_extended_daily:
+        path: "ISIMIP3b/SecondaryInputData/climate/atmosphere/bias-adjusted/global/daily/{scenario}/{GCM}/"
+        THE_GCM_POOL_IS_DISJOINT_FROM_GROUP_I: >-
+          For ssp126/ssp370/ssp585 the 9 GCMs here (CESM2-WACCM, CNRM-CM6-1, CNRM-ESM2-1,
+          CanESM5, EC-Earth3, IITM-ESM, KACE-1-0-G, MIROC6, TaiESM1) share NOT ONE member
+          with group I. So this root ADDS members, it does not supersede them. ssp245 is
+          the exception: its 14 GCMs are these 9 PLUS the group-I five, and ssp245 exists
+          in NO other root.
+        TASMAX_IS_NOT_9_OF_9: >-
+          MEASURED PER GCM 2026-08-14, and this is exactly the trap per_gcm_not_pooled
+          warns about. `tas` and `hurs` are 9/9 on ssp126/370/585 and 14/14 on ssp245, but
+          `tasmax`/`tasmin` are 7/9 and 12/14 -- CESM2-WACCM and IITM-ESM publish the mean
+          and the humidity and NO daily maximum, in every scenario including historical.
+          A pooled count reports "9 GCMs" for a layer that would have 7.
+          `prsn` is thinner still (7/9, 11/14). ssp119 is 4/4 for tasmax but only 3/4 for
+          hurs/huss/ps (UKESM1-0-LL absent).
+        scenarios_and_depth: |
+          scenario      nGCM  tasmax  span            note
+          hist-nat       6     6/6    1850-2020       counterfactual, no-forcing
+          historical     9     7/9    1850-2014
+          ssp119         4     4/4    2015-2100       hurs only 3/4
+          ssp126         9     7/9    2015-2100
+          ssp245        14    12/14   2015-2100       ONLY root with ssp245; includes group-I 5
+          ssp370         9     7/9    2015-2100       IITM-ESM ends 2098
+          ssp460         2     2/2    2015-2100       IPSL-CM6A-LR, MRI-ESM2-0 only
+          ssp534-over    5     5/5    2040-2100 ONLY  no 2015-2039, so NO 2020s baseline
+          ssp585         9     7/9    2015-2100
+        union_with_group_I: >-
+          For a tasmax-based index on ssp126/ssp370/ssp585: 5 + 7 = 12 GCMs, deeper than
+          any layer currently shipped. For ssp245: 12 GCMs, from this root alone.
+        volume_measured: "tasmax 2.04-2.08 GB per chunk (HEAD, CanESM5 and EC-Earth3 ssp245) -> ~18.6 GB per GCM-scenario; ~670 GB for 12 GCMs x 3 SSPs, ~223 GB more for ssp245"
+      constructed_from_hourly:
+        path: "ISIMIP3b/SecondaryInputData/climate/atmosphere/bias-adjusted/global/hourly/{scenario}/{GCM}/"
+        ensemble: "5 GCMs (the group-I five) x historical/ssp126/ssp370/ssp585, 5/5 for every variable"
+        variables: "7 -- hurs pr ps rlds rsds sfcwind tas. NO tasmax, NO tasmin, NO huss."
+        timestep: "hourly, 17 five-year chunks 2015-2100 (34 for historical)"
+        relevance: "The only route to a sub-daily heat-stress metric (WBGT/UTCI need wind + radiation at the hour). tas 4.31 GB/chunk, hurs 4.95 GB/chunk -> ~157 GB per GCM-scenario for tas+hurs, ~2.4 TB for all 15."
+      observational_baseline_3a:
+        path: "ISIMIP3a/InputData/climate/atmosphere/obsclim/global/daily/historical/{FORCING}/"
+        forcings: "20CRv3, 20CRv3-ERA5, 20CRv3-W5E5, CHELSA-W5E5, CHELSA-W5E5v1.0, GSWP3-W5E5"
+        relevance: >-
+          Historical ONLY -- no scenarios, so it cannot produce a decadal projection panel.
+          Its use is calibration/validation of a constructed threshold against observed
+          exceedance counts, and a counterfactual (counterclim/ sits beside it).
+        resolution_is_the_surprise: >-
+          CHELSA-W5E5 is 30/90/1800 arcsec, NOT 0.5 deg -- daily tasmax/tasmin/tas/pr/rsds
+          1979-2016 in monthly files, 1,824 files per variable across the resolutions, and
+          a single 90arcsec monthly tasmax file is 2.80 GB. The 0.5 deg forcings
+          (20CRv3*, GSWP3-W5E5) carry the full 10-11 variable set, 120-140 files each.
+    chosen_2026_08_14: |
+      USER DECISION. Build a dry-bulb THRESHOLD-EXCEEDANCE layer, deliberately as the
+      ABSOLUTE complement to the existing relative `heatwave-3b`, and cover the cold tail in
+      the same pass so one ingest serves two hazard families (heat-stress-chronic and
+      cold-frost, the latter still recorded UNVERIFIED-absent in hazard_taxonomy.yaml).
+        ensemble   12 GCMs = group-I 5 + extended 7 (the 2 extended GCMs without tasmax
+                   are excluded by construction, not by choice)
+        scenarios  ssp126, ssp370, ssp585 (ssp245 declined -- it would add a fourth
+                   scenario axis no other layer has)
+        frost      higher_is_worse on the frost-day COUNT, matching the ESRS hazard as
+                   written. Consequence accepted: the layer will report a hazard falling
+                   almost everywhere, because frost days decline in every scenario.
+        ladder     computed in ONE pass because the marginal cost of a rung is zero once
+                   the day is read -- hd30/hd35/hd40/hd45 (CCKP hd*), ID (ETCCDI, tasmax<0),
+                   FD (ETCCDI, tasmin<0), FDm10 (tasmin<-10, NOT a standard index),
+                   TR20/TR25 (ETCCDI TR). HEADLINE RUNGS: hd35 and FD.
+      UPPER THRESHOLD = 35 degC, and the justification is CONVERGENCE, not physiology.
+      The skin-gradient story (skin sits ~35 degC, so above it dry heat loss reverses) is
+      the CLASSICAL ASSUMPTION and the PSU HEAT work revised it -- measured skin temperature
+      at critical limits runs 36-38.5 degC. Do not write "physiological limit" in a report.
+      It is also NOT the survivability number: that one is WET-BULB 35 degC, revised down to
+      ~30.6 degC by Vecellio et al. 2022. Conflating the two is the commonest error in this
+      literature. What 35 degC dry-bulb has: World Bank CCKP `hd35`, Climate Impact Lab /
+      American Climate Prospectus (95 degF), IIED's global-cities tracker, the ILO's
+      rule-of-thumb onset, and an infrastructure literature clustering near it (rail
+      buckling, pavement rutting). Plus the discrimination argument -- 30 saturates the
+      tropics, 40 is near-silent outside subtropical deserts.
+    data_nature_measured: >-
+      PILOT 2026-08-14, scripts/check_tas_thresholds_nature.py, GFDL-ESM4 ssp585 2021_2030
+      (a GROUP-I member, chosen because those five publish no sidecar netcdf_header).
+      The FILE does declare what the sidecar omits: units K, calendar proleptic_gregorian,
+      time `days since 2021-1-1`, dims (time=3652, lat=360, lon=720) -> 365.20 days/yr,
+      i.e. the same calendar as the seven extended GCMs. The ~1.5% low bias a 360_day member
+      would carry into a day COUNT does not appear here. Values: tasmax [203.75, 322.15] K =
+      [-69.40, +49.00] degC; tasmin [199.83, 308.59] K = [-73.32, +35.44] degC. Both sane at
+      both ends. Kelvin is detected FROM VALUES (min > 150) in the reducer, so a degC member
+      would be handled and recorded rather than silently counted as zero.
+      MASK: 100% of the 259,200 cells finite, in both variables. The forcing is atmospheric
+      and NOT land-masked -- `isfinite` is not a footprint (same trap as `cropfailure` and
+      `leh`). The official ISIMIP3b landseamask must be applied at processing;
+      scripts/utils/land_mask.py already resolves it.
+    reference_sites_measured: >-
+      GUARDRAILS 12, 14 sites, ssp585 2021_2030 (near-present), days per year. Every site
+      lands where it must, at BOTH ends -- Jacobabad hd35 215.5 / FD 0, Kuwait 185.9 / 0,
+      Timbuktu 260.4 / 0, Phoenix 138.3 / FD 3.9, Delhi 137.7 / 0, Alice Springs 102.6 /
+      FD 4.2, Paris hd35 0.7 / FD 28.4 / ID 4.6, Chicago 4.1 / 106.7 / 22.6, Yakutsk 1.3 /
+      FD 231.4 / ID 181.4, Fairbanks 0.0 / 203.7 / 150.1, Ulaanbaatar 0.6 / 221.6 / 139.8.
+      THE FINDING THAT MUST REACH CUSTOMER COPY: SINGAPORE reads hd30 344.5 and hd35 0.5,
+      with TR20 at 365.2 -- every night a tropical night. Maritime tropical humidity caps
+      the daily MAXIMUM, so an hd35-only reading says the equator has no heat hazard, while
+      `heatwave-3b` puts Singapore at 0.889 -> 0.952. The dry-bulb and humid-heat layers are
+      therefore COMPLEMENTARY, not redundant, and hd35 must never be presented alone as
+      "heat risk" in the humid tropics. This is the concrete argument for the ladder: hd30
+      carries the signal there that hd35 cannot. Treat as must_disclose-class.
+    ingest_design: >-
+      scripts/download_reduce_tasthresh_isimip3b.py. 36 jobs (12 GCMs x 3 scenarios) x 2
+      variables x ~9 chunks = ~1,341 GB MOVED but NOT RETAINED: each chunk is verified
+      against the publisher sidecar sha512, reduced to per-year counts, and deleted. Peak
+      disk ~8.3 GB staging (4 workers) + ~14.4 GB counts, against ~600 GB available -- so
+      storage is not the binding constraint and the GCM pool did not have to be cut.
+      Wall clock is: ~41 h at the measured throughput (5.1 and 3.5 MB/s single-stream on the
+      two pilot files; 9.0 MB/s aggregate across 4 parallel streams -- parallelism helps
+      SUBLINEARLY). Idempotent per (GCM, scenario); an interruption costs one chunk.
+      Chunk spans are DISCOVERED from the server, never hardcoded (GUARDRAILS 3).
+      Provenance is written BEFORE deletion, so the ingest is auditable against files we no
+      longer hold -- a declared deviation from the data/raw/ retention convention.
+      ISIMIP's server-side land masking would have cut ~70% of the bytes and is UNAVAILABLE:
+      files.isimip.org/api/v1 returned 502 on both endpoint forms, retried, while a
+      nonexistent sibling path returned 404 -- a service outage, not a wrong URL (2026-08-14).
+      Separately, data.isimip.org/api/v1 answered normally that day, which contradicts the
+      "behind Anubis anti-bot" note carried elsewhere in this repo. Re-verify before relying
+      on either statement.
+    negative_findings: |
+      * NO days-above-a-temperature-threshold variable in ANY round, in ANY product root.
+        verified_absent_on: "2026-08-14 -- listed every round root; every round's
+        DerivedOutputData (2026-08-14 sweep, 9 publications); ISIMIP3b/DerivedInputData/
+        (2 publications, all 10 SPARCCLE2025 variables read from sidecars); and the full
+        variable vocabulary of both 3b daily forcing roots and the hourly root."
+        The nearest published counts are SPARCCLE2025 `fwi-ndays-extreme` (fire weather,
+        >95th pct of 1851-1900) and `pr-wetdays-gt1mm` (precipitation) -- neither is
+        temperature. Extends the 2026-08-14 heat-index negative under `heatwave`.
+      * NO monthly or annual bias-adjusted forcing. verified_absent_on: "2026-08-14 --
+        listed ISIMIP3b/InputData/climate/atmosphere/bias-adjusted/global/ = ['daily/']
+        and the SecondaryInputData equivalent = ['daily/', 'hourly/']." So there is no
+        cheap pre-aggregated route; a threshold count means reading daily data.
+      * NO tasmax at hourly cadence. verified_absent_on: "2026-08-14 -- listed all 5 GCM
+        dirs in hourly/{historical,ssp126,ssp370,ssp585}; the vocabulary is exactly
+        [hurs, pr, ps, rlds, rsds, sfcwind, tas]." Expected -- a daily maximum is not an
+        hourly quantity -- but it means an hourly index must be built on `tas`.
+      * ssp534-over CANNOT carry the shared 2020s baseline. verified_absent_on:
+        "2026-08-14 -- all 5 GCMs start at 2040 (7 chunks, 2040-2100)."
+    open_decisions: |
+      NOT pre-answered. Every one is a user decision or an unmade measurement.
+      1. WHICH THRESHOLD FAMILY -- this decides which variables to download, so it is
+         upstream of everything else. Dry-bulb Tmax needs `tasmax` alone; a heat index or
+         humidex needs `tasmax`+`hurs`; WBGT/UTCI needs tas+hurs+ps+sfcwind+rsds+rlds and
+         arguably the hourly root. The literature/provider review is in the 2026-08-14
+         session notes: peer products publish a LADDER, not one number (World Bank CCKP
+         ships hd30/35/40/42/45/50, hi35/37/39/41, swbgt26/29/32, wbt25/27/29/31,
+         tr23/26/29/32 -- enumerated from its public S3 bucket 2026-08-14).
+      2. ABSOLUTE vs LOCAL-PERCENTILE threshold. These rank places in opposite orders and
+         both are defensible for different questions. Measured consequences already exist
+         in this repo: the absolute Humidex-45 gate inside `leh` leaves 59.7% of land
+         never non-zero and Paris/Frankfurt/Yakutsk at exactly 0 in every member and year,
+         and only 8.4% of land active in all 4 GCMs; the relative 3b `heatwave` has 74.8%
+         active in 5/5 but saturates at 45.9% of cells by ssp585 2090s.
+      3. ONE threshold or a ladder, and which rung is the headline number.
+      4. GCM POOL. 5 (group I only, one root, uniform) or 12 (union across two roots, and
+         2 of the 9 extended GCMs have no tasmax at all). A union mixes publication roots;
+         re-verify bias-adjustment (w5e5 in both, unverified whether identically produced).
+      5. SCENARIO SET. ssp126/370/585 at 12 GCMs, or add ssp245 (12 GCMs, extended root
+         only) -- ssp245 is the scenario most disclosure frameworks reference and it exists
+         in exactly one root.
+      6. VOLUME. ~670 GB for tasmax across 12 GCMs x 3 SSPs; roughly double with hurs.
+         Whether to stream-and-reduce per chunk (keep only the annual count) rather than
+         retain raw, and whether the API's server-side mask_landonly is reachable -- it is
+         behind Anubis, so this is unverified.
+      7. GUARDRAILS 9 VALUE CHECK -- entirely unmade. Units (K vs degC), calendar per GCM,
+         land mask per GCM, and whether bias-adjusted tasmax carries a physically plausible
+         upper tail. Not one of these has been measured.
+      8. Whether SPARCCLE2025 temp-annual-max / temp-variability is wanted ALONGSIDE (or
+         instead of) a constructed count -- ~580 MB and contract-shaped, but an intensity.
+         temp-variability is also the only candidate for an ESRS hazard we do not declare.
+
+  # -------------------------
   # crop failure searches
   # -------------------------
   crop_failure:
@@ -1596,7 +1873,34 @@ search_results:
   # soil / subsurface carbon searches (biomes sector)
   # -------------------------
   soil_carbon:
-    last_searched: "2026-07-25"
+    last_searched: "2026-08-14"
+    re_enumerated_on: >-
+      2026-08-14 -- the 2026-07-25 model list was WRONG BY OMISSION and this entry supersedes
+      it. LPJmL5-7-10-fire publishes `csoil-total` ANNUALLY for ssp126/370/585 and was absent
+      from `csoil_annual` below, which read as a measured fact for three weeks: +5 members and
+      +1 structurally independent model, 12 -> 17. GUARDRAILS 11 -- an understated positive in
+      our own catalog is more dangerous than a recorded negative, because a negative at least
+      looks like something to re-check. The search skill had already warned that this same
+      list "later still missed CLM45 and VEGAS for csoil" in ISIMIP2b; the identical
+      under-listing had happened again in 3b and nobody reconciled it.
+      METHOD (so the count is trustworthy this time): the variable field was projected from
+      the END at $(NF-4) over a FULL listing of one GCM per model -- never grepped for a
+      believed-in token (GUARDRAILS 8) -- and then EVERY (model, gcm, scenario) URL was
+      confirmed by HTTP status. Each model's filename token was proved by requiring its
+      gfdl-esm4 file to return 200 BEFORE any 404 elsewhere was believed, so CLASSIC's three
+      404s are its real 2-GCM ISIMIP3b coverage and not a filename error.
+      SECTOR ROSTERS PROBED, NOT ASSUMED (the `thawdepth` trap): 3b `permafrost` holds only
+      ELM-ECA and LPJmL5-7-10-fire and adds no model `biomes` lacks; `fire` is a strict subset
+      of `biomes`; `water_global` holds the hydrology models, none of which publish csoil.
+      Ingest from `biomes` alone -- `elm-eca` csoil-total is byte-identical across
+      biomes+permafrost and ingesting both would double-weight it.
+    sidecars: >-
+      PRESENT at `{stem}.json` -- verified 2026-08-14. `{stem}.nc.json` 404s and reads
+      convincingly as "this publication has no sidecars"; the cropfailure ingest made exactly
+      that error and ran unverified. They carry `checksum` (sha512), `size`, parsed
+      `specifiers` and a full `netcdf_header`, so downloads are verified against a PUBLISHER
+      checksum rather than Content-Length. This contradicts the search skill's general note
+      that 3b biomes "largely does not" ship sidecars -- for csoil-total it does.
     description: "Subsurface / root-zone carbon. Lives in the biomes sector as carbon-pool STATE variables; there is no dedicated soil sector. Enumerate STOCKS (csoil soil, croot/cvegbg root-zone) vs the net-sink FLUX (nbp)."
     note: "Catalog's biomes_models variable lists were INCOMPLETE for carbon -> enumerated the file server directly (11 ISIMIP2b + 5 ISIMIP3b biomes models). The data.isimip.org API is behind Anubis anti-bot -> use files.isimip.org + curl (WebFetch truncates long listings). See GUARDRAILS §8."
     variables:
@@ -1611,11 +1915,39 @@ search_results:
         croot: "absent (future runs)"
         nbp: "absent (future runs)"
       isimip3b:  # SSP126/370/585, CMIP6 -- the FULL below-ground story
-        csoil_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]   # + elm-eca, visit monthly-only
+        # CORRECTED 2026-08-14. Per-GCM, HTTP-status verified. soc/sens differ PER MODEL and
+        # no combination is shared by all four -- see soc_sens_matrix below.
+        csoil_annual: ["classic", "jules-es-vn6p3", "lpjml5-7-10-fire", "mc2-usfs-r87g5c1"]
+        csoil_annual_members: "2 + 5 + 5 + 5 = 17 per scenario, 51 files, ~932 MB"
+        csoil_annual_gcms:
+          classic: ["gfdl-esm4", "ukesm1-0-ll"]            # 404 on the other 3 -- real coverage
+          jules-es-vn6p3: ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]
+          lpjml5-7-10-fire: ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]
+          mc2-usfs-r87g5c1: ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]
+        csoil_monthly_only: ["elm-eca", "visit"]  # 5 GCMs each; annualising is an OPEN GUARDRAILS 1-2 decision, not a refusal
+        soc_sens_matrix: >-
+          classic 2015soc-from-histsoc/default (also 2015soc/default);
+          jules-es-vn6p3 2015soc-from-histsoc/2015co2 ONLY -- publishes NO transient-CO2 csoil;
+          lpjml5-7-10-fire 2015soc-from-histsoc/default (also 1850soc, 2015soc, nat, 2015co2);
+          mc2-usfs-r87g5c1 nat/default ONLY.
+          NO combination is shared by all four. Uniform sens=default drops JULES (12 members,
+          3 models); uniform soc drops MC2 as well. Heterogeneity RETAINED and DECLARED,
+          consistent with the 2026-07-25 decision on this same layer. Adding LPJmL introduces
+          NO new heterogeneity dimension (it takes CLASSIC's exact tokens) and improves the
+          CO2 balance from 7/12 to 12/17 transient.
         croot_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]   # + elm-eca monthly
         cvegbg_annual: ["classic", "jules-es-vn6p3", "mc2-usfs"]  # + elm-eca monthly
         nbp: ["classic", "jules-es-vn6p3", "mc2-usfs", "elm-eca", "visit"]
-    chosen: "csoil-total, ISIMIP3b, annual, {ssp126,ssp370,ssp585}. 12 members/scenario = classic(2 GCMs) + jules-es-vn6p3(5) + mc2-usfs(5). Raw kg C m-2, NO normalization (comparable magnitudes, same unit), NO spatial smoothing (thick), higher_is_better (risk=loss, percentile INVERTED), baseline-anchored trend. Layer starts at 2020s baseline (3b begins 2015)."
+    chosen: "csoil-total, ISIMIP3b, annual, {ssp126,ssp370,ssp585}. 17 members/scenario = classic(2 GCMs) + jules-es-vn6p3(5) + lpjml5-7-10-fire(5) + mc2-usfs-r87g5c1(5), biomes sector, ingested 2026-08-14 by scripts/download_csoil_isimip3b.py. higher_is_better (risk = soil-carbon LOSS, percentile INVERTED). SUPERSEDES the 12-member/3-model selection of 2026-07-25."
+    framing_status: >-
+      RE-DECIDED FROM MEASUREMENT ON REBUILD, not inherited. The 2026-07-25 choices --
+      no normalization, no spatial smoothing, pooled_median, sen_slope -- were all taken on a
+      THREE-model ensemble and none survives automatically now that a fourth model is in the
+      pool. Each is re-measured by scripts/check_csoil_nature.py and recorded in the processor
+      docstring: magnitude comparability (normalise or not), unimodality of the pooled sample
+      (pooled_median vs the pooled_mean_multimodel branch), exact-zero share (the
+      zero-inflated branch and any sparsity_caveat), roughness plus a model-stratified
+      split-half (smoothing), and the active-cell slope measurement (which slope to read).
     co2_treatment: "MIXED (user decision 2026-07-25 to retain 12 members): jules-es-vn6p3 publishes ONLY the fixed-2015-CO2 (2015co2) csoil run; classic/mc2-usfs are transient (default). JULES's soil-C trend is muted (no fertilization). Land use fixed: 2015soc-from-histsoc (classic/jules) / nat (mc2-usfs). See GUARDRAILS §9."
     data_nature: |
       All 3 models report kg C m-2 with COMPARABLE magnitudes (2020s medians ~5.8/7.7/10.3), value-checked 2026-07-25:
@@ -1623,7 +1955,18 @@ search_results:
       jules-es-vn6p3  kg C m-2  median 10.28 max 67.9  zeros 0.00%               calendar=proleptic_gregorian
       mc2-usfs        kg C m-2  median 7.67  max 37.8  zeros 0.00% (coarse biome model, nat soc)  calendar=365_day
       Time axis 'days since 1601' for ALL; only the calendar differs -> calendar-aware year parse.
-    processed: "2026-07-25 -> TCFD layer. scripts/process_csoil_soilcarbon.py; data/processed/soilcarbon_csoil_annual/csoil_{ssp126,ssp370,ssp585}_processed.nc. Verified: CI ordering 100%, baseline bit-identical, trend<->change corr 1.0, global-mean csoil +1.1% ssp126 / -1.4% ssp370 / -2.2% ssp585 by 2090s. See memory project_csoil_soilcarbon_layer, WORKFLOW-ISSUES.md 2026-07-25, GUARDRAILS §8-§9."
+    processed: "2026-07-25 -> TCFD layer. scripts/process_csoil_soilcarbon.py. Verified at the time: CI ordering 100%, baseline bit-identical, trend<->change corr 1.0, global-mean csoil +1.1% ssp126 / -1.4% ssp370 / -2.2% ssp585 by 2090s. See memory project_csoil_soilcarbon_layer, WORKFLOW-ISSUES.md 2026-07-25, GUARDRAILS §8-§9."
+    output_status: "GONE as of 2026-08-14. data/processed/soilcarbon_csoil_annual/ is EMPTY, no raw csoil remains under data/, and there is no download_csoil*.py (every other shipped layer has one). This field previously named the three .nc files as though they existed. data/ is local and ephemeral -- a `processed:` date is not evidence the artifact is still there, so CHECK THE DISK before planning off it. Re-download + re-run is required, and the processor must first be brought up to the five post-2026-07-25 standards enumerated in config/hazard_taxonomy.yaml families.soil-degradation.blocker."
+    enumeration_completeness: >-
+      RESOLVED 2026-08-14 -- see re_enumerated_on. The sector trap was probed and is NOT the
+      failure here: no sector holds a csoil model that `biomes` lacks. The real omission was
+      inside the sector that HAD been walked (LPJmL5-7-10-fire), which is the more insidious
+      case -- a sector-completeness argument would not have caught it, and only projecting
+      the variable field over a full listing did. STILL OPEN, and recorded rather than
+      dropped: ELM-ECA and VISIT publish csoil-total MONTHLY (5 GCMs each). Annualising a
+      smooth stock is cheap and would take the ensemble from 17 to 27 members, but it is a
+      GUARDRAILS 1-2 aggregation decision that has not been put to the user. ISIMIP2b csoil
+      (~8 annual models, rcp26/60/85) remains entirely un-ingested.
 
   # -------------------------
   # biodiversity searches (BioScen1.5)
@@ -3120,10 +3463,53 @@ repository_publication_map:
       Zantout2025: "heatwave, wildfire, cropfailure exposure, ssp126/370/585."
       Jaegermeyr2021: "yieldchange-{crop} (mai, ric, ...), ssp126+, annual 2015-2099. NOT otherwise enumerated."
       TipESM2025: "CaMa-Flood. fldfrcmax at 15 arcmin, 5 protection levels, ssp126/370/585, 32 members. Recorded as 'water models' from 2026-08-11 to 2026-08-14 -- the note identified its model dirs and never opened a file."
+  derived_input_data:
+    swept_on: "2026-08-14"
+    THE_ROOT_NOBODY_LISTED: >-
+      `DerivedOutputData/` is NOT the only derived root. ISIMIP3b -- and ONLY ISIMIP3b, the
+      other three rounds have no such directory -- also publishes
+      https://files.isimip.org/ISIMIP3b/DerivedInputData/. Round roots listed 2026-08-14:
+      2a/2b/3a = [DerivedOutputData, InputData, OutputData, SecondaryInputData,
+      SecondaryOutputData]; 3b = [DerivedInputData, DerivedOutputData, InputData,
+      OutputData, SecondaryInputData]. The 2026-08-14 publication sweep listed each round's
+      DerivedOutputData root and stopped, so this root went unlisted for as long as the map
+      has existed. It holds ready-made annual CLIMATE INDICATORS -- the exact product class
+      you go looking for when a hazard needs a constructed index.
+    ISIMIP3b:
+      SPARCCLE2025: >-
+        TEN annual 0.5 deg indicators derived from the bias-adjusted forcing.
+        {scenario}/{GCM}/ (3 levels, scenario ABOVE the GCM, like TipESM2025).
+        4 scenarios (historical, ssp126, ssp370, ssp585) x 5 GCMs (GFDL-ESM4,
+        IPSL-CM6A-LR, MPI-ESM1-2-HR, MRI-ESM2-0, UKESM1-0-LL) = 20 dirs, 10 files each.
+        Variables, read from the sidecar netcdf_header (2026-08-14):
+          temp-annual-max    "Annual maximum temperature (TXx)"                 K
+          temp-variability   "Temperate Variability (TV)" [sic -- Temperature]  K
+          fwi                daily Fire Weather Index                           (daily file)
+          fwi-annual-max / fwi-avg-seasonal / fwi-season-length                 FWI suite
+          fwi-ndays-extreme  "Number of days With Extreme Fire Weather (above
+                              95th percentile of 1851-1900 baseline (FWIXD)"    days
+          pr-annual-max                                                         mm
+          pr-extreme-99-9    "Extreme Daily Precipitation Annual Sum (above
+                              99.9th percentile of baseline period daily data)" mm a-1
+          pr-wetdays-gt1mm   "Number of wet days (W)"                           days
+        86 annual steps 2015-2100, dims (time=86, lat=360, lon=720), proleptic_gregorian,
+        time units `days since 2015-1-1`. 18.5 MB (temp-annual-max) / 20.3 MB
+        (temp-variability) / 7.7 MB (fwi-ndays-extreme) / 10.1 MB (pr-extreme-99-9) per
+        file. Sidecars ARE published at `{stem}.json` with checksum + full netcdf_header.
+        RELEVANCE BEYOND HEAT: temp-variability is the only candidate in the repository for
+        the ESRS AR 11 "temperature variability" hazard, which has no family in
+        config/hazard_taxonomy.yaml at all; pr-* are candidates for `heavy-precipitation`;
+        fwi-* are a SECOND wildfire representation (fire weather, not burnt area).
+        NOT VALUE-CHECKED -- units/nature are declared, not measured (GUARDRAILS 9).
+      TipESM2025: >-
+        Also present under DerivedInputData (MIT/{scenario}/{gcm}/), alongside its
+        DerivedOutputData entry. Not re-enumerated here; see derived_output_data.
   depth_is_not_uniform: >-
     Most publications are {MODEL}/{gcm}/{period}/ (3 levels). TipESM2025 is
     MIT/{scenario}/{GHM}/{gcm}/ -- FIVE levels with the scenario ABOVE the model. A walker
     that assumes 3 levels returns it as empty, which is not a negative (GUARDRAILS 8).
+    SPARCCLE2025 (DerivedInputData) is {scenario}/{GCM}/ -- THREE levels, scenario above
+    the GCM and no period level at all.
   resolutions_observed: >-
     0.5 deg, 15 arcmin, 150 arcsec, 300 arcsec, 900 arcsec -- ALL WITHIN ONE HAZARD.
     Resolution is a per-publication property and belongs in every availability matrix.
@@ -3132,7 +3518,10 @@ repository_publication_map:
     - "ISIMIP2a OutputData sectors not listed."
     - "Jaegermeyr2021 (3b) identified from 2 filenames only -- crop coverage not enumerated."
     - "Quesada-Chacon2026 GHM/ subtree not enumerated (only its CaMa-Flood/grdc/counterclim leaf)."
-    - "InputData/ roots not swept. ISIMIP3b/InputData/climate/tropical_cyclones/ is already known to hold a hazard product, so this sweep is incomplete by construction."
+    - "InputData/ roots partially swept: ISIMIP3b climate/atmosphere and ISIMIP3a climate/atmosphere were walked 2026-08-14 (see search_results.chronic_heat). NOT swept: 3b InputData/climate/{atmosphere_composition,lightning,ocean}, 3a climate/{sealevel,tropical_cyclones_flooding,...}, and every InputData root in 2a/2b/3a beyond climate/atmosphere."
+    - "SecondaryInputData swept for ISIMIP3b ONLY (climate/atmosphere). 2a, 2b and 3a each have a SecondaryInputData root that has never been listed."
+    - "SecondaryOutputData exists in 2a, 2b and 3a and has NEVER been listed in any round. UNVERIFIED in both directions."
+    - "DerivedInputData exists in ISIMIP3b only and was first listed 2026-08-14 -- see derived_input_data. Its sibling roots in other rounds are absent, not unlisted (round roots were enumerated)."
 
 repository_structure_cache:
   generated_on: "2026-08-12"

@@ -16,8 +16,86 @@ import xarray as xr
 from shapely.geometry import Point, Polygon, MultiPolygon, box
 
 
-# Standard ISIMIP grid cell size
+# ---------------------------------------------------------------------------------------
+# Grid resolution -- INFERRED from a dataset's own coordinates, never assumed
+# ---------------------------------------------------------------------------------------
+#
+# 0.5 deg remains the DEFAULT and the preferred grid: every layer shipped before 2026-08-14
+# is 0.5 deg and none of their numbers may move. So `CELL_SIZE`, `radius = 0.5` and
+# `sigma = 0.25` stay exactly what they were, and `grid_cell_size()` returns 0.5 for those
+# layers, which routes them down an identical code path.
+#
+# What changes is only that a layer on ANOTHER regular grid (the 0.25 deg CaMa-Flood
+# inundation layers, ingested 2026-08-14) no longer silently inherits 0.5 deg geometry:
+# a 0.5 deg search radius on a 0.25 deg grid reaches 4x as many cells, which would blend a
+# site with neighbours ~55 km away while claiming ~28 km resolution.
+#
+# The geometry is therefore expressed in CELLS. At 0.5 deg:
+#     radius = 1.0 cell = 0.5 deg   (unchanged)
+#     sigma  = 0.5 cell = 0.25 deg  (unchanged)
+# ASSET-CATALOG.md "Spatial averaging -- the complete picture" documents what that produces
+# and remains authoritative for the 0.5 deg case.
+#
+# NOT changed here, deliberately: distance is still measured in DEGREE space with no
+# cos(lat) term, and polygon weights are still planar intersection fractions. Both are
+# known approximations (ASSET-CATALOG.md), and correcting either would move shipped site
+# values. That is a separate, declared decision -- not a side effect of resolution work.
+
+#: Standard ISIMIP grid cell size, and the default when a dataset cannot be inspected.
 CELL_SIZE = 0.5
+
+#: Search radius and Gaussian sigma expressed as multiples of the cell size. At 0.5 deg
+#: these reproduce the historical literals 0.5 and 0.25 exactly.
+SEARCH_RADIUS_CELLS = 1.0
+SIGMA_CELLS = 0.5
+
+#: A grid within this tolerance of 0.5 deg takes the legacy path bit-for-bit.
+_LEGACY_TOL = 1e-6
+
+
+def grid_cell_size(obj) -> float:
+    """Cell size in degrees, inferred from a dataset's / array's own lat-lon coordinates.
+
+    Accepts anything carrying `lat` and `lon` coordinates (Dataset, DataArray). Falls back
+    to CELL_SIZE when the coordinates are missing or degenerate, so callers that pass a
+    bare array keep working.
+
+    Raises ValueError on an irregular grid: silently averaging an irregular spacing would
+    produce a search geometry that is wrong everywhere rather than obviously broken.
+    """
+    try:
+        lat = np.asarray(obj["lat"].values, dtype=float)
+        lon = np.asarray(obj["lon"].values, dtype=float)
+    except (KeyError, TypeError, IndexError):
+        return CELL_SIZE
+    if lat.size < 2 or lon.size < 2:
+        return CELL_SIZE
+    dlat = np.abs(np.diff(lat))
+    dlon = np.abs(np.diff(lon))
+    for name, d in (("lat", dlat), ("lon", dlon)):
+        if not np.allclose(d, d[0], rtol=0, atol=1e-6):
+            raise ValueError(
+                f"{name} spacing is irregular (min {d.min():.6f}, max {d.max():.6f}); "
+                "extraction geometry is only defined on a regular grid."
+            )
+    size = float(dlat[0])
+    if abs(size - float(dlon[0])) > 1e-6:
+        raise ValueError(
+            f"non-square cells: lat spacing {size:.6f} vs lon spacing {float(dlon[0]):.6f}"
+        )
+    # Snap a grid that is 0.5 deg to within floating-point noise onto the exact legacy
+    # constant, so inference can never perturb a shipped layer's geometry.
+    return CELL_SIZE if abs(size - CELL_SIZE) < _LEGACY_TOL else size
+
+
+def search_radius_for(obj) -> float:
+    """Point-extraction search radius in degrees for this object's grid (0.5 at 0.5 deg)."""
+    return SEARCH_RADIUS_CELLS * grid_cell_size(obj)
+
+
+def sigma_for(obj) -> float:
+    """Gaussian sigma in degrees for this object's grid (0.25 at 0.5 deg)."""
+    return SIGMA_CELLS * grid_cell_size(obj)
 
 # Known variable directions for percentile interpretation
 # "higher_is_better" means high values are GOOD (low risk) - percentile should be inverted
@@ -126,8 +204,8 @@ def extract_by_point(
     lat: float,
     lon: float,
     variables: Optional[List[str]] = None,
-    search_radius: float = 0.5,
-    sigma: float = 0.25,
+    search_radius: Optional[float] = None,
+    sigma: Optional[float] = None,
 ) -> Dict[str, Dict[int, float]]:
     """Extract values at a point using Gaussian distance-weighted averaging.
 
@@ -154,8 +232,11 @@ def extract_by_point(
         lat: Target latitude (decimal degrees)
         lon: Target longitude (decimal degrees, -180 to 180)
         variables: List of variables to extract (default: all numeric variables)
-        search_radius: Search radius in degrees (default: 0.5 = ~4 cells)
-        sigma: Gaussian sigma for weighting (default: 0.25 = half cell size)
+        search_radius: Search radius in degrees. None (default) infers it from `ds`'s own
+            grid as SEARCH_RADIUS_CELLS x cell size, which is 0.5 on a 0.5 deg grid --
+            identical to the previous hardcoded default. Pass a number to override.
+        sigma: Gaussian sigma in degrees. None (default) infers SIGMA_CELLS x cell size,
+            which is 0.25 on a 0.5 deg grid -- identical to the previous default.
 
     Returns:
         Dict mapping variable names to {decade: value} dicts
@@ -166,6 +247,13 @@ def extract_by_point(
         >>> print(result["median"][2050])  # Value for 2050 decade
     """
     lon = normalize_longitude(lon)
+
+    # Geometry follows THIS dataset's grid. On the 0.5 deg grid every shipped layer uses,
+    # these resolve to exactly 0.5 and 0.25 -- the previous hardcoded defaults.
+    if search_radius is None:
+        search_radius = search_radius_for(ds)
+    if sigma is None:
+        sigma = sigma_for(ds)
 
     lats = ds.lat.values
     lons = ds.lon.values
@@ -292,7 +380,7 @@ def extract_by_polygon(
     ds: xr.Dataset,
     polygon: Union[Polygon, MultiPolygon],
     variables: Optional[List[str]] = None,
-    cell_size: float = CELL_SIZE,
+    cell_size: Optional[float] = None,
 ) -> Dict[str, Dict[int, float]]:
     """Extract values within a polygon using area-weighted averaging.
 
@@ -303,7 +391,9 @@ def extract_by_polygon(
         ds: xarray Dataset with (decade, lat, lon) dimensions
         polygon: Shapely Polygon or MultiPolygon defining the region
         variables: List of variables to extract (default: all numeric variables)
-        cell_size: Grid cell size in degrees (default: 0.5)
+        cell_size: Grid cell size in degrees. None (default) infers it from `ds`'s own
+            coordinates -- 0.5 on every layer shipped before 2026-08-14, so the cell
+            boundaries and intersection fractions are unchanged for those.
 
     Returns:
         Dict mapping variable names to {decade: value} dicts
@@ -316,6 +406,9 @@ def extract_by_polygon(
         >>> poly = Polygon([(-123, 45), (-122, 45), (-122, 46), (-123, 46)])
         >>> result = extract_by_polygon(ds, poly)
     """
+    if cell_size is None:
+        cell_size = grid_cell_size(ds)
+
     lats = ds.lat.values
     lons = ds.lon.values
 

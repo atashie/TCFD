@@ -46,16 +46,19 @@ So the unprotected field and the protected fields have DIFFERENT ensembles. A `n
           separately if that question is ever asked.
 
 TWO DEFECTS THE PROBE FOUND -- BOTH SILENT
-  1. LATITUDE ORIENTATION DIFFERS BETWEEN PROTECTION VARIANTS OF THE SAME MEMBER.
-     `none` is DESCENDING (89.875 -> -89.875) with header dims (time, lon, lat);
-     `2yr`/`flopros` are ASCENDING (-89.875 -> 89.875) with dims (time, lat, lon).
-     A `.sel(lat=slice(hi, lo))` silently returns ZERO cells on half the files, and any
-     code that indexes by position rather than coordinate builds an upside-down layer that
-     passes every contract check. The processor MUST `.sortby("lat")` on load.
-  2. PERMANENT WATER READS 1.000. 515 cells sit at exactly 1.0 in the 2090s mean of the
-     unprotected member -- the Caspian and other inland water bodies. They are not flood
-     risk and they will dominate a percentile ranking. Needs a mask decision before
-     processing.
+  1. LATITUDE ORIENTATION DIFFERS BETWEEN PROTECTION VARIANTS OF THE SAME MEMBER, and it
+     is systematic: verified across all 258 ingested files, `none` is DESCENDING
+     (89.875 -> -89.875) in all 96, `40yr`/`flopros` ASCENDING in all 162.
+     What differs is the COORDINATE order (and the order the file declares its dimensions,
+     visible in `ds.sizes`). The variable's own dim order is ('time','lat','lon')
+     everywhere -- the arrays are NOT transposed, so do not go looking for one.
+     A `.sel(lat=slice(hi, lo))` silently returns ZERO cells on whichever half does not
+     match, and code that indexes by position rather than coordinate builds an upside-down
+     layer that passes every contract check. Always `.sortby("lat")` on load.
+  2. PERMANENT WATER READS 1.000. Cells fully flooded in every year: unprotected median
+     511 (494-531), protected median ~230. The Caspian and other inland water bodies. Not
+     flood risk, and they will sit at the top of any percentile ranking. Needs a mask
+     decision before processing.
 
 Neither is visible in the metadata, which is otherwise the cleanest of any layer here:
 `units='1'`, `long_name='flooded fraction'`, and a full provenance block naming

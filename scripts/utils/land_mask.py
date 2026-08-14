@@ -122,6 +122,19 @@ def apply_land_mask(
         # Squeeze extra dimensions
         mask_values = np.squeeze(mask_values)
 
+    # The mask is applied POSITIONALLY, so it is only meaningful on the grid it was built
+    # for. ISIMIP publishes these masks at 0.5 deg only; a layer on a finer grid (the 0.25
+    # deg CaMa-Flood layers, 2026-08-14) must derive its mask from its own data instead.
+    # Without this check numpy raises a bare broadcast error that names shapes and not the
+    # actual problem.
+    if data.shape[-2:] != mask_values.shape[-2:]:
+        raise ValueError(
+            f"Land mask grid {mask_values.shape[-2:]} does not match the data grid "
+            f"{data.shape[-2:]}. ISIMIP land-sea masks are published at 0.5 deg; a layer on "
+            "another grid must derive its mask from its own coordinates rather than "
+            "reusing one at a different resolution."
+        )
+
     # ISIMIP masks use 1 for land, NaN for ocean
     # Create boolean mask: land=True where value is 1 (not NaN)
     land_mask = ~np.isnan(mask_values) & (mask_values > 0)

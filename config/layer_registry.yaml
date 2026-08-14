@@ -281,6 +281,46 @@ layers:
       NO land mask (it zero-fills all 259,200 cells); the ISIMIP2b `LSM` mask is applied by
       the processor, so 67,420 land cells are published and nothing else.
 
+  sealevel-2b:
+    folder: coastal-inundation
+    file_prefix: coastalinundation
+    hazard: Sea level rise
+    hazard_measure: Coastal land area fraction at or below projected sea level
+    # Registered against the SEA-LEVEL-RISE hazard family, NOT flood-coastal (user decision
+    # 2026-08-14). It answers permanent-inundation potential from MEAN sea level. There is
+    # no tide, no storm surge and no wave setup in it, and most coastal damage happens at
+    # extreme water levels well above mean sea level -- so filing it under coastal flood
+    # would tell a reader the acute hazard had been assessed when it has not.
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on 100.0% of active cells (2090s, 10,542 active of 18,964 finite;
+      measured 2026-08-14). Sign agreement 0.0%. Sen carries no signal here: most coastal
+      cells hold exactly zero exposure for most years, so same-valued pairs dominate every
+      window. READ ols_slope.
+    relative_baseline: false
+    delivery_note: >-
+      SCREENING RESOLUTION -- A REGIONAL RESULT, NOT A SITE RESULT. Published on 0.5 deg
+      (~55 km); a site's value is its whole cell's value. Terrain is read at 15 arcsec and
+      the within-cell elevation DISTRIBUTION is used rather than a cell mean, but sea level
+      is one value per cell and connectivity is decided at ~1.85 km. Coastal inundation
+      turns on metres of elevation over hundreds of metres of ground, so a quayside and a
+      hillside in the same cell get the SAME number. Use it to rank which coastlines and
+      sites deserve investigation; it cannot support a site-level conclusion, a design
+      elevation or an asset-level financial estimate. Higher-resolution work is required for
+      those, and is expected in future deliveries. This is a MUST-DISCLOSE caveat
+      (RESOLUTION-SEALEVEL-2B), not an optional note.
+      DERIVED, not an ISIMIP output: ISIMIP2b regional sea level (`sealevelrise` total, p50;
+      Mengel et al. 2016) applied to GEBCO_2026 terrain, so it is the only layer built from
+      two sources. SINGLE sea-level model forced by four CMIP5 GCMs, so the CI is inter-GCM
+      spread only and carries NO structural model uncertainty. Its `percentile` is an
+      ABSOLUTE calibration (0 m -> 100, 10 m LECZ bound -> 1), NOT the contract's
+      percentile-of-score, so it is not on the same axis as other layers' percentiles and any
+      Climate Score averaging them must say so. Read `sparsity_caveat` before drawing any
+      conclusion from a zero -- the DEM understates absolute exposure and South Florida reads
+      0.00000 at every decade.
+
 # Layers refused by the loader. A folder carrying INVALID-DO-NOT-USE.md is ALSO refused
 # automatically, so this list is belt-and-braces rather than the only guard.
 blocked:

@@ -69,8 +69,26 @@ FINE_ROWS, FINE_COLS = 43200, 86400      # 15 arcsec
 COARSE_FACTOR = 4                        # -> 1 arcmin for connectivity
 BAND_ROWS = 1440                         # 1440 x 86400 int16 = 249 MB per read
 
-# Water level at which connectivity is evaluated: the permissive end of the range.
-CONNECT_LEVEL_M = 1.0
+# Water level at which connectivity is evaluated. This is the LECZ bound itself, and not
+# by coincidence: McGranahan, Balk & Anderson (2007) define the Low Elevation Coastal Zone
+# as "the contiguous area along the coast that is less than 10 metres above sea level",
+# hydrologically connected to the sea -- which is a connectivity criterion evaluated at
+# 10 m. Setting it lower truncates the hypsometry instead of just excluding closed basins:
+# at 1 m, land sitting at 3 m fell outside the connectable set and was counted as
+# "unconnected" when it is merely higher, which emptied 95% of coastal land out of the
+# histogram.
+CONNECT_LEVEL_M = 10.0
+
+# ONE CONNECTIVITY LEVEL CANNOT DO BOTH JOBS. Evaluated at 10 m, the Salton Sink connects
+# to the Gulf of California across the Colorado delta's alluvial fan and the Danakil
+# Depression connects to the Red Sea -- so the Imperial Valley, 100 km inland at -72 m,
+# would read as maximum coastal risk. Evaluated at 2 m instead, the percentile grading
+# collapses: coastal plain at 5 m falls outside the connected set and scores 1 as though it
+# were a mountain. So the two questions are asked separately. EXPO_LEVEL_M gates what can
+# actually be inundated and only has to clear the largest sea-level delta in the ensemble
+# (measured: +1.328 m at rcp60); CONNECT_LEVEL_M gates LECZ pool membership and the graded
+# percentile.
+EXPO_LEVEL_M = 2.0
 
 # Histogram over elevation-above-present-sea-level. 0.05 m bins across [-30, +30] resolve
 # a 0.2-0.8 m signal into 4-16 bins; everything outside is kept in the two tail counters
@@ -90,11 +108,13 @@ assert SUB * NLAT_OUT == FINE_ROWS and (FINE_COLS // NLON_OUT) * NLON_OUT == FIN
 INLAND_RINGS = 2
 
 
-def find_grid() -> Path:
-    cands = sorted(GEBCO.glob("*.nc"))
-    if not cands:
-        raise SystemExit(f"no GEBCO .nc found in {GEBCO} -- is the download finished?")
-    return max(cands, key=lambda p: p.stat().st_size)
+def find_grid() -> tuple[Path, Path]:
+    """(elevation grid, type-identifier grid). Named explicitly, not picked by size."""
+    elev, tid = GEBCO / "GEBCO_2026.nc", GEBCO / "GEBCO_2026_TID.nc"
+    for f in (elev, tid):
+        if not f.exists():
+            raise SystemExit(f"missing {f} -- is the download finished?")
+    return elev, tid
 
 
 def inspect(path: Path):
@@ -119,35 +139,61 @@ def elevation_var(ds) -> str:
     raise SystemExit(f"cannot find an elevation variable among {list(ds.data_vars)}")
 
 
-def pass_a_connectivity(path: Path) -> np.ndarray:
-    """Ocean-connected water at 1 arcmin, as a bool array (n/4 x m/4)."""
+def pass_a_connectivity(elev_path: Path, tid_path: Path) -> np.ndarray:
+    """Ocean-connected water at 1 arcmin, as a bool array (n/4 x m/4).
+
+    "Connectable" is marine water OR land low enough to be reachable by the sea at
+    CONNECT_LEVEL_M. Marine water comes from the TID grid rather than from an elevation
+    threshold, which is the correction that matters: taking `elevation <= 1 m` as sea
+    swallowed the Dutch polders -- below sea level, dikes narrower than a 460 m cell -- so
+    the most exposed land on the planet was reclassified as ocean and left the denominator
+    entirely. TID calls those cells Land (verified: 52.4N 4.9E -> TID 0) and the North Sea
+    beside them 17.
+    """
     cache = OUT / "ocean_connected_1arcmin.npz"
     if cache.exists():
         print(f"pass A: reusing {cache}")
-        return np.load(cache)["ocean"]
+        z = np.load(cache)
+        return {"expo": z["expo"], "pool": z["pool"]}
 
-    ds = xr.open_dataset(path, decode_times=False, chunks=None)
-    var = elevation_var(ds)
-    nr, nc = ds[var].shape
+    de = xr.open_dataset(elev_path, decode_times=False)
+    dt = xr.open_dataset(tid_path, decode_times=False)
+    var = elevation_var(de)
+    nr, nc = de[var].shape
     cr, cc = nr // COARSE_FACTOR, nc // COARSE_FACTOR
-    coarse = np.empty((cr, cc), dtype="int16")
+    levels = {"expo": EXPO_LEVEL_M, "pool": CONNECT_LEVEL_M}
+    water = {k: np.empty((cr, cc), dtype=bool) for k in levels}
 
-    print(f"pass A: min-reducing {nr}x{nc} -> {cr}x{cc} in bands of {BAND_ROWS}")
+    print(f"pass A: reducing {nr}x{nc} -> {cr}x{cc} in bands of {BAND_ROWS}")
     for r0 in range(0, nr, BAND_ROWS):
         r1 = min(r0 + BAND_ROWS, nr)
-        band = ds[var][r0:r1].values.astype("int16")
-        b = band.reshape(band.shape[0] // COARSE_FACTOR, COARSE_FACTOR,
-                         cc, COARSE_FACTOR)
-        coarse[r0 // COARSE_FACTOR:r1 // COARSE_FACTOR] = b.min(axis=(1, 3))
-        del band, b
+        e = de[var][r0:r1].values.astype("int16")
+        t = dt["tid"][r0:r1].values.astype("int8")
+        marine = t != 0
+        del t
+        for k, lv in levels.items():
+            conn = marine | (e <= lv)
+            # ANY connectable sub-cell makes the 1-arcmin cell connectable, so channels
+            # narrower than the coarse cell stay open.
+            water[k][r0 // COARSE_FACTOR:r1 // COARSE_FACTOR] = conn.reshape(
+                conn.shape[0] // COARSE_FACTOR, COARSE_FACTOR, cc,
+                COARSE_FACTOR).any(axis=(1, 3))
+            del conn
+        del e, marine
         print(f"  rows {r0:6d}-{r1:6d}", end="\r")
-    ds.close()
+    de.close(); dt.close()
     print()
+    out = {}
+    for key in ("expo", "pool"):
+        out[key] = _largest_component(water.pop(key), key)
+    OUT.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(cache, expo=out["expo"], pool=out["pool"])
+    return out
 
-    water = coarse <= CONNECT_LEVEL_M
-    del coarse
+
+def _largest_component(water: np.ndarray, label: str) -> np.ndarray:
     lab, n = ndimage.label(water, structure=np.ones((3, 3), np.uint8))
-    print(f"pass A: {n:,} water components")
+    print(f"pass A [{label}]: {n:,} water components")
 
     # Join across the antimeridian, then take the largest -- the world ocean.
     parent = np.arange(n + 1)
@@ -165,101 +211,152 @@ def pass_a_connectivity(path: Path) -> np.ndarray:
                 a, b = find(lab[r, 0]), find(lab[rr, -1])
                 if a != b:
                     parent[b] = a
-    roots = np.array([find(i) for i in range(n + 1)])
+    roots = np.array([find(i) for i in range(n + 1)], dtype=np.int32)
     roots[0] = 0
-    sizes = np.bincount(roots[lab].ravel())
+    lab = roots[lab]            # relabel in place-ish; drops the pre-union labels
+    del parent
+    sizes = np.bincount(lab.ravel())
     sizes[0] = 0
     ocean_root = int(sizes.argmax())
-    ocean = roots[lab] == ocean_root
-    print(f"pass A: ocean component = {ocean.sum():,} of {water.sum():,} water cells "
-          f"({100 * ocean.sum() / water.sum():.1f}%)")
-
-    OUT.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(cache, ocean=ocean)
+    ocean = lab == ocean_root
+    del lab
+    print(f"pass A [{label}]: ocean component = {ocean.sum():,} of {water.sum():,} "
+          f"water cells ({100 * ocean.sum() / water.sum():.1f}%)")
     return ocean
 
 
-def pass_b_hypsometry(path: Path, ocean_c: np.ndarray):
-    """Per-0.5-degree histogram of coastal-land elevation."""
-    # Which 0.5 deg cells to process: those containing land, within INLAND_RINGS of a cell
-    # containing ocean.
-    f = ocean_c.shape[0] // NLAT_OUT                      # 1-arcmin rows per 0.5 deg
-    g = ocean_c.shape[1] // NLON_OUT
-    has_ocean = ocean_c.reshape(NLAT_OUT, f, NLON_OUT, g).any(axis=(1, 3))
+def pass_b_hypsometry(elev_path: Path, tid_path: Path, ocean_c: np.ndarray):
+    """Per-0.5-degree histogram of coastal-land elevation.
+
+    LAND COMES FROM TID, EXPOSURE FROM ELEVATION. Land is TID == 0, the publisher's own
+    verdict, so below-sea-level land behind sub-pixel defences stays in the denominator
+    instead of being flood-filled into the ocean.
+
+    Land is split into FLOODABLE (hydrologically connected to the sea) and UNCONNECTED.
+    Only floodable land enters the histogram, because land the sea cannot reach cannot be
+    inundated by it however low it sits -- the Dead Sea shore at -430 m is not at coastal
+    risk. Unconnected land is still counted, so it dilutes the exposure fraction and takes
+    the safe end of the percentile rather than vanishing.
+    """
+    pool_c, expo_c = ocean_c["pool"], ocean_c["expo"]
+    f = pool_c.shape[0] // NLAT_OUT
+    g = pool_c.shape[1] // NLON_OUT
+    has_ocean = expo_c.reshape(NLAT_OUT, f, NLON_OUT, g).any(axis=(1, 3))
     near = has_ocean.copy()
     for _ in range(INLAND_RINGS):
         near = (near
                 | np.roll(near, 1, 0) | np.roll(near, -1, 0)
                 | np.roll(near, 1, 1) | np.roll(near, -1, 1))
-    has_land = ~ocean_c.reshape(NLAT_OUT, f, NLON_OUT, g).all(axis=(1, 3))
-    todo = near & has_land
-    print(f"pass B: {todo.sum():,} of {NLAT_OUT * NLON_OUT:,} half-degree cells to process")
+    todo = near
+    print(f"pass B: {todo.sum():,} of {NLAT_OUT * NLON_OUT:,} half-degree cells in the "
+          f"coastal buffer")
 
-    ds = xr.open_dataset(path, decode_times=False)
-    var = elevation_var(ds)
-    hist = np.zeros((NLAT_OUT, NLON_OUT, N_BINS), dtype="int32")
-    below = np.zeros((NLAT_OUT, NLON_OUT), dtype="int32")
-    above = np.zeros((NLAT_OUT, NLON_OUT), dtype="int32")
-    n_land = np.zeros((NLAT_OUT, NLON_OUT), dtype="int32")
-
+    de = xr.open_dataset(elev_path, decode_times=False)
+    dt = xr.open_dataset(tid_path, decode_times=False)
+    var = elevation_var(de)
+    cell_ix, rows_hist, rows_below, rows_above, rows_nland, rows_unconn = [], [], [], [], [], []
+    rows_ehist, rows_ebelow = [], []
     subc = FINE_COLS // NLON_OUT
+
     for jr in range(NLAT_OUT):
         if not todo[jr].any():
             continue
-        band = ds[var][jr * SUB:(jr + 1) * SUB].values.astype("float32")
-        # Upsample the 1-arcmin ocean flag to 15 arcsec for this band.
-        oc = np.repeat(np.repeat(ocean_c[jr * f:(jr + 1) * f], COARSE_FACTOR, 0),
-                       COARSE_FACTOR, 1)
-        land = ~oc
+        band = de[var][jr * SUB:(jr + 1) * SUB].values.astype("float32")
+        tband = dt["tid"][jr * SUB:(jr + 1) * SUB].values.astype("int8")
+        conn = np.repeat(np.repeat(pool_c[jr * f:(jr + 1) * f], COARSE_FACTOR, 0),
+                         COARSE_FACTOR, 1)
+        econn = np.repeat(np.repeat(expo_c[jr * f:(jr + 1) * f], COARSE_FACTOR, 0),
+                          COARSE_FACTOR, 1)
+        is_land = tband == 0
         for ic in np.flatnonzero(todo[jr]):
-            blk = band[:, ic * subc:(ic + 1) * subc]
-            lm = land[:, ic * subc:(ic + 1) * subc]
-            vals = blk[lm]
-            if vals.size == 0:
+            sl = slice(ic * subc, (ic + 1) * subc)
+            lm = is_land[:, sl]
+            if not lm.any():
                 continue
-            n_land[jr, ic] = vals.size
-            below[jr, ic] = int((vals < BIN_LO).sum())
-            above[jr, ic] = int((vals >= BIN_HI).sum())
-            inb = vals[(vals >= BIN_LO) & (vals < BIN_HI)]
-            if inb.size:
-                idx = ((inb - BIN_LO) / BIN_W).astype("int32")
-                hist[jr, ic] = np.bincount(idx, minlength=N_BINS)
-        del band, oc, land
+            # Reachable = land inside the ocean-connected LECZ component. Everything else
+            # -- land above the LECZ bound, and land below it sitting in a closed basin
+            # like the Dead Sea or Qattara -- is SAFE from the sea and is counted but never
+            # exposed. Both go in the denominator so the exposure fraction is a share of
+            # the cell's real coastal land, not of a subset chosen by the method.
+            def _hist(mask):
+                v = band[:, sl][mask]
+                hh = np.zeros(N_BINS, dtype="int32")
+                nbel = 0
+                if v.size:
+                    nbel = int((v < BIN_LO).sum())
+                    ib = v[(v >= BIN_LO) & (v < BIN_HI)]
+                    if ib.size:
+                        hh = np.bincount(((ib - BIN_LO) / BIN_W).astype("int32"),
+                                         minlength=N_BINS).astype("int32")
+                return hh, nbel
+
+            h, n_bel = _hist(lm & conn[:, sl])            # LECZ pool -> graded percentile
+            eh, e_bel = _hist(lm & econn[:, sl])          # floodable -> exposure only
+            n_land_c = int(lm.sum())
+            cell_ix.append(jr * NLON_OUT + ic)
+            rows_hist.append(h)
+            rows_below.append(n_bel)
+            rows_above.append(n_land_c - int(h.sum()) - n_bel)   # safe land
+            rows_nland.append(n_land_c)
+            rows_unconn.append(int((lm & ~conn[:, sl]).sum()))
+            rows_ehist.append(eh)
+            rows_ebelow.append(e_bel)
+        del band, tband, conn, econn, is_land
         print(f"  row {jr + 1}/{NLAT_OUT}", end="\r")
-    ds.close()
+    de.close(); dt.close()
     print()
 
     edges = BIN_LO + BIN_W * np.arange(N_BINS + 1)
+    hist = np.asarray(rows_hist, dtype="int32") if rows_hist else np.zeros((0, N_BINS), "int32")
+    ehist = np.asarray(rows_ehist, dtype="int32") if rows_ehist else np.zeros((0, N_BINS), "int32")
+    n_land = np.asarray(rows_nland, dtype="int32")
+    unconn = np.asarray(rows_unconn, dtype="int32")
     out = xr.Dataset(
         {
-            "hist": (("lat", "lon", "bin"), hist,
-                     {"long_name": "count of land sub-cells per elevation bin"}),
-            "n_below": (("lat", "lon"), below,
-                        {"long_name": f"land sub-cells below {BIN_LO} m"}),
-            "n_above": (("lat", "lon"), above,
-                        {"long_name": f"land sub-cells at or above {BIN_HI} m"}),
-            "n_land": (("lat", "lon"), n_land,
-                       {"long_name": "total ocean-disconnected (land) sub-cells"}),
-            "processed": (("lat", "lon"), todo.astype("int8"),
-                          {"long_name": "cell was within the coastal buffer and had land"}),
+            "hist": (("cell", "bin"), hist,
+                     {"long_name": "count of FLOODABLE land sub-cells per elevation bin"}),
+            "n_below": (("cell",), np.asarray(rows_below, dtype="int32"),
+                        {"long_name": f"floodable land sub-cells below {BIN_LO} m"}),
+            "n_above": (("cell",), np.asarray(rows_above, dtype="int32"),
+                        {"long_name": "land sub-cells the sea cannot reach: above the LECZ "
+                                      "bound, or below it inside a closed basin. Counted in "
+                                      "the denominator, never exposed, percentile 1."}),
+            "hist_expo": (("cell", "bin"), ehist,
+                          {"long_name": "count of FLOODABLE land sub-cells per elevation "
+                                        "bin -- connected to the sea at expo_level_m. Used "
+                                        "for exposure only; the graded percentile uses "
+                                        "`hist`."}),
+            "n_below_expo": (("cell",), np.asarray(rows_ebelow, dtype="int32"),
+                             {"long_name": f"floodable land sub-cells below {BIN_LO} m"}),
+            "n_land": (("cell",), n_land,
+                       {"long_name": "land sub-cells (TID == 0) in the cell"}),
+            "n_unconnected": (("cell",), unconn,
+                              {"long_name": "land sub-cells not hydrologically connected "
+                                            "to the sea; counted but never exposed"}),
+            "cell_flat_index": (("cell",), np.asarray(cell_ix, dtype="int32"),
+                                {"long_name": f"flat index into the "
+                                              f"{NLAT_OUT}x{NLON_OUT} half-degree grid"}),
         },
-        coords={
-            "lat": np.arange(-90 + HALF_DEG / 2, 90, HALF_DEG),
-            "lon": np.arange(-180 + HALF_DEG / 2, 180, HALF_DEG),
-            "bin_left": ("bin", edges[:-1]),
-        },
+        coords={"bin_left": ("bin", edges[:-1])},
         attrs={
-            "dem": "GEBCO_2026 ice-surface elevation, 15 arcsec",
-            "dem_datum": "GEBCO states its grids assume all source data referred to mean "
-                         "sea level",
+            "dem": "GEBCO_2026 ice-surface elevation, 15 arcsec; land base SRTM15+ v2.8",
+            "dem_datum": "elevation standard_name is height_above_mean_sea_level",
             "dem_type": "DIGITAL SURFACE MODEL -- includes vegetation canopy and buildings; "
                         "SRTM-class coastal bias is +2.49 to +3.67 m, an order of magnitude "
                         "larger than the sea-level signal",
-            "connectivity": f"ocean = largest connected water component at 1 arcmin, "
-                            f"evaluated at {CONNECT_LEVEL_M} m; min-reduced from 15 arcsec "
+            "land_definition": "GEBCO_2026 TID == 0 ('Land'), NOT an elevation threshold",
+            "connectivity": f"largest connected component of (TID != 0 OR elevation <= "
+                            f"{CONNECT_LEVEL_M} m) at 1 arcmin, any-reduced from 15 arcsec "
                             f"so narrow straits stay open",
             "defences_represented": "NO -- dikes, levees and seawalls are narrower than a "
                                     "grid cell and absent from the DEM",
+            "expo_level_m": EXPO_LEVEL_M,
+            "expo_level_rationale": "connectivity for EXPOSURE is evaluated at 2 m, not at "
+                                    "the 10 m LECZ bound: at 10 m the Salton Sink connects "
+                                    "through the Colorado delta and the Danakil Depression "
+                                    "through the Red Sea, so inland basins would read as "
+                                    "maximum coastal risk. 2 m clears the largest measured "
+                                    "sea-level delta (+1.328 m at rcp60).",
             "inland_buffer": f"{INLAND_RINGS} half-degree rings from a cell containing ocean",
             "bin_low_m": BIN_LO, "bin_high_m": BIN_HI, "bin_width_m": BIN_W,
         },
@@ -268,20 +365,22 @@ def pass_b_hypsometry(path: Path, ocean_c: np.ndarray):
     p = OUT / "hypsometry_halfdeg.nc"
     out.to_netcdf(p, encoding={"hist": {"zlib": True, "complevel": 4}})
     print(f"pass B: wrote {p} ({p.stat().st_size / 1e6:.0f} MB)")
-    print(f"  cells with land: {int((n_land > 0).sum()):,}; "
-          f"total land sub-cells: {n_land.sum():,}")
+    print(f"  cells with land: {int((n_land > 0).sum()):,}; land sub-cells: "
+          f"{int(n_land.sum()):,}")
+    print(f"  in LECZ pool (graded): {int(hist.sum() + np.asarray(rows_below).sum()):,}; "
+          f"floodable (exposure):  {int(ehist.sum() + np.asarray(rows_ebelow).sum()):,}")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--inspect", action="store_true", help="print the GEBCO header and stop")
     a = ap.parse_args()
-    path = find_grid()
+    elev_path, tid_path = find_grid()
     if a.inspect:
-        inspect(path)
+        inspect(elev_path)
         return
-    ocean_c = pass_a_connectivity(path)
-    pass_b_hypsometry(path, ocean_c)
+    ocean_c = pass_a_connectivity(elev_path, tid_path)
+    pass_b_hypsometry(elev_path, tid_path, ocean_c)
 
 
 if __name__ == "__main__":
