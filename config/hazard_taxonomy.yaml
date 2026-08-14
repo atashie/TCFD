@@ -147,14 +147,25 @@ families:
     customer_note: >-
       Not assessed. River flooding is frequently the dominant physical risk for assets near a watercourse, and its absence here should not be read as a low result. A dedicated flood dataset is required.
     isimip_candidate:
-      - "ISIMIP2b DerivedOutputData/Lange2020 `ler` -- 218 datasets, 8 GHM/land models x 4 CMIP5 GCMs, rcp26/rcp60. Same file structure as the shipped `led` layer, so process_led_drought.py adapts."
-      - "ISIMIP3b DerivedOutputData/Heinicke2026 `floodedarea` -- ssp126/370/585."
+      - "ISIMIP2b DerivedOutputData/Zimmer2023 `flddph` / `fldfrc` (CaMa-Flood v3.6.2) -- ENUMERATED 2026-08-13. ABSOLUTE INUNDATION at 150 arcsec (~4.6 km), 144x finer than every shipped layer, in three protection variants (none / 100yr / flopros). 6 GHM x 4 CMIP5 GCM x rcp26/60/85 = 432 files. This is the only ISIMIP product that answers 'how deep does the water get here' rather than 'is this year unusual'; measured, it puts the Amazon main stem at 6.11 m mean depth where `floodedarea` reads 0.000."
+      - "ISIMIP2b DerivedOutputData/Lange2020 `ler` -- 218 datasets, 8 GHM/land models x 4 CMIP5 GCMs, rcp26/rcp60. Same file structure as the shipped `led` layer, so process_led_drought.py adapts. NOT YET ENUMERATED as of 2026-08-13; the count is from the Lange2020 family block, not a listing."
+      - "ISIMIP3b DerivedOutputData/Heinicke2026 `floodedarea` -- ENUMERATED and value-checked 2026-08-13. Complete 3 models x 5 CMIP6 GCMs x 3 SSPs = 45 files, uniform 2015soc/default, ~53 MB. Full measurement: config/isimip_search_catalog.yaml search_results.river_flood; reproduce with scripts/measure_floodedarea_characteristics.py."
     blocker: >-
-      `floodedarea` is binary {0,1} despite declaring units='1' (an occurrence flag, so its
-      decadal mean is a FREQUENCY, not an area) and is non-NaN over 94.7% of the globe
-      INCLUDING OCEAN -- a per-variable mask defect its own sibling `driedarea` does not
-      have. It needs a land mask applied and its nature declared before it could ship.
-      `ler` carries no known defect and is the cheaper route, at the cost of RCP scenarios.
+      NOT a data defect -- three open decisions. (1) MASKING: `floodedarea` publishes ocean
+      as exact ZERO rather than NaN, hence non-NaN over 94.4-96.5% of the globe. Measured
+      2026-08-13 across all 45 members, only 258 of 165,774 ocean cells are ever flagged and
+      78.3% of those touch land (fjords, small islands) -- a convention with a one-line fix,
+      not the corrupt field the earlier one-line note implied. The mask is still MANDATORY:
+      unmasked, 64% of the grid enters the percentile baseline as zeros. (2) PUBLICATION
+      MASK: solo-model cells read 2.19x the 3-model level at only 1.21x inter-model spread,
+      matching NEITHER `led`'s >=2-model rule nor `driedarea`'s full union -- undecided, and
+      it must be decided on this layer's evidence. (3) DEFINITION: the variable is binary
+      {0,1}, so a decadal mean is a FREQUENCY of flagged years, not the area share that
+      units='1' and long_name='Exposed Area Share' imply; and the Amazon floodplain reads
+      ~0.000 in every member, which is the family's departure-from-preindustrial reference
+      showing through. The exact threshold and return period are UNVERIFIED -- read
+      Heinicke2026/Lange2020 before shipping. This is not a flood-hazard map and a customer
+      would read it as one.
 
   heatwave:
     name: "Heatwave / extreme heat"
@@ -167,9 +178,18 @@ families:
     customer_note: >-
       Not assessed. Extreme heat drives workforce safety limits, equipment derating and cooling demand, and is often the leading hazard for occupied buildings and data centres.
     isimip_candidate:
-      - "ISIMIP2b DerivedOutputData/Lange2020 `leh` -- 30 datasets, hwmid-humidex derived index, rcp26/rcp60. Thin: one impact model."
-      - "ISIMIP3b DerivedOutputData/Zantout2025 `heatwave` -- SSP scenarios."
-    blocker: "Not yet enumerated or value-checked. No processor exists."
+      - "ISIMIP2b DerivedOutputData/Lange2020/HWMId-humidex `leh` (+`peh` population twin) -- 1 impact model x 4 CMIP5 GCMs x rcp26/rcp60 = 8 projection files, annual 2006-2099, uniform nosoc/co2, ~35 MB. Enumerated 2026-08-13."
+      - "ISIMIP3b DerivedOutputData/Zantout2025/HWMID-NONE `heatwave` -- 1 impact model x 5 CMIP6 GCMs x ssp126/370/585 = 15 projection files, annual 2015-2100, uniform 2015soc/default, ~63 MB. Declared long_name 'heatwave area share', units '1'. Enumerated 2026-08-13."
+      - "ISIMIP2b OutputData/health/TRM-Tsukuba `an-tot-heat-all` -- gridded annual COUNT of heat-attributable excess deaths at a fixed 2005 population, 4 GCMs x rcp26/rcp60, ~113 MB. A different quantity, not an asset-facing exposure layer."
+      - "ISIMIP3b InputData bias-adjusted daily `tasmax` (+`hurs`) -- a CONSTRUCTED index, not an aggregation (GUARDRAILS 1-2); ~254 GB for tasmax alone across 5 GCMs x 3 SSPs."
+    blocker: >-
+      Enumerated 2026-08-13 (see search_results.heatwave in config/isimip_search_catalog.yaml);
+      both exposure matrices are complete and cheap. Still blocked on: data nature UNVERIFIED
+      for both (`floodedarea` in the same publication family declares units='1' and is binary,
+      so the declared 'area share' is not evidence); n_models = 1 in every option, so the
+      ">=2 impact models" publication mask has no meaning and must be redefined or dropped;
+      and the 2b/3b index tokens differ (HWMId-humidex vs HWMID-NONE) with the physical
+      difference UNVERIFIED. No processor exists.
 
   heat-stress-chronic:
     name: "Chronic heat / rising mean temperature"
@@ -190,22 +210,44 @@ families:
     name: "Crop failure"
     esrs_class: acute
     cdp_label: "Drought / heat -- crop loss"         # UNVERIFIED
-    covered_by: []
+    covered_by: [cropfailure-3b]
+    coverage_note: >-
+      Cropland area share exposed to unprecedented crop failure, from the 8-model ISIMIP3b
+      crop-model ensemble. Shipped 2026-08-13. It is an EXPOSURE index, not a yield
+      response: it reports how often conditions cross an unprecedentedness threshold, not
+      how much yield is lost. A site can be highly exposed on this layer and still harvest a
+      crop, and the layer says nothing about price, insurance or substitution.
     materiality_note: >-
-      The `agricultural land` catalog entry currently returns drought and wildfire exposure
-      with NO yield response. That entry's caveat says so; this file is where the gap is
-      counted.
+      Covered as of 2026-08-13, but read the boundary. This closes the "agricultural sites
+      carry hazard exposure with no crop-specific layer" gap; it does NOT close "no yield
+      response is modelled". The remaining yield routes are enumerated in
+      config/isimip_search_catalog.yaml search_results.crop_failure (Jaegermeyr2021
+      yieldchange, and the raw agriculture-sector yield from which an index would have to be
+      constructed under GUARDRAILS 1-2).
     customer_note: >-
-      Not assessed. Agricultural sites in this assessment carry hazard exposure only; no crop-yield response is modelled, so a drought result does not translate into a yield loss.
+      Assessed as exposure, not as yield loss. This assessment reports how often cropland at each site is projected to face conditions unprecedented against its own history. It does not model how much yield would be lost, and a site can be highly exposed and still harvest a crop. Scores are RELATIVE TO EACH SITE'S OWN HISTORY, so a reliably productive region with a narrow historical range can rank above a region that has always been marginal -- read a high score as "this place is moving furthest from what it is built for", not as an absolute statement about agricultural viability or food security. Which crops the index aggregates is not documented by the data publisher, so for a site growing a specific crop the result should be treated as a regional signal rather than a crop-specific one.
     isimip_candidate:
-      - "ISIMIP2b DerivedOutputData/Lange2020 `lec` -- 90 datasets, gepic only (single impact model), rcp26/rcp60."
-      - "ISIMIP3b DerivedOutputData/Zantout2025 `cropfailure` -- SSP scenarios."
-      - "ISIMIP crop-yield variables `yield-{crop}` under the agriculture sector."
+      # ENUMERATED 2026-08-13. Full matrices in config/isimip_search_catalog.yaml
+      # search_results.crop_failure. Four representations, two of them ready-made indices.
+      - "ISIMIP3b DerivedOutputData/Zantout2025 `cropfailure` -- 8 crop models x 5 CMIP6 GCMs x {ssp126,ssp370,ssp585}, COMPLETE 120-file matrix, 40 members/scenario, uniform 2015soc/default, annual 2015-2100, ~705 MB. Crop composition of the index is UNDOCUMENTED."
+      - "ISIMIP2b DerivedOutputData/Lange2020 `lec` -- gepic AND pepic (2 models, not 1) x 4 CMIP5 GCMs x {rcp26,rcp60}, COMPLETE 16-file matrix, 8 members/scenario, ~100 MB. `pec` population twin available."
+      - "ISIMIP3b DerivedOutputData/Jaegermeyr2021 `yieldchange-{mai,ric,soy,whe}` -- 12 models, 57 members at ssp126/585 but 45 at ssp370. A signed yield change, not a failure flag."
+      - "ISIMIP3b agriculture sector `yield-{crop}-{firr,noirr}` -- 14 models, 11 crops, up to 62 members. Raw yield; a failure index would have to be constructed."
     blocker: >-
-      `lec` is a single impact model, so its CI would carry no structural uncertainty. The
-      direct yield route is the one that failed: the ISIMIP2b LPJmL sugarcane layers were
-      WITHDRAWN 2026-08-11 because the run does not simulate cane in the cane belt. Any new
-      crop layer needs a GUARDRAILS §12 reference-site check before it is trusted.
+      RESOLVED 2026-08-13 for the exposure route -- `cropfailure-3b` is shipped. History
+      worth keeping, because it cost weeks: the previous blocker read "`lec` is a single
+      impact model, so its CI would carry no structural uncertainty", and it was false. It
+      rested on a 2026-07-24 API listing capped at 20 rows. `lec` has two models and the 3b
+      re-issue has eight -- the deepest ensemble in the product. An UNDERSTATED POSITIVE in
+      our own catalog is more dangerous than a recorded negative, because a negative at
+      least looks like something to re-check while `impact_models: "gepic"` reads as a
+      measured fact (GUARDRAILS §11, and see WORKFLOW-ISSUES 2026-08-13).
+      STILL OPEN for the yield route: the crop composition inside the crop-aggregated index
+      is undocumented, and the direct yield route carries the sugarcane precedent -- the
+      ISIMIP2b LPJmL sugarcane layers were WITHDRAWN 2026-08-11 because the run does not
+      simulate cane in the cane belt while passing the OUTPUT-SPEC contract. Any yield-based
+      crop layer needs a GUARDRAILS §12 reference-site check before it is trusted;
+      `cropfailure-3b` passed one on 12 named cropland sites, raw and processed.
 
   water-stress:
     name: "Water stress / availability"

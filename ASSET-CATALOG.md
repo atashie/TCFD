@@ -409,19 +409,13 @@ non-zero) at the final decade, and flags any layer where the data disagrees with
 registry. Judging on all cells dilutes both figures with ocean and permanently-zero land and
 produces the opposite conclusion.
 
-Measured 2026-08-12:
+**The measured table lives in [DATASET-ATTRIBUTES.md](DATASET-ATTRIBUTES.md)**, not here — one
+copy, so a reprocessed layer cannot leave two tables disagreeing. Re-run the command above
+after reprocessing anything and update it there.
 
-| layer | active cells | `sen==0` | sign agreement | read |
-|---|---|---|---|---|
-| `conifer-npp` | 25,603 | 0.021 | 0.879 | `sen_slope` |
-| `cyclone` | 20,337 | 0.974 | 0.025 | `ols_slope` |
-| `drought-2b` | 66,741 | 1.000 | 0.000 | `ols_slope` |
-| `drought-3b` | 61,810 | 1.000 | 0.000 | `ols_slope` |
-| `wildfire` | 64,039 | 0.740 | 0.226 | `ols_slope` |
-
-`wildfire` is the one worth noting: its 29.2% grid-level zero fraction suggests Sen is safe,
-and it is not — the collapse lives in the year-pair *differences*, not the values. That is
-why this is measured per layer rather than inferred from `field_nature`.
+The point worth carrying in your head: `wildfire`'s 29.2% grid-level zero fraction suggests
+Sen is safe, and it is not — the collapse lives in the year-pair *differences*, not the
+values. That is why this is measured per layer rather than inferred from `field_nature`.
 
 ### Preferring the more recent or more robust option
 
@@ -453,21 +447,13 @@ Applied to every member's annual map *before* any pooling. It is a per-layer dec
 recorded in the file's `spatial_smoothing` attribute, and the decay length is a **measurement,
 not a constant**.
 
-| Layer | Stage-1 smoothing |
-|---|---|
-| `cyclone` (`let`) | **5×5 window, w = exp(−d/2.5) in grid cells**, cos(lat)-scaled longitude distance, longitude-wrapped, normalized over non-NaN land neighbours. A declared deviation. |
-| `drought-3b`, `drought-2b`, `wildfire`, `conifer-npp` | **none**, each declared with a reason |
-
-Only `cyclone` is smoothed, because raw `let` is sparse storm *tracks* one cell wide and a
-4-member ensemble cannot average them into a projected impact field. `L=2.5` leaves 8.1% of
-the weight on the centre cell; the earlier `L=0.7` kernel kept 32.1% and left the tracks
-visible. The others decline it for stated reasons — `conifer-npp` because a kernel would
-bleed productivity into cells where no model places a stand, `drought-2b`/`drought-3b`
-because 310 and 150 Bernoulli draws per cell-decade already estimate a frequency and
-smoothing would only blur real aridity gradients, `wildfire` because 22 members is thick.
+**The per-layer table lives in [DATASET-ATTRIBUTES.md](DATASET-ATTRIBUTES.md)**, kept in one
+place so it cannot drift from what the files declare. Only `cyclone` is smoothed today, and
+each other layer declines it for a stated, measured reason.
 
 **Read the layer's own `spatial_smoothing` attribute before interpreting its values.** Never
-assume a decay length carries across layers.
+assume a decay length carries across layers — it is a measurement, not a constant, and so is
+whether to smooth at all.
 
 ### Stage 2 — extraction-time point averaging (here, uniform across layers)
 

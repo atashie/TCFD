@@ -65,11 +65,20 @@ assets:
 
   agricultural land:
     aliases: [farmland, cropland, agriculture, farm]
-    layers: [drought-3b, wildfire]
+    layers: [cropfailure-3b, drought-3b, wildfire]
     rationale: >-
-      Drought is the primary yield driver; wildfire is the acute loss mechanism.
+      Crop failure is the crop-specific exposure and is listed first; drought is the primary
+      underlying yield driver and is retained because it covers the site whether or not it
+      is inside the crop models' cropland footprint; wildfire is the acute loss mechanism.
     caveats: >-
-      NO crop-yield layer is currently shipped, so this returns hazard exposure WITHOUT a
-      yield response. The sugarcane layers were withdrawn 2026-08-11 for an upstream data
+      ADDED cropfailure-3b 2026-08-13, and it changes what this bundle can claim -- but
+      only so far. It is an EXPOSURE index (how often conditions cross an unprecedentedness
+      threshold), NOT a yield response: it does not say how much yield is lost, so this
+      bundle still returns no modelled yield loss. It is published on a CROPLAND footprint,
+      so a site outside the crop models' cropland returns OFF_LAYER_MASK rather than zero --
+      which is why drought-3b stays in the bundle. Its scores are RELATIVE TO EACH SITE'S
+      OWN HISTORY (see the must-disclose RELATIVE-BASELINE caveat), and which crops it
+      aggregates is undocumented by the publisher, so for a specific crop treat it as a
+      regional signal. The sugarcane layers were withdrawn 2026-08-11 for an upstream data
       defect and must not be substituted.
     confirmed_on: null

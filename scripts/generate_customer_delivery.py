@@ -144,6 +144,15 @@ def print_plan(customer, input_path, locations_df, assets_df, work, registry) ->
               f"{len(scenarios)} scenario(s) x {n_decades} decades = {rows:>5} rows")
         print(f"  {'':<14} units {units}   scenarios {', '.join(scenarios)}")
         print(f"  {'':<14} read {spec.recommended_slope}")
+        # The relative-baseline note comes FIRST and is labelled loudest. It is the one
+        # property of a layer a reader can get wrong while every number in front of them is
+        # correct, and this plan is where the mapping is agreed with the customer -- the
+        # skill's Stage 1 explicitly relies on these NOTE lines carrying it. Printing only
+        # `delivery_note` would hide it, because the substance lives in its own field so
+        # that `generate_delivery_caveats.py` can promote it to must-disclose.
+        if spec.relative_baseline:
+            note = " ".join(spec.relative_baseline_note.split())
+            print(f"  {'':<14} READ AS RELATIVE: {note}")
         if spec.delivery_note:
             note = " ".join(spec.delivery_note.split())
             print(f"  {'':<14} NOTE: {note}")

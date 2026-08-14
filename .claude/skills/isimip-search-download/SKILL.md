@@ -243,8 +243,10 @@ https://files.isimip.org/{round}/OutputData/{sector}/{MODEL}/{gcm}/{future|histo
 - To inspect a header without downloading a large file, open it lazily over HTTP
   (`fsspec` + `xarray`/`h5netcdf`). **Check the interpreter first — in this repo neither is
   installed.** `python` is not on PATH at all (only `python3`), and `.venv` has `xarray` but
-  **no `fsspec`, no `h5netcdf`, no `yaml`**. So there is no lazy remote open and no YAML
-  validator available; budget for that instead of discovering it mid-search.
+  **no `fsspec`, no `h5netcdf`**. So there is no lazy remote open; budget for that instead
+  of discovering it mid-search. `.venv/bin/python3` **does** have `yaml` (re-measured
+  2026-08-13 — this line previously said it did not); system `python3` does not, so validate
+  catalog edits with the venv interpreter explicitly.
 - **Do not chase CF attributes with HTTP range reads.** NetCDF4 is HDF5 and places attribute
   object headers at unpredictable offsets: a 1 MB *and* a 4 MB prefix read of a
   `Zantout2025` file surfaced only the dims (`lat`/`lon`/`time`/`bnds`), the variable name

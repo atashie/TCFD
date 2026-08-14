@@ -292,6 +292,18 @@ re-enumerated before it is relied on or repeated to the user.
 - **Every negative in the catalog carries its receipt inline**: the exact path or query
   enumerated, and the date. Use `verified_absent_on: "<date> — listed <URL>"`. If you
   cannot state the path you listed, write `UNVERIFIED` instead of the negative.
+- **An UNDERSTATED POSITIVE is this same failure and is harder to catch.** A capped or
+  paginated result is `UNVERIFIED` for **coverage in either direction**, not only for
+  absence — record the enumeration method beside the count. Measured 2026-08-13: the catalog
+  read `lec: impact_models: "gepic"` — one model — taken from a 2026-07-24 API listing capped
+  at **20 rows**, and `config/hazard_taxonomy.yaml` then carried that forward as the *stated
+  blocker* for the entire crop-failure family: *"`lec` is a single impact model, so its CI
+  would carry no structural uncertainty."* `lec` has **two** models and the ISIMIP3b re-issue
+  `cropfailure` has **eight** — the deepest ensemble in the product, blocked for weeks by our
+  own note. A recorded negative at least looks like something to re-check; `impact_models:
+  "gepic"` reads as a measured fact and invites no scrutiny at all. §8 already treats
+  `count=1001` as truncation; a **row cap on a listing is the same failure at a different
+  limit**, and so is any count taken from a first page.
 - **A negative about a CODE is not a negative about a HAZARD.** `led` returning 0 hits in
   ISIMIP3b is a true statement about a controlled-vocabulary token and says nothing about
   whether the hazard was re-issued under another name. Scope the claim to the token.

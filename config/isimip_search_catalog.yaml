@@ -247,7 +247,7 @@ search_results:
         led: {hazard: "drought",         datasets: 219, impact_models: "8 GHM/land (clm45,h08,jules-w1,lpjml,mpi-hm,orchidee,pcr-globwb,watergap2)", data_nature: "binary {0,1} per cell (re-verified 2026-08-11 across all 62 future members: exactly 2 unique values each, exact-0 + exact-1 = 100.00%, is_boolean_field=True)"}
         ler: {hazard: "river flood",     datasets: 218, impact_models: "8 GHM/land (same set as led)"}
         lew: {hazard: "wildfire",        datasets: 134, impact_models: "5 DGVM/fire (caraib,lpj-guess,lpjml,orchidee,visit) x 4 GCMs; future rcp26=31/rcp60=19; data_nature UNVERIFIED. NOTE: this is the EXPOSURE member -- distinct from the direct 'burntarea' burnt-area-fraction fire output, which was the one actually processed (see search_results.wildfire)."}
-        lec: {hazard: "crop failure",    datasets: 90,  impact_models: "gepic"}
+        lec: {hazard: "crop failure",    datasets: 90,  impact_models: "CORRECTED 2026-08-13 -- gepic AND pepic (2 models x 4 GCMs x {rcp26,rcp60} = 16 complete future files, enumerated). The earlier 'gepic' came from a 20-row-capped API listing. Full matrix in search_results.crop_failure.lec_isimip2b", data_nature: "UNVERIFIED"}
         leh: {hazard: "heatwave",        datasets: 30,  impact_models: "hwmid-humidex (derived index)"}
         let: {hazard: "tropical cyclone", datasets: 28, impact_models: "ke-tg-meanfield (Emanuel KE wind model, derived)", data_nature: "FRACTIONAL area [0,1) per cell (re-verified 2026-08-11: max 0.952, NEVER exactly 1, is_boolean_field=False, 97.84% of finite cell-years EXACTLY ZERO); 1 impact model x 4 GCMs = thin ensemble -> aggressive 5x5 L=2.5 smoothing + pooled_mean_zero_inflated statistic. See search_results.tropical_cyclone."}
       # verified_absent_on: "2026-07-24 -- paginated datasets API, each code returned 0."
@@ -392,6 +392,198 @@ search_results:
         yield-noirr: "Rainfed crop yields ({crop}-noirr) - drought-sensitive."
         aet: "Actual ET (growing-season water use)."
         gsprcp: "Growing-season precipitation."
+
+  # -------------------------
+  # river (fluvial) flood searches
+  # -------------------------
+  river_flood:
+    last_searched: "2026-08-13"
+    description: >-
+      Riverine flood exposure. TWO products carry it: ISIMIP3b `floodedarea`
+      (DerivedOutputData/Heinicke2026, SSP) and ISIMIP2b `ler` (DerivedOutputData/Lange2020,
+      RCP). Only `floodedarea` has been enumerated and value-checked so far -- `ler` counts
+      below are copied from the Lange2020 family block and are NOT a fresh enumeration.
+    isimip3b_floodedarea:
+      path: "ISIMIP3b/DerivedOutputData/Heinicke2026/{MODEL}/{gcm}/future/"
+      enumerated_on: "2026-08-13 -- 15 future/ listings, 0 empty, 0 retries; variable field projected from the END (no target-token pre-filter)"
+      impact_models: ["h08", "jules-w2", "watergap2-2e"]              # 3, same set as driedarea
+      climate_forcings: ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]  # 5 CMIP6
+      scenarios: ["ssp126", "ssp370", "ssp585"]
+      matrix: "COMPLETE 3 x 5 x 3 = 45 future files, no missing combination"
+      soc_sens: "UNIFORM 2015soc / default"
+      bias_adjustment: "w5e5"
+      timestep: "annual"
+      period: "2015-2100"
+      volume: "0.97-1.41 MB/file, ~53 MB for all 45"
+      sidecars: >-
+        .json WITH sha512 published -- but the name REPLACES the .nc extension
+        (`..._2015_2100.json`), it does not append to it. `{file}.nc.json` returns 404,
+        which reads exactly like 'no sidecars published'. All 45 downloaded and
+        sha512-verified 2026-08-13.
+      # ---- MEASURED 2026-08-13 on ALL 45 members. Reproduce: scripts/measure_floodedarea_characteristics.py
+      measured:
+        data_nature: >-
+          BINARY {0,1}. Exactly 2 unique values in every one of the 45 members. A per-cell
+          annual occurrence FLAG, so a decadal mean is a FREQUENCY OF FLAGGED YEARS, not an
+          area share -- despite units='1' and long_name='Exposed Area Share' (identical
+          across all 45; the metadata describes the aggregate, not the cell).
+        time_axis: "days since 1601-01-01, proleptic_gregorian -- cftime decode required (same as driedarea, NOT the `years since` axis Lange2020 2b files use)"
+        mask: >-
+          NOT a corrupt mask -- a MASKING CONVENTION. Non-NaN over 94.4-96.5% of the globe
+          because OCEAN IS PUBLISHED AS EXACT ZERO rather than NaN. Of 165,774 finite ocean
+          cells (ISIMIP3b landseamask), only 258 (0.16%) are ever flagged non-zero, and
+          78.3% of those touch a land cell -- coastal/small-island disagreement between the
+          model grid and the generic mask (Greenland fjords, Line Islands, N Caspian), not
+          flooding in open ocean. Applying the land mask costs ~258 cells and is required:
+          left in, 64% of the grid enters the percentile baseline as zeros and destroys the
+          ranking. THE EARLIER 'per-variable mask defect' WORDING OVERSTATED THIS.
+        land_coverage: >-
+          90.9% of ISIMIP3b land cells published (jules-w2/gfdl-esm4: 84,414 of 92,889).
+          Per-model and even per-GCM heterogeneous: h08 78,689-79,587, jules-w2 83,659-84,414,
+          watergap2-2e 81,957-83,260 finite land cells. 4,431 land cells (4.8%) are published
+          by NO model, median |lat| 28.8 -- the arid belt, i.e. cells with no river network.
+        zero_inflation: "93.6-98.0% of finite LAND cell-years are exactly zero (97.9-99.3% including the ocean zeros)"
+        signal: >-
+          Global land-mean exposure frequency 2020s -> 2090s: ssp126 1.31-1.39x,
+          ssp370 2.54-2.97x, ssp585 3.10-3.40x. Monotone in forcing in all 15 members.
+        ensemble_spread: >-
+          INTER-MODEL spread is unusually tight -- 1.18-1.25x at the 2090s global land mean
+          (contrast driedarea 2.69x, led 7.8x), and spatial Spearman rho between models is
+          0.742-0.906 on the 3-model core. The GCM spread within one model is LARGER
+          (h08 ssp585 2090s: 0.0534-0.0941, 1.76x). Uncertainty here is forcing-dominated,
+          not structure-dominated, which is the opposite of `led`.
+        publication_mask_evidence: >-
+          UNDECIDED -- measured, not resolved. Solo-model cells read 0.0654 vs 0.0299 on
+          3-model cells (2.19x) while inter-model spread is only 1.21x, so the elevation is
+          NOT one hot model diluted: solo cells split across all three (h08 643 /
+          jules-w2 3,298 / watergap2-2e 1,276) and sit at median |lat| 34.8 vs 62.8 for
+          3-model cells. led resolved a 1.63x step at 7.8x spread with a >=2-model mask;
+          driedarea measured 1.03x and published the full union. This layer matches NEITHER
+          precedent and the rule must be decided on this evidence, per layer.
+      reference_sites: >-
+        GUARDRAILS 12, mean annual flag first-10 vs last-10 years, all 3 models agreeing:
+        Ganges-Brahmaputra delta 0.0-0.2 -> 0.2-0.8 (strong, monotone in forcing);
+        Lower Mississippi 0.0-0.1 -> 0.0 (ssp126) / 0.3-0.6 (ssp585); Rhine 0.0 -> 0.1-0.2;
+        Mekong delta ~0.0 -> 0.0-0.1; AMAZON FLOODPLAIN ~0.000 THROUGHOUT; Sahara and
+        Atacama return NaN (not published).
+      framing_warning: >-
+        THE AMAZON FLOODPLAIN READS ~0 AND THAT IS PROBABLY CORRECT, NOT A DEFECT. The
+        Lange2020 family measures DEPARTURE FROM A PREINDUSTRIAL REFERENCE -- the drought
+        sibling is documented as soil moisture below the preindustrial 2.5th percentile --
+        so a permanently flood-prone floodplain scores 0 unless flooding exceeds its OWN
+        historical extreme. A 2020s global land mean of 0.023 is consistent with exceedance
+        of a rare historical threshold. THIS IS NOT A FLOOD-HAZARD MAP and must never be
+        delivered as one; it is the same trap driedarea carries.
+        UNVERIFIED: the exact threshold and return period for `floodedarea` were NOT read
+        from Heinicke2026/Lange2020 documentation -- inferred from the family and consistent
+        with the measured values. Read the publication before shipping.
+    isimip2b_ler:
+      status: "NOT YET ENUMERATED as of 2026-08-13 -- counts below are from the Lange2020 family block, not a fresh listing"
+      datasets: 218
+      impact_models: "8 GHM/land (same set as led)"
+      scenarios: ["historical", "picontrol", "rcp26", "rcp60"]
+      data_nature: "UNVERIFIED -- value-check before processing; do NOT inherit floodedarea's binary result across rounds"
+
+    # =====================================================================================
+    # CaMa-Flood INUNDATION -- the option that answers a different question entirely
+    # =====================================================================================
+    # DISCOVERED 2026-08-13. `ISIMIP2b/DerivedOutputData/` holds TWO publications, Lange2020
+    # and Zimmer2023, and this catalog had only ever recorded the first. Everything the
+    # repository knew about river flood was exposure-flag data because the second directory
+    # was never listed. One `curl` on the parent directory is what found it.
+    isimip2b_cama_flood_zimmer2023:
+      path: "ISIMIP2b/DerivedOutputData/Zimmer2023/{MODEL}/{gcm}/future/"
+      enumerated_on: "2026-08-13 -- 36 future/ listings: 24 OK, 12 genuine HTTP 404 (not empty bodies)"
+      what_it_is: >-
+        CaMa-Flood v3.6.2 hydrodynamic routing of ISIMIP2b GHM discharge onto a 150 arcsec
+        floodplain, by S. Willner (PIK), github.com/swillner/flood-processing,
+        doi:10.5281/zenodo.1241051. Produced 2020-03-23.
+      variables:
+        flddph: "flood DEPTH -- values 0 to ~17.8 in the probed member. UNITS UNVERIFIED: the variable carries NO attributes at all (no units, no long_name). Metres is the obvious reading and is consistent with the range, but it is an inference -- confirm against the Zenodo record before quoting a depth to a customer."
+        fldfrc: "flooded FRACTION of the cell"
+      protection_levels:
+        none: "protection_threshold=0 -- raw hazard, no defences assumed"
+        100yr: "uniform 100-year protection assumed everywhere"
+        flopros: "FLOPROS empirical flood-protection database"
+      note_on_protection: >-
+        THIS IS A MODELLING CHOICE, NOT A FILE FORMAT. `none` is a hazard field; `flopros`
+        is closer to a residual-risk field. They will disagree most exactly where defences
+        exist, i.e. in developed floodplains where customer assets concentrate. Decide it
+        with the user (GUARDRAILS 1-2) -- do not default.
+      impact_models_with_future: ["CLM45", "CWatM", "H08", "LPJmL", "MATSIRO", "WaterGAP2"]   # 6
+      models_historical_only: ["CLM50", "MPI-HM", "PCR-GLOBWB"]   # future/ returns a genuine 404
+      climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]   # 4 CMIP5
+      scenarios: ["rcp26", "rcp60", "rcp85"]
+      scenario_note: "rcp85 EXISTS here -- the Lange2020 exposure family has none, so this is the only river-flood product in the repository with a high-forcing member."
+      matrix: "COMPLETE 6 models x 4 GCMs x 3 scenarios x 2 variables x 3 protection levels = 432 future files"
+      resolution: "150 arcsec = 1/24 deg, 4320 x 8640 = 37.3M cells, ~4.6 km at the equator -- 144x the cell count of every shipped 0.5 deg layer. DECLARED, and here also structurally real: the floodplain detail is the product."
+      timestep: "annual, 2006-2100 (95 steps); time is `seconds since 2006-01-01`, standard calendar -- a THIRD time-axis convention (Heinicke2026 uses days since 1601, Zantout2025 declares no units at all)"
+      volume: >-
+        Per file: flddph none ~476 MB, fldfrc none ~542 MB, flopros ~100-128 MB,
+        100yr ~63-78 MB (sampled 2 per group). Per scenario across 24 members: none ~11-13 GB
+        per variable, flopros ~2-3 GB, 100yr ~1 GB. ONE variable at ONE protection level
+        across all three scenarios is ~3-9 GB; the whole publication is ~90 GB.
+      sidecars: ".json WITH sha512 published (extension-replacing name, as with Heinicke2026)"
+      filename_grammar_warning: >-
+        THIS PUBLICATION BREAKS THE FROM-THE-END PARSE. Two EXTRA fields sit between the
+        variable and the region -- protection level and resolution:
+        cama-flood_h08_gfdl-esm2m_ewembi_rcp60_2005soc_co2_flddph_none_150arcsec_global_annual_2006_2100.nc4
+        so $(NF-4) returns `150arcsec`, not the variable. Correct offsets HERE: variable
+        $(NF-6), protection $(NF-5), resolution $(NF-4), scenario $(NF-9). The first harvest
+        of this directory did exactly this and reported a variable vocabulary of
+        "150arcsec". Read the .json `specifiers` block, which names every field explicitly.
+      # ---- MEASURED 2026-08-13 on h08/gfdl-esm2m/rcp60/flddph/none (485 MB, sha512-verified)
+      measured:
+        grid_coverage: "finite over 21.8% of the grid; 4.28% of all cells non-zero in 2100"
+        depth_range: "0 to 14.35 m in the 2100 step; 17.81 m maximum in the Amazon box over 2091-2100"
+        reference_sites: >-
+          Mean over 2091-2100, cells ever flooded / mean depth of flooded cells:
+          Amazon main stem 47.2% / 6.11 m (max 17.81);
+          Ganges-Brahmaputra 62.5% / 2.81 m;
+          Mekong delta 68.9% / 2.31 m;
+          Lower Mississippi 48.7% / 2.20 m;
+          Rhine NL/DE 38.1% / 2.59 m;
+          Sahara control 0.0% / 0.00 m.
+        why_this_matters: >-
+          THE AMAZON IS THE WETTEST BOX IN THE SAMPLE. `floodedarea` reads 0.000 there in all
+          45 of its members because it scores departure from a preindustrial reference; this
+          product reports absolute water depth on the floodplain and ranks the world's
+          largest floodplain first. A customer asked to accept a flood layer that reads zero
+          across the Amazon will not accept it, and they would be right.
+        method_attributes: >-
+          Declared in the file: fit=gev, fit_scenario=picontrol, fit_soc=1860soc,
+          discharge_threshold=0.1mm/d, protection_threshold=0, cama_flood_version=3.6.2.
+          So the frequency model is calibrated on the PREINDUSTRIAL CONTROL run while the
+          published value is an absolute depth -- a different relationship to the baseline
+          than `floodedarea`'s, and one that must be read from the paper, not from these
+          attributes alone. UNVERIFIED until then.
+      open_questions:
+        - "Which protection level. A product decision, not a default."
+        - "flddph or fldfrc, or both -- depth drives damage functions, fraction drives area exposed."
+        - "The 150 arcsec grid does not fit the delivery tooling as-is: every shipped layer is 0.5 deg, and aggregating to 0.5 deg discards the floodplain detail that is the entire reason to use this product. Native-resolution delivery is a change to the extraction, dashboard and map path, not just to a processor."
+        - "RCP-only. No CaMa-Flood publication exists under ISIMIP3a or 3b (both DerivedOutputData roots listed 2026-08-13: 3b = Heinicke2026, Jaegermeyr2021, TipESM2025, Zantout2025; 3a = Quesada-Chacon2026, Zantout2025). ISIMIP2a carries a Zimmer2023 too -- observational forcing, contents NOT enumerated."
+        - "6 models, 4 GCMs = 24 members per scenario, but ensemble composition across protection levels and variables was verified by COUNT (432 = 6x4x3x2x3), not by per-file diff."
+
+    # Build-your-own options, recorded so they are not re-derived
+    discharge_route:
+      description: >-
+        A flood-magnitude index computed by US from river discharge. This is a CONSTRUCTED
+        INDEX (GUARDRAILS 1-2), not an aggregation: return-period fitting, threshold choice
+        and the depth relationship are all modelling decisions to make with the user.
+      isimip3b_dis: "DAILY discharge from 7 models at gfdl-esm4/future (CWatM, H08, JULES-W2, LPJmL5-7-10-fire, MIROC-INTEG-LAND, WaterGAP2-2e, WEB-DHM-SG); monthly from 6. Vocabulary projected 2026-08-13 at ONE GCM -- per-GCM completeness NOT verified."
+      isimip2b_dis: "DAILY discharge from 11 models at gfdl-esm2m/future (CLM45, CWatM, H08, JULES-W1, LPJmL, MATSIRO, MPI-HM, ORCHIDEE, ORCHIDEE-DGVM, PCR-GLOBWB, WaterGAP2-2c)."
+      isimip2b_maxdis: "`maxdis` / `mindis` (monthly) exist in 2b for CLM45 and MPI-HM ONLY -- 2 models, too thin for an ensemble CI. NOT present in the 3b vocabulary at all."
+      note: "The Water Risk Index product already ingests `dis` for 5 models -- a different output contract, monthly, no percentile, no trends. Do not silently bridge them."
+    water_regional_2b:
+      models: ["HBV-CMA", "HYPE", "SWAT-CMA", "SWAT-IITGN", "SWAT-VUB", "SWIM-NVE", "SWIM-PIK", "VIC-CMA", "VIC-HHU", "VIC-IITGN", "VIC-NVE", "mHM"]
+      status: "LISTED 2026-08-13, contents NOT enumerated. Basin-scale models, so coverage is a set of study basins rather than a global field -- against the standing 'global over regional' preference, and not deliverable for arbitrary customer sites."
+    no_flood_variable_in_water_sector: >-
+      Neither ISIMIP3b nor ISIMIP2b water_global publishes a flood depth or inundation
+      variable. Full variable vocabularies were projected 2026-08-13 (3b: 10 models at
+      gfdl-esm4/future; 2b: 16 models at gfdl-esm2m/future) with NO target-token filter --
+      the only matches for flood/inundation/depth were `thawdepth` and 2b `maxdis`/`mindis`.
+      SCOPED: one GCM per round, future period only. Inundation lives in DerivedOutputData
+      (Zimmer2023), not in the sector output.
 
   # -------------------------
   # wildfire searches (fire sector + biomes burntarea)
@@ -590,6 +782,291 @@ search_results:
       MEASURED data nature 2026-08-11 (GUARDRAILS 9): continuous [0, 0.952], NEVER exactly
       1, is_boolean_field=False, 97.84% of finite cell-years EXACTLY ZERO, land mask
       identical across all 8 files (68,249 cells).
+
+  # -------------------------
+  # heatwave / extreme heat searches
+  # -------------------------
+  heatwave:
+    last_searched: "2026-08-13"
+    description: >
+      Extreme heat. FOUR distinct representations. Two are ready-to-process global gridded
+      annual projections (2b `leh`, 3b `heatwave`); one is a gridded annual COUNT of
+      heat-attributable excess deaths (2b health sector); one is raw daily climate forcing
+      from which an index would have to be CONSTRUCTED, which is a modelling decision, not
+      an aggregation (GUARDRAILS 1-2).
+    enumerated: |
+      2026-08-13, serial listings, every intermediate directory level listed, no target-token
+      pre-filter (variable field projected from the END, $(NF-4)). 0 empty listings, 0 retries.
+        ISIMIP2b/DerivedOutputData/                    -> Lange2020, Zimmer2023
+        ISIMIP2b/DerivedOutputData/Lange2020/          -> 15 model dirs incl. HWMId-humidex
+        .../HWMId-humidex/                             -> 4 gcm dirs
+        .../HWMId-humidex/{gcm}/                       -> future, historical, pre-industrial
+        .../HWMId-humidex/{4 gcm}/future/              -> 6 files each (24 total)
+        ISIMIP3b/DerivedOutputData/Zantout2025/        -> 12 model dirs incl. HWMID-NONE
+        .../HWMID-NONE/                                -> 5 gcm dirs
+        .../HWMID-NONE/{5 gcm}/future/                 -> 4 files each (20 total)
+        ISIMIP2b/OutputData/                           -> 12 sectors incl. health
+        ISIMIP2b/OutputData/health/                    -> TRM-Tsukuba (only model)
+        .../TRM-Tsukuba/{4 gcm}/future/                -> 3 files each (12 total)
+        ISIMIP3b/OutputData/                           -> 8 sectors
+        ISIMIP3a/DerivedOutputData/                    -> Quesada-Chacon2026, Zantout2025
+        ISIMIP3a/.../Zantout2025/HWMID-NONE/{4 forcings}/ -> historical/ ONLY, all four
+        ISIMIP3b/InputData/ -> climate/ -> atmosphere/ -> bias-adjusted/ -> global/ -> daily/
+          -> {historical,picontrol,ssp126,ssp370,ssp585}/ -> 5 GCM dirs -> 99 files per
+          GCM-scenario = 11 variables x 9 decade chunks
+      NOTE the model-token spelling differs by round and is case-inconsistent on the server:
+      2b is `HWMId-humidex`, 3b is `HWMID-NONE`. Copy them, do not retype them.
+    representations:
+      leh_exposure_2b:
+        path: "ISIMIP2b/DerivedOutputData/Lange2020/HWMId-humidex/{gcm}/future/"
+        variables: "leh (land area fraction exposed) + peh (population exposed twin) -- BOTH published, 1:1"
+        ensemble: "1 impact model (hwmid-humidex) x 4 CMIP5 GCMs (gfdl-esm2m, hadgem2-es, ipsl-cm5a-lr, miroc5) = 4 members/scenario"
+        scenarios: "rcp26, rcp60 (+picontrol 2006-2099, historical 1861-2005, pre-industrial dir present). NO rcp85, NO SSP."
+        matrix: "COMPLETE 1 x 4 x 2 = 8 projection files per variable; no missing combination"
+        timestep: "annual, declared 0.5deg global, 2006-2099"
+        soc_sens: "uniformly nosoc / co2 -- no harmonization compromise"
+        bias_adjustment: "ewembi"
+        volume: "~4.4-4.5 MB/file -> 35 MB for the 8 `leh` projection files, 71 MB with `peh`"
+        sidecars: ".json present WITH sha512, but NO netcdf_header block (2b Lange2020 sidecars carry specifiers only)"
+        data_nature: "UNVERIFIED -- no units/long_name obtainable without downloading. Do NOT inherit from `led` (binary) or `let` (fractional); those are siblings in the same publication and they DISAGREE. Value-check per GUARDRAILS 9."
+      heatwave_exposure_3b:
+        path: "ISIMIP3b/DerivedOutputData/Zantout2025/HWMID-NONE/{gcm}/future/"
+        variables: "heatwave ONLY"
+        ensemble: "1 impact model (hwmid-none) x 5 CMIP6 GCMs (gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll) = 5 members/scenario"
+        scenarios: "ssp126, ssp370, ssp585 (+picontrol 2015-2100, historical 1850-2014)"
+        matrix: "COMPLETE 1 x 5 x 3 = 15 projection files, no missing combination"
+        timestep: "annual, 2015-2100 (86 steps); future starts 2015 so there is no complete 2010s decade, but the 2020s baseline IS constructible"
+        soc_sens: "uniformly 2015soc / default -- no harmonization compromise"
+        bias_adjustment: "w5e5"
+        volume: "3.8-4.5 MB/file -> ~63 MB for all 15"
+        sidecars: ".json present WITH sha512 AND a netcdf_header block"
+        declared_header: "dims (time=86, lat=360, lon=720); variable `heatwave`, long_name 'heatwave area share', units '1', _FillValue 1.0000000200408773e+20"
+        data_nature: >-
+          UNVERIFIED despite the declared long_name. Its Zantout2025/Heinicke2026 cousins are
+          the standing warning: `floodedarea` also declares units='1' and is binary {0,1},
+          and is non-NaN over ocean. Measure value set, exact-zero share and land mask
+          before choosing a decadal-statistic branch.
+      an_tot_heat_health_2b:
+        path: "ISIMIP2b/OutputData/health/TRM-Tsukuba/{gcm}/future/"
+        variable: "an-tot-heat-all -- specifiers split it as variable=`an-tot-heat`, ages=`all`"
+        declared_units: "'number of heat-related excess mortality' (from the sidecar netcdf_header) -- an absolute COUNT per grid cell, not an intensity"
+        ensemble: "1 impact model (trm-tsukuba, Univ. of Tsukuba) x 4 CMIP5 GCMs = 4 members/scenario"
+        scenarios: "rcp26, rcp60 (+picontrol). NO rcp85, NO SSP."
+        matrix: "COMPLETE 1 x 4 x 2 = 8 projection files"
+        timestep: "annual, 0.5deg global (720x360), 2006-2099 (94 steps), time in 'years since 1661-1-1'"
+        soc_sens: "2005soc, NO sens token in the filename (one field shorter than the Lange2020 grammar -- parse from the END)"
+        volume: "14.1 MB/file -> ~113 MB for the 8 projection files"
+        caveat: >-
+          A mortality count is a hazard x exposed-population product held at a FIXED 2005
+          population, so its spatial pattern is substantially population density, and a
+          percentile-of-score ranking would rank where people live as much as where heat
+          rises. Only `all` ages is published in future/. Not a drop-in asset-facing layer.
+      constructed_index_from_forcing_3b:
+        path: "ISIMIP3b/InputData/climate/atmosphere/bias-adjusted/global/daily/{scenario}/{GCM}/"
+        variables_available: "hurs, huss, pr, prsn, ps, rlds, rsds, sfcwind, tas, tasmax, tasmin (11, each in 9 decade chunks)"
+        ensemble: "5 CMIP6 GCMs x ssp126/ssp370/ssp585, daily, 2015-2100"
+        volume_measured: "tasmax ~1.97 GB per 10-yr chunk -> ~17 GB per GCM-scenario, ~254 GB for all 15; hurs ~2.39 GB per chunk -> ~308 GB more if a humidity-aware index is wanted"
+        caveat: >-
+          This is climate forcing, not impact-model output. Any heat metric from it (days
+          over a threshold, annual max of daily max, WBGT/humidex, heatwave duration) is a
+          CONSTRUCTED INDEX -- a modelling decision to make with the user, per GUARDRAILS
+          1-2, not an aggregation. Same standing as the sfcwind route recorded under
+          tropical_cyclone.future_delivery.
+    method_difference_unverified: >-
+      The two exposure products carry DIFFERENT index tokens: 2b is `HWMId-humidex`, 3b is
+      `HWMID-NONE`. The tokens are observed on the file server; what they mean physically
+      (a humidex/humidity-adjusted HWMId vs one with no humidity correction) is NOT verified
+      from the files or from a paper as of 2026-08-13. It matters -- a humidity-inclusive
+      heat index and a temperature-only one are different hazards for workforce-safety
+      framing -- so verify before describing either to a customer.
+    negative_findings: |
+      * NO health sector in ISIMIP3b. verified_absent_on: "2026-08-13 -- listed
+        https://files.isimip.org/ISIMIP3b/OutputData/ = agriculture, biomes, fire,
+        lakes_global, lakes_local, marine-fishery_global, permafrost, water_global."
+        The 2b health sector (TRM-Tsukuba) has no SSP successor in OutputData.
+      * NO population-exposed twin for the 3b `heatwave` product. verified_absent_on:
+        "2026-08-13 -- listed all 5 HWMID-NONE/{gcm}/future/ (20 files) and
+        HWMID-NONE/gfdl-esm4/historical/; the only variable emitted is `heatwave`."
+        The 2b `peh` twin has no 3b counterpart under this publication.
+      * NO labour-productivity or energy-demand sector in either round. verified_absent_on:
+        "2026-08-13 -- listed ISIMIP2b/OutputData/ (12 sectors) and ISIMIP3b/OutputData/
+        (8 sectors); neither list contains a labour or energy entry."
+      * ISIMIP3a `heatwave` (Zantout2025/HWMID-NONE) is HISTORICAL ONLY and cannot produce
+        a decadal projection panel. verified_absent_on: "2026-08-13 -- listed all four
+        forcing dirs (20crv3, 20crv3-era5, 20crv3-w5e5, gswp3-w5e5); every one contains
+        historical/ and nothing else. Files are obsclim + counterclim, histsoc/default,
+        annual 1901-2016." Value as a benchmark/validation reference only.
+    open_decisions: |
+      NOT pre-answered here; they are measurements or user decisions, not inheritances.
+      1. Data nature of `leh` and of 3b `heatwave` -- value-check both (GUARDRAILS 9).
+         Sibling members of these very publications disagree (led binary, let fractional,
+         floodedarea binary-despite-units-1), so nothing is transferable.
+      2. Exact-zero share -> which of the three decadal-statistic branches applies
+         (pooled median/IQR, pooled_mean_boolean, pooled_mean_zero_inflated). Measure it.
+      3. Land mask / ocean leak, per file and per member (floodedarea's defect is in this
+         same family of publications).
+      4. Smoothing decay length. BOTH exposure products are 1 impact model x 4-5 GCMs, so
+         4-5 members/scenario -- thin. L is a per-layer measurement, never a constant.
+      5. Publication mask. n_models = 1 for every heat option here, so the ">=2 impact
+         models" rule used by `led` has no meaning; a mask would have to be defined on
+         GCM count or dropped. Explicit decision required.
+      6. `leh` vs `peh` -- land-area-exposed vs population-exposed are different questions,
+         and only 2b offers the choice.
+      7. Whether to ship 2b and 3b as siblings (as drought does with led/driedarea) or
+         only one. Deeper CMIP5-forced pair of RCPs vs 5 CMIP6 GCMs across 3 SSPs.
+      8. Whether the health mortality count belongs in an asset-facing product at all
+         (see its caveat above).
+
+  # -------------------------
+  # crop failure searches
+  # -------------------------
+  crop_failure:
+    last_searched: "2026-08-13"
+    description: >
+      FOUR distinct representations. Two ship the failure index already computed
+      (Zantout2025 `cropfailure` 3b, Lange2020 `lec` 2b); two are yield products from
+      which a failure index would have to be CONSTRUCTED (Jaegermeyr2021 `yieldchange-*`,
+      agriculture-sector `yield-{crop}-{firr,noirr}`) -- a modelling decision under
+      GUARDRAILS 1-2, not an aggregation.
+    corrections_2026_08_13: >
+      This search overturned two recorded claims. (1) drought.exposure_lange2020.family.lec
+      read `impact_models: "gepic"` (from a 2026-07-24 API listing capped at 20 rows);
+      Lange2020 publishes `lec` from **GEPIC and PEPIC**, 2 models not 1. That single-model
+      claim is the stated `blocker` in config/hazard_taxonomy.yaml crop-failure and is now
+      false as written. (2) The Zantout2025 sibling note "cropfailure (240 files)" was a
+      raw count with no matrix; the future/ SSP set is 120 files in a complete 8x5x3.
+
+    cropfailure_isimip3b:
+      publication: "ISIMIP3b/DerivedOutputData/Zantout2025/"
+      path: "{MODEL}/{gcm}/future/"
+      enumerated: "2026-08-13 -- 8 model listings + 40 future/ listings, 0 empty, 0 gaps; variable field projected at $(NF-4), 160/160 files = `cropfailure` (no crop suffix, no PFT split)"
+      impact_models: ["crover", "cygma1p74", "epic-iiasa", "isam", "ldndc", "lpjml", "pepic", "promet"]  # 8 crop models
+      climate_forcings: ["gfdl-esm4", "ipsl-cm6a-lr", "mpi-esm1-2-hr", "mri-esm2-0", "ukesm1-0-ll"]  # 5 CMIP6
+      scenarios: ["ssp126", "ssp370", "ssp585"]   # + picontrol (5 per model, excluded from reports)
+      matrix: "COMPLETE 8 x 5 x 3 = 120 future files. 40 members/scenario. Composition IDENTICAL across the three SSPs -> shared 2020s baseline valid."
+      soc_sens: "UNIFORM 2015soc / default across all 160 files -- no harmonization compromise, no model dropped"
+      bias_adjustment: "w5e5"
+      timestep: "annual"
+      period: "2015-2100 (2020s baseline decade is complete)"
+      volume: "2-9 MB/file, measured one file per model at gfdl-esm4/ssp370: promet 3.13, ldndc 3.78, lpjml 4.71, pepic 5.53, epic-iiasa 5.98, crover 7.26, cygma1p74 7.90, isam 8.74 MB. Sum x 15 (5 GCM x 3 SSP) = ~705 MB for the full SSP set."
+      sidecars: "NONE -- .json 404s (consistent with 3b). Verify downloads by HTTP status + Content-Length."
+      size_spread_flag: "CONFIRMED 2026-08-13: the 2.8x file-size spread is a real footprint difference -- promet simulates crops on 33,339 cells, isam on 39,249."
+      data_nature: >
+        MEASURED 2026-08-13 across all 120 members (scripts/check_cropfailure_nature.py):
+        CONTINUOUS fraction in [0,1], NOT binary -- 82,962-130,168 distinct values per
+        member, so it inherits neither `led`'s binary nature nor anything from `lec`.
+        long_name "cropfailure area share", units "1". 96.14% of finite cell-years are
+        exact zeros, but that figure is an artifact of zero-fill; WITHIN the cropland
+        footprint the annual exact-zero share is 46.37%-80.63%, median 60.89%.
+      zero_fill_WARNING: >
+        THE PUBLISHER ZERO-FILLS THE ENTIRE GLOBE. Every member is non-NaN over ~100% of
+        the 259,200-cell grid (only 236 land cells are NaN anywhere); ocean, Antarctica,
+        Greenland and the Sahara all read exact 0 rather than NaN. `isfinite` therefore
+        carries NO footprint on this product and must NOT be used as a land mask -- doing
+        so puts 87% ocean zeros into the percentile baseline and reports n_members=40 over
+        open ocean. The footprint comes from where the field is ever NON-ZERO: union 39,890
+        cells across the 8 models, 39,406 of them (98.8%) inside the official ISIMIP3b
+        land-sea mask.
+        This is NOT the `floodedarea` ocean leak, and the difference was measured rather
+        than assumed: of the 484 off-mask cells, 63% are directly adjacent to land
+        (coastline disagreement at 0.5 deg) and the rest are small islands the generic mask
+        does not resolve (Lofoten 68.25N 13.25E, Shetland 60.25N -1.75E), with marginal
+        values (median 0.0016). They come from ldndc (476) and lpjml (453) only; the other
+        six models have none. `floodedarea` by contrast carries REAL values over open ocean.
+      time_axis_WARNING: >
+        The `time` coordinate carries long_name/standard_name/axis and NO `units` attribute
+        at all, so xarray cannot decode it (`.dt` raises AttributeError) and there is no
+        epoch to read. Values are a bare contiguous integer sequence, 165..250 for a file
+        declaring 2015_2100 -- `years since 1850`, undeclared. Decode from the filename span
+        and assert contiguity; do NOT hardcode the epoch. Contrast Heinicke2026
+        `driedarea`, whose axis is a properly declared `days since 1601-01-01`. Time-axis
+        handling is per-PUBLICATION, not per-round.
+      population_twin: "NONE -- 3b publishes no population-exposed counterpart to `cropfailure` (2b's `lec` does have `pec`)."
+      processed: >
+        DONE 2026-08-13 -> TCFD layer id `cropfailure-3b`, folder
+        cropfailure-isimip3b_cropfailure_annual. 40 members/scenario. Framing, all measured
+        here and none inherited: pooled_mean_zero_inflated statistic (OUTPUT-SPEC third
+        branch, DECLARED deviation, user decision 2026-08-13 -- the median branch leaves
+        96.83% of the footprint at exactly zero, 1,265 exposed cells against the mean
+        branch's 39,872); NO smoothing, settled by a split-half test rather than draw count
+        (roughness 0.347 full vs 0.351/0.359 on disjoint 20-member halves, halves correlate
+        Pearson 0.977 / Spearman 0.991, and roughness is 0.790 on footprint edge cells vs
+        0.304 interior -- real cropland structure, not sampling noise); FULL-footprint mask,
+        no minimum-model cut, because the coverage-tier level gradient runs the OPPOSITE way
+        from `led`'s artifact (1 model 0.00001 rising to 8 models 0.00670: low-coverage
+        cells are marginal cropland, not one high model undiluted); single_tier percentile
+        (baseline exact-zero 0.05%); higher_is_worse; no normalization (6.69x inter-model
+        spread is structural). See scripts/process_cropfailure_isimip3b.py and
+        scripts/download_cropfailure_isimip3b.py.
+      crop_composition_UNKNOWN: >
+        `cropfailure` carries no crop token, so which crops are inside and how they are
+        weighted is not readable from the filename or the (absent) sidecar. This is a
+        documentation question for the Zantout2025 publication, and it is material: a
+        crop-aggregated index over crops a site does not grow is not that site's risk.
+
+    lec_isimip2b:
+      publication: "ISIMIP2b/DerivedOutputData/Lange2020/"
+      path: "{GEPIC,PEPIC}/{gcm}/future/"
+      enumerated: "2026-08-13 -- 2 model listings + 8 future/ listings, 0 empty, 0 gaps; 48 files = 24 lec + 24 pec"
+      impact_models: ["gepic", "pepic"]   # CORRECTED from "gepic" only
+      climate_forcings: ["gfdl-esm2m", "hadgem2-es", "ipsl-cm5a-lr", "miroc5"]  # 4 CMIP5
+      scenarios: ["rcp26", "rcp60"]   # + picontrol. NO rcp85 -- matches the documented family gap
+      matrix: "COMPLETE 2 x 4 x 2 = 16 future files. 8 members/scenario. Composition IDENTICAL across both RCPs."
+      soc_sens: "UNIFORM 2005soc / co2"
+      bias_adjustment: "ewembi"
+      timestep: "annual"
+      period: "2006-2099"
+      volume: "~6.2 MB/file -> ~100 MB for 16 lec files; the pec twin is another 16."
+      sidecars: >
+        PRESENT but named {stem}.json, NOT {stem}.nc4.json (the .nc4.json form 404s -- the
+        same trap recorded under sugarcane). Carries size + sha512 + parsed specifiers.
+        It does NOT carry units or long_name, so data nature is still a download-time
+        measurement.
+      population_twin: "`pec` -- same complete 2 x 4 x 2 matrix, same soc/sens."
+      data_nature: "UNVERIFIED"
+
+    yieldchange_isimip3b:
+      publication: "ISIMIP3b/DerivedOutputData/Jaegermeyr2021/"
+      path: "{MODEL}/{gcm}/future/"
+      enumerated: "2026-08-13 -- 12 model listings + 57 future/ listings; 636 files"
+      note: "NOT a failure index -- a signed relative yield change. Deriving `failure` from it is a threshold decision (GUARDRAILS 1-2). Percentile would need higher_is_better."
+      variables: ["yieldchange-mai", "yieldchange-ric", "yieldchange-soy", "yieldchange-whe"]  # 4 crops, named per crop
+      impact_models: ["acea", "crover", "cygma1p74", "dssat-pythia", "epic-iiasa", "isam", "ldndc", "lpjml", "pdssat", "pepic", "promet", "simplace-lintul5"]  # 12
+      climate_forcings: "5 CMIP6 each EXCEPT acea (mri-esm2-0, ukesm1-0-ll only)"
+      scenarios: ["ssp126", "ssp370", "ssp585"]
+      matrix_per_crop: "57 members at ssp126 and ssp585; 45 at ssp370."
+      scenario_asymmetry: >
+        ACEA, pDSSAT and SIMPLACE-LINTUL5 publish NO ssp370. Ensemble composition therefore
+        DIFFERS across scenarios, unlike `cropfailure` and `lec`. Either drop those 3 models
+        (uniform 45 members) or accept an asymmetric shared baseline -- a decision, not a
+        detail.
+      soc_sens: "UNIFORM 2015soc / default"
+      timestep: "annual"
+      period: "2015-2099"
+      volume: "9-18 MB/file measured (promet 9.03, acea 9.97, epic-iiasa 15.52, lpjml 17.68). ~2 GB per crop across 3 SSPs; ~8 GB for all 636."
+      sidecars: "NONE (404)"
+
+    yield_isimip3b_agriculture:
+      sector: "ISIMIP3b/OutputData/agriculture/{MODEL}/{gcm}/future/"
+      enumerated: "2026-08-13 -- 14 model listings + 63 future/ listings, vocabulary projected over 41,023 filename records"
+      note: "The raw-yield route. A failure layer from these is a CONSTRUCTED INDEX (yield below a baseline percentile), i.e. GUARDRAILS 1-2 territory."
+      impact_models: "14 -- ACEA(2 GCMs), CROVER, CYGMA1p74, DayCent(1 GCM), DSSAT-Pythia, EPIC-IIASA, ISAM, LDNDC, LPJ-GUESS, LPJmL, pDSSAT, PEPIC, PROMET, SIMPLACE-LINTUL5 (5 GCMs each unless noted)"
+      crops_observed: ["bea", "cas", "mai", "mil", "pot", "ri1", "ri2", "sor", "soy", "swh", "wwh"]  # 11, confirms the sugarcane-entry finding
+      irrigation: ["firr", "noirr"]
+      scenarios: ["ssp126", "ssp370", "ssp585"]  # + picontrol
+      soc_sens: "2015soc uniform; sens SPLITS default (23,353 records) vs 2015co2 (17,670) -- a required choice, since 2015co2 is what isolates CO2 fertilization"
+      timestep: "annual-gs (growing season) for 39,691 of 41,023 records; 1,332 monthly"
+      depth_noirr_default: >
+        members (model x gcm) per crop, ssp126 / ssp370 / ssp585:
+        mai 62/40/62, swh 62/40/63, soy 57/40/57, wwh 57/35/58, ri1 52/40/52, ri2 47/35/47,
+        sor 20/5/20, mil 15/5/15, bea 5/0/5, cas 5/0/5, pot 5/0/5
+      scenario_asymmetry: "ssp370 is systematically thinner (8 models vs 13 for maize); bea/cas/pot have NO ssp370 at all. swh is 62 at ssp126 vs 63 at ssp585 -- a one-member gap to locate before pooling."
+      volume: "~19 MB/file (lpjml yield-mai-noirr ssp585). Maize noirr alone across 3 SSPs = 164 files ~ 3.1 GB; adding firr roughly doubles it; per additional crop again."
+      MANDATORY_CHECK: >
+        GUARDRAILS 12 reference-site check before trusting any layer built here. The
+        withdrawn ISIMIP2b LPJmL sugarcane layers passed the OUTPUT-SPEC contract while
+        being identically zero across the entire cane belt. A crop yield product can be
+        structurally valid and agronomically empty.
 
   # -------------------------
   # soil / subsurface carbon searches (biomes sector)

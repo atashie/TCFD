@@ -57,9 +57,17 @@ layers:
     recommended_slope_rationale: >-
       sen_slope == 0 on 100.0% of active cells (2090s, 61,810 active of 63,455 finite;
       measured 2026-08-12). Sign agreement 0.0%. Sen carries no signal on this layer.
+    relative_baseline: true
+    relative_baseline_note: >-
+      This layer scores how far soil-moisture conditions at a site depart from a fixed
+      preindustrial reference, not how dry the site is. A permanently arid place whose
+      regime has been stable scores LOW, and a historically reliable place whose regime has
+      shifted scores HIGH. Read a high score as "this place is moving furthest from what it
+      is built for", not as "this place is dry", and pair it with local water availability
+      before drawing any conclusion about consequences.
     delivery_note: >-
-      Measures DEPARTURE FROM A FIXED HISTORICAL REFERENCE, not aridity. A permanently arid
-      cell with a stable regime scores LOW. Must be stated in any customer narrative.
+      Sibling of drought-2b, not a replacement. See the must-disclose RELATIVE-BASELINE
+      caveat for how to read the score.
 
   drought-2b:
     folder: drought_led_annual
@@ -76,8 +84,16 @@ layers:
       SIBLING of drought-3b, not a superseded version -- deeper ensemble (31 members,
       8 impact models) against older CMIP5 scenarios. Not selected by default: the standing
       preference is the more recent / more robust option, which is drought-3b. Select
-      explicitly when RCP scenarios or ensemble depth is the requirement. Measures departure
-      from PREINDUSTRIAL, not aridity.
+      explicitly when RCP scenarios or ensemble depth is the requirement. See the
+      must-disclose RELATIVE-BASELINE caveat for how to read the score.
+    relative_baseline: true
+    relative_baseline_note: >-
+      This layer scores how far soil-moisture conditions at a site depart from a fixed
+      preindustrial reference, not how dry the site is. A permanently arid place whose
+      regime has been stable scores LOW, and a historically reliable place whose regime has
+      shifted scores HIGH. Read a high score as "this place is moving furthest from what it
+      is built for", not as "this place is dry", and pair it with local water availability
+      before drawing any conclusion about consequences.
 
   cyclone:
     folder: cyclone_let_annual
@@ -131,6 +147,44 @@ layers:
       behind a 2%-cover presence mask, so a site with no modelled conifer stand returns
       OFF_LAYER_MASK rather than zero. Rising NPP is partly a CO2-fertilisation response and
       that caveat belongs in the narrative.
+
+  cropfailure-3b:
+    folder: cropfailure-isimip3b_cropfailure_annual
+    file_prefix: cropfailure
+    hazard: Crop failure
+    hazard_measure: Cropland area share exposed to unprecedented crop failure
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on 100.0% of active cells at ssp126 2090s (measured 2026-08-13).
+      Zero-inflated field: most year-pairs are 0->0, so the robust estimator carries no
+      signal at low forcing. It does lift slightly at higher forcing (ssp370 reaches
+      ~7e-5/decade by the 2080s) as non-zero years become common, but ols_slope is the read
+      on this layer at every tier.
+    relative_baseline: true
+    relative_baseline_note: >-
+      This layer scores how far crop-failure conditions at a site depart from that site's
+      OWN historical experience, not how bad conditions are in absolute terms. The
+      difference reverses the ranking a reader expects. A reliably productive region with a
+      narrow historical range crosses its own "unprecedented" threshold more readily than a
+      region that has always been marginal and variable, so on this layer Iowa sits at the
+      99.3rd percentile of world cropland while the Sahel sits at 69.4. That is the measure
+      working as defined: the intensity of change relative to local norms is genuinely
+      greater in Iowa, and a farming system built around a stable climate has further to
+      fall. It is NOT a statement that Iowan agriculture is more fragile than Sahelian
+      agriculture in absolute terms, and it says nothing about food security, yield levels,
+      or a region's capacity to absorb a bad year. Read a high score as "this place is
+      moving furthest from what it is built for", and pair it with local baseline
+      productivity and adaptive capacity before drawing any conclusion about consequences.
+    delivery_note: >-
+      PUBLISHED ON A CROPLAND FOOTPRINT (39,890 cells, 42.4% of land), NOT on all land. A
+      non-agricultural site returns OFF_LAYER_MASK rather than zero, and a percentile here
+      is a rank AMONG CROPLAND, not among all land. The index carries NO CROP TOKEN and the
+      publication ships no sidecars, so which crops it aggregates is UNDOCUMENTED --
+      material for any site-level use, since an index over crops a site does not grow is not
+      that site's risk. See the must-disclose RELATIVE-BASELINE caveat for how to read the
+      score itself.
 
 # Layers refused by the loader. A folder carrying INVALID-DO-NOT-USE.md is ALSO refused
 # automatically, so this list is belt-and-braces rather than the only guard.

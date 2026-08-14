@@ -286,6 +286,30 @@ def layer_caveats(delivery: Delivery) -> List[dict]:
                 )
             )
 
+        # A relative-baseline layer scores "unusual for this place", not "bad". Read as an
+        # absolute risk it inverts the conclusion for exactly the sites a reader cares most
+        # about, and it does so while every number is correct -- so it is MUST-DISCLOSE,
+        # not should-note. Promoted 2026-08-13 after `cropfailure-3b` was found to rank
+        # Iowa at the 99.3rd percentile of cropland against the Sahel's 69.4; the two
+        # drought layers were already in this class and their own notes already said the
+        # caveat "must be stated in any customer narrative" while the machinery filed it
+        # as optional.
+        if str(row.get("relative_baseline") or "").strip().lower() == "yes":
+            note = str(row.get("relative_baseline_note") or "").strip()
+            out.append(
+                _cav(
+                    f"RELATIVE-BASELINE-{lid.upper()}",
+                    SEVERITY_MUST,
+                    f"layer:{lid}",
+                    f"{lid} scores departure from a local historical baseline, "
+                    f"not absolute {str(row.get('hazard', '')).lower()} risk",
+                    note,
+                    evidence=f"layers.csv relative_baseline_note, "
+                             f"read from {row.get('source_folder', '')}",
+                    affects=[lid],
+                )
+            )
+
         models = str(row.get("impact_models") or "")
         n_models = len([m for m in models.split(",") if m.strip()])
         if n_models == 1:

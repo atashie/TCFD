@@ -200,6 +200,18 @@ class LayerSpec:
     recommended_slope: str
     recommended_slope_rationale: str = ""
     delivery_note: str = ""
+    #: True when the layer's value is defined against a FIXED HISTORICAL REFERENCE, so a
+    #: high score means "unusual for this place" and NOT "bad in absolute terms". Three
+    #: shipped layers are in this class and it is the single most misreadable property any
+    #: of them has: `cropfailure-3b` ranks Iowa at the 99.3rd percentile of cropland and the
+    #: Sahel at 69.4, and `drought-3b`/`drought-2b` score a permanently arid cell LOW.
+    #: Declared here rather than left to prose because `generate_delivery_caveats.py`
+    #: promotes it to a MUST-DISCLOSE caveat, which both reports are then required to carry.
+    #: Before this existed, the drought layers' own delivery_note said "Must be stated in
+    #: any customer narrative" while the machinery filed it as optional.
+    relative_baseline: bool = False
+    #: Customer-facing wording for that caveat. Required when relative_baseline is true.
+    relative_baseline_note: str = ""
     #: Date a human read this layer's QA report warnings and viewed its maps. Null until
     #: that actually happened. A contract PASS means the file is SHAPED right, not that the
     #: input is about what its name says -- both sugarcane layers passed every check and
@@ -229,6 +241,19 @@ def load_registry(path: Path = LAYER_REGISTRY_PATH) -> Registry:
     layers = {
         lid: LayerSpec(layer_id=lid, **spec) for lid, spec in raw.get("layers", {}).items()
     }
+    # A relative-baseline layer with no wording would emit an empty MUST-DISCLOSE caveat,
+    # which is worse than none: the report would carry a heading promising a caveat and say
+    # nothing under it. Fail at load rather than at render.
+    missing = sorted(
+        lid for lid, s in layers.items()
+        if s.relative_baseline and not s.relative_baseline_note.strip()
+    )
+    if missing:
+        raise DeliveryError(
+            f"{path}: layer(s) {missing} declare relative_baseline: true but carry no "
+            "relative_baseline_note. That note is rendered into every report as a "
+            "must-disclose caveat and cannot be blank."
+        )
     processed_root = Path(raw.get("processed_root", "data/processed"))
     if not processed_root.is_absolute():
         processed_root = PROJECT_ROOT / processed_root
@@ -497,6 +522,8 @@ def _layer_metadata(spec: LayerSpec, ds: xr.Dataset, scenarios: Sequence[str]) -
         "recommended_slope": spec.recommended_slope,
         "recommended_slope_rationale": " ".join(spec.recommended_slope_rationale.split()),
         "delivery_note": " ".join(spec.delivery_note.split()),
+        "relative_baseline": "yes" if spec.relative_baseline else "no",
+        "relative_baseline_note": " ".join(spec.relative_baseline_note.split()),
         "qa_reviewed_on": spec.qa_reviewed_on or "NOT CONFIRMED",
         "scenarios": ";".join(scenarios),
         "decades": ";".join(str(int(d)) for d in ds.decade.values),

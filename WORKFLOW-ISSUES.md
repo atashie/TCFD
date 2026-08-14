@@ -834,6 +834,141 @@ Same reason, same round: the threshold-cliff figure ("all five vulnerable at 60,
 
 ---
 
+### 2026-08-13: Crop-Failure Ingest — A Recorded Negative That Blocked a Hazard for Weeks, a Product That Zero-Fills the Ocean, and a Contract Variable I Nearly Published as a Constant
+
+Ingesting ISIMIP3b `cropfailure` (Zantout2025). Four findings, in descending order of how
+long they would have gone unnoticed.
+
+**1. Our own catalog understated the hazard, and the understatement was the blocker.**
+`search_results.drought.exposure_lange2020.family.lec` read `impact_models: "gepic"` — one
+model. `config/hazard_taxonomy.yaml` then carried that forward as the *stated reason* crop
+failure was unassessable: *"`lec` is a single impact model, so its CI would carry no
+structural uncertainty."* Both were wrong. Lange2020 publishes `lec` from **GEPIC and
+PEPIC**, and the ISIMIP3b re-issue has **eight** crop models × 5 GCMs × 3 SSPs in a complete
+120-file matrix — the **deepest ensemble of any layer in this product**. The bad figure came
+from a 2026-07-24 API listing capped at 20 rows, recorded without its cap noted.
+
+This is GUARDRAILS §11 in a new costume. The rule was written for *absence* claims; this was
+an **understated positive**, which is more dangerous, because a negative at least looks like
+something to re-check. `impact_models: "gepic"` reads as a measured fact. Nothing in the
+catalog format distinguishes "enumerated exhaustively" from "whatever the first page of a
+truncated listing showed" — and §8 already says `count=1001` means truncation, but says
+nothing about a *row cap* on a listing, which is the same failure at a different limit.
+
+**Rule reinforced**: a capped or paginated result is `UNVERIFIED` for **coverage in either
+direction**, not just for absence. Record the enumeration method beside the count.
+
+**2. The publisher zero-fills the entire globe, and `isfinite` is therefore meaningless.**
+Every one of the 120 members is non-NaN over ~100% of the 259,200-cell grid. Ocean,
+Antarctica, Greenland and the Sahara all read exact `0`, not NaN. Using the finite mask as
+the land mask — which every other processor in this repo does, correctly, for its own
+inputs — would have put **87% ocean zeros into the percentile baseline population**,
+reported `n_members=40` over open ocean, and handed every ocean cell the lowest-risk
+percentile. The footprint had to be derived from where the field is ever **non-zero**:
+39,890 cells, 42.4% of land.
+
+The near-miss worth recording is the *diagnosis*, not the discovery. A 100%-coverage finite
+mask is also the signature of the known `floodedarea` ocean leak, and the reflex was to
+call it that and mask to the generic land-sea mask. It is **not** that defect: 39,406 of
+39,890 footprint cells (98.8%) fall inside the ISIMIP3b land mask, and of the 484 that do
+not, 63% are directly adjacent to land and the rest are **small islands the 0.5° generic
+mask does not resolve** — Lofoten (68.25 N, 13.25 E), Shetland (60.25 N, −1.75 E). They come
+from `ldndc` (476) and `lpjml` (453) only. Treating them as an ocean leak would have deleted
+real island cropland to satisfy a coarser product. Two failure modes, identical symptom,
+opposite correct response — separated by asking *where* the off-mask cells were, not *how
+many*.
+
+**3. `n_members` and `n_models` would have shipped as constants.** Caught in the middle of
+the first full build, which was killed before it wrote. Because every member is finite
+everywhere, `isfinite(...).any(...)` gives **40 members and 8 models in every published
+cell** — while the same file's `mask_rule` attribute tells the reader *"a 1-model cell
+carries no inter-model uncertainty in its CI — filter on `n_models` if that matters."* The
+file would have contradicted its own instructions, and the contract variables would have
+been unusable for exactly the marginal cells they exist to flag.
+
+Fixed by masking each member to its **own** cropland footprint before pooling, so a model
+that grows nothing in a cell contributes no observation rather than a structural zero.
+Measured: only **38.1%** of footprint cells have all 40 members simulating crops (1–10
+members: 563 cells; 11–30: 5,471; 31–40: 33,856). Effect on the value is **1.03×** globally
+(0.00535 → 0.00550) and **4.4×** on the 1–10-member cells — negligible for a headline,
+decisive for a site-level query in marginal cropland, which is where such a query is
+already most fragile. After the fix `n_members` spans 1–40 and `n_models` 1–8.
+
+The general shape: **a zero-filled product silently converts "no opinion" into "zero
+risk"**, and the conversion is invisible in every algebraic check because the array is
+full, finite and correctly shaped. `test_shared_baseline.py` would have passed.
+
+**4. The time axis declares no units at all.** `time` carries `long_name`, `standard_name`
+and `axis` — and **no `units`** — so xarray cannot decode it and `.dt` raises
+`AttributeError`. The values are bare integers `165..250` for a file named `..._2015_2100`,
+i.e. `years since 1850`, undeclared. Decoded from the filename span with assertions on
+length and unit stepping rather than a hardcoded epoch. Its 3b sibling Heinicke2026
+(`driedarea`) has a properly declared `days since 1601-01-01`, so **time-axis handling is
+per-PUBLICATION, not per-round** — the same lesson the filename grammar already taught
+(Zantout2025 carries a leading `zantout2025_` token; Heinicke2026 carries none).
+
+**Also**: Zantout2025 publishes **no `.json` sidecars**, so there is no upstream sha512.
+Integrity is `Content-Length` only, and the sha512 in `download_provenance.csv` is computed
+locally — a self-consistency receipt, not publisher confirmation. The provenance file now
+carries a `sha512_source` column saying so, because a digest column that means two different
+things in two layers is worse than no column.
+
+**GUARDRAILS §12, both halves, passed**: all 12 named cropland reference sites are non-zero
+and non-NaN in all 120 raw members *and* in the processed output, rising 2020s→2090s at 11
+of 12. Contact sheets were **rendered and looked at** — 40 members and 8 decade panels — via
+a new `scripts/render_contact_sheet.py`, which writes PNG directly from numpy with zlib
+because this venv has neither matplotlib nor Pillow. Geography coherent, no block structure,
+no seams, and the visible model ordering matches the measured 6.69× inter-model spread.
+
+**A reading that will be challenged, and is correct**: the layer ranks **Iowa at the 99.3rd
+percentile of cropland and the Sahel at 69.4**. `cropfailure` measures *unprecedentedness*
+against a fixed local reference, so a reliable breadbasket with a tight historical
+distribution trips its own threshold more readily than a chronically marginal region. It is
+the crop analogue of the drought layer's "departure, not aridity". This layer must never be
+read as a food-security or absolute-yield map, and `interpretation_caveat` says so.
+
+**Open**: the index carries **no crop token** and the publication ships no sidecars, so
+*which* crops are aggregated into it, and how they are weighted, is not readable from the
+archive. That is material for site-level use — a crop-aggregated index over crops a site
+does not grow is not that site's risk — and it is recorded as
+`crop_composition_undocumented` rather than guessed.
+
+**Two rules came out of the same session and are recorded with it**, because both were
+"written down but not wired up":
+
+- **A layer scoring departure from a local baseline now declares it and the machinery
+  enforces it.** `relative_baseline: true` + `relative_baseline_note` in the registry →
+  a `must_disclose` caveat both reports refuse to render without. `cropfailure-3b` ranks
+  **Iowa at the 99.3rd percentile of world cropland and the Sahel at 69.4** — correct, and
+  the first thing a reader challenges. The two drought layers were already in this class and
+  their own `delivery_note` said *"Must be stated in any customer narrative"* while the
+  generator filed it as `should_note`. Flagging cropfailure alone would have implied the
+  drought layers were absolute, so all three were flagged and the example delivery
+  regenerated (11 → **12** must-disclose caveats, 3,294 checks, text confirmed present in
+  both rendered documents). Moving the substance into its own field also silently dropped it
+  from the Stage 1 plan — the one place the mapping is agreed with the customer — so the plan
+  now prints it as `READ AS RELATIVE:` above the ordinary `NOTE:`.
+- **Per-dataset facts moved out of CLAUDE.md into [DATASET-ATTRIBUTES.md](DATASET-ATTRIBUTES.md)**
+  (user instruction). CLAUDE.md had already declared *"per-hazard framing decisions live with
+  their layer, not here"* and then carried a shipped-layer table, a Water Index variable
+  table, and a dozen per-layer measurements. The rule now has somewhere to point. Per-layer
+  slope and smoothing tables also moved out of ASSET-CATALOG.md so there is **one** copy that
+  cannot drift, and `OUTPUT-SPEC.md`'s stale *"Only `let` qualifies today"* was corrected.
+  Where a fact belongs: a rule that generalizes → CLAUDE.md/GUARDRAILS; a fact about one
+  dataset → DATASET-ATTRIBUTES + processor docstring; a fact the processed file already
+  carries → **nowhere**, it is read from the file's global attributes at delivery time.
+
+**Files**: `scripts/download_cropfailure_isimip3b.py`, `scripts/check_cropfailure_nature.py`,
+`scripts/process_cropfailure_isimip3b.py`, `scripts/render_contact_sheet.py`,
+`scripts/utils/delivery.py`, `scripts/generate_delivery_caveats.py`,
+`scripts/generate_customer_delivery.py`, `config/isimip_search_catalog.yaml`,
+`config/hazard_taxonomy.yaml`, `config/layer_registry.yaml`, `config/asset_catalog.yaml`,
+`DATASET-ATTRIBUTES.md`, `CLAUDE.md`, `ASSET-CATALOG.md`, `OUTPUT-SPEC.md`, `GUARDRAILS.md`,
+`.claude/skills/isimip-search-download/SKILL.md`,
+`.claude/skills/isimip-process-visualize/SKILL.md`.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

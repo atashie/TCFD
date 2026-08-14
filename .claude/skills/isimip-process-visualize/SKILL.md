@@ -111,6 +111,13 @@ Print the per-member table before writing any processing logic. Record verified 
 `config/isimip_search_catalog.yaml` under `data_nature`, and carry them into the output's
 global attributes.
 
+**Where the findings end up, so a fact has exactly one home**: the file's **global
+attributes** are authoritative for how the layer was framed; the **processor docstring**
+carries the measurements behind each decision plus the §12 reference sites; a dated
+**WORKFLOW-ISSUES.md** entry carries what went wrong; and **[DATASET-ATTRIBUTES.md](../../../DATASET-ATTRIBUTES.md)**
+gets a summary row so the layer is discoverable next to its siblings. Per-dataset facts do
+**not** go in CLAUDE.md — that file holds only rules that generalize.
+
 **Then RENDER a per-member contact sheet and look at it.** One small global panel per
 member, before choosing statistics. This is not optional polish: every statistic in the
 table is *invariant under spatial rearrangement*, so the table cannot see a spatial defect.

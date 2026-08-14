@@ -80,7 +80,9 @@ layer passes `central="mean"` to `pooled_decadal_stat` and **must** declare
 
 This is a **declared** deviation, never a silent one. Do not reach for it to improve
 contrast on an ordinary field: measure the median branch's exact-zero share first, and
-record it. Only `let` qualifies today (user decision 2026-08-11).
+record it. Each adoption is its own decision on its own measurement, and the count is not a
+precedent — **which layers qualify today, and on what numbers, is in
+[DATASET-ATTRIBUTES.md](DATASET-ATTRIBUTES.md)** (two, as of 2026-08-13).
 
 ### `percentile`
 
