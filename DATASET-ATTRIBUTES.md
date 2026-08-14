@@ -40,6 +40,7 @@ straight.
 | Wildfire (burnt area) | `wildfire` | `burntarea-total` | 3b `fire`+`biomes`, ssp126/370/585 | `process_burntarea_isimip3b.py` |
 | Crop failure (exposure) | `cropfailure-3b` | `cropfailure` | 3b `Zantout2025`, ssp126/370/585 | `process_cropfailure_isimip3b.py` (2026-08-13) |
 | Heatwave (exposure), ISIMIP3b | `heatwave-3b` | `heatwave` | 3b `Zantout2025`, ssp126/370/585 | `process_heatwave_isimip3b.py` (2026-08-14) |
+| Heatwave (health threshold), ISIMIP2b | `heatwave-2b` | `leh` | 2b `Lange2020`, rcp26/60 | `process_leh_isimip2b.py` (2026-08-14) |
 | Permafrost thaw | `permafrost-3b` | `thawfrac` (from `thawdepth`) | 3b `permafrost`+`biomes`, ssp126/370/585 | `process_thawdepth_permafrost.py` (2026-08-14) |
 | Temperate conifer productivity | `conifer-npp` | `npp-tempnle` | 2b `biomes` CLM45+ORCHIDEE+LPJmL, rcp26/60/85 | `process_tempnle_npp.py` (2026-08-12) |
 
@@ -59,6 +60,7 @@ knob is not a reason for a third to adopt it.
 | `cyclone` | 4 (1 × 4) | `pooled_mean_zero_inflated` | — | **5×5, L=2.5** | two-tier, `higher_is_worse` |
 | `wildfire` | 22 (5 models) | `pooled_median` | — | none | `higher_is_worse` |
 | `heatwave-3b` | 5 (**1 index model** × 5 GCMs) | `pooled_mean_boolean` | full footprint; min-model rule **void**, not relaxed — `n_models`≡1 and all 5 GCM members share one 67,420-cell mask | none | single-tier, `higher_is_worse` |
+| `heatwave-2b` | 4 (**1 index model** × 4 GCMs) | `pooled_mean_boolean` | **explicit ISIMIP2b `LSM` land mask** — the source zero-fills all 259,200 cells, so `isfinite` is not a footprint; min-model rule void | none | two-tier, `higher_is_worse` |
 | `permafrost-3b` | 12 (3 models × {5,5,2} GCMs) | **`pooled_mean_multimodel`** | 2020s permafrost footprint, **≥2 of 3 models** | none | two-tier, `higher_is_worse` |
 | `conifer-npp` | — | `pooled_median` | 2% cover presence mask | none | **`higher_is_better`** — percentile is already inverted in the file |
 
@@ -366,3 +368,64 @@ TCFD contract applies: no trends, no percentile scoring, no kernel smoothing.
 | `dis` | **mean** | m3 s-1 | Stock; 5 models, no normalization, raw ISIMIP units |
 | `potevap` | **sum** | kg m-2 s-1 | Flux; 4 models, h08 selectively normalized to the reference ensemble (cwatm/miroc/watergap2-2e) |
 | `precip` | **sum** | TBD | TODO — climate forcing InputData, not model output |
+
+
+### The two heatwave layers are different indices, and they fail in opposite directions
+
+`heatwave-2b` (`leh`) and `heatwave-3b` (`heatwave`) are **siblings, not versions**, in the
+stronger sense than the drought pair: the drought layers measure the same thing with
+different ensembles, whereas these two measure **different things**.
+
+| | `heatwave-2b` (`leh`) | `heatwave-3b` (`heatwave`) |
+|---|---|---|
+| Index | HWMId **and** Humidex ≥ 45 | HWMId **only** — "NONE" is the humidity term |
+| Health anchoring | yes — Humidex 45 is Environment Canada's "great discomfort; avoid exertion" band | none |
+| Round / scenarios | 2b, rcp26 + rcp60 (no rcp85 exists) | 3b, ssp126/370/585 |
+| Members per scenario | 4 (1 index model × 4 CMIP5 GCMs) | 5 (1 index model × 5 CMIP6 GCMs) |
+| Land at exactly 0, final panel | **65.7%** (rcp60) | 0.0% |
+| Cells at the ceiling (1.0), final panel | 0.0% | **45.9%** (ssp585) |
+| Land active in **all** members, baseline | **8.4%** | **74.8%** |
+| Active area resting on one GCM | **22%** | 0.4% |
+| GCM spread (per-member land mean) | 2.16×, CV 28.5% | 1.58×, CV 17.5% |
+| Failure mode | **silence** outside the humid-heat belt | **saturation** at high forcing |
+
+**`heatwave-3b` is the selected layer** (user determination 2026-08-14, after reviewing the
+dataset). It is `status: preferred` and carries `qa_reviewed_on: 2026-08-14` — the only layer
+in the registry with a human QA date. `heatwave-2b` is retained, built and contract-passing,
+as the only health-anchored heat source in the repository, but is not selected and stays
+blocked pending its own review.
+
+**Neither can be called "the heat layer" without the caveat that distinguishes it.** A zero
+in `heatwave-2b` means "never crossed Humidex 45", not "no heat risk" — Paris, Frankfurt and
+Yakutsk are exactly zero in every member and every year. A flat slope in `heatwave-3b` means
+"pinned at the ceiling", not "no trend".
+
+They also disagree about *where* heat matters, and the disagreement is structural rather
+than noise: `heatwave-2b`'s footprint is a humid-heat belt (Central America, Amazon, Sahel
+and West Africa, Horn of Africa, Arabian Gulf, Indus/Ganges, maritime SE Asia, northern
+Australia), while `heatwave-3b` is brightest in the *same* tropics but for the opposite
+reason — low interannual variance makes a relative threshold easy to cross there.
+
+
+### Two must-disclose caveats now travel with these layers automatically
+
+`LAYER_ATTRS_EXPORTED` in `scripts/utils/delivery.py` is a **closed allowlist**: a caveat
+written into a processed file under any attribute name not on that list is silently dropped
+before it reaches `layers.csv`, the caveat generator, or either report. Added 2026-08-14 so
+the two heatwave layers' defining limitations survive the trip:
+
+| Attribute | Caveat ID | Severity |
+|---|---|---|
+| `saturation_caveat` | `CENSORED-CEILING-{layer}` | **must-disclose** |
+| `sparsity_caveat` | `CENSORED-FLOOR-{layer}` | **must-disclose** |
+
+Both are promoted to must-disclose for the same reason `relative_baseline_note` was on
+2026-08-13: **every number is correct and the reader's conclusion inverts.** A layer pinned
+at a bound has no variance in the pooled sample, so the CI collapses to zero width, *both*
+slopes go to ~0 and **agree** — the dual-slope disagreement rule gives no warning — and the
+percentile ties. A flat trend then reads as "stable" and means "maximally exposed, no
+headroom left"; a floor reads as "low risk" and means "never crossed the threshold this
+index measures".
+
+Any future layer with a physical or definitional bound should set one of these attributes
+rather than describing the problem in prose that nothing reads.

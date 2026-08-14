@@ -192,12 +192,13 @@ families:
     cdp_label: "Heat wave"                           # UNVERIFIED
     covered_by: []
     materiality_note: >-
-      Drives workforce safety, equipment derating and cooling demand. For a data centre it
-      is arguably the primary hazard and we do not carry it. NOTE when this ships: the
-      chosen ISIMIP3b source is a temperature-only index with NO humidity term, so it does
-      not evidence the workforce-safety half of that sentence. Copy must not promise a
-      wet-bulb or heat-stress reading -- see search_results.heatwave.
-      method_difference_VERIFIED in the ISIMIP catalog.
+      Drives workforce safety, equipment derating and cooling demand. THE SELECTED LAYER
+      DOES NOT EVIDENCE THAT SENTENCE: `heatwave-3b` is a temperature-only index with no
+      humidity term, so it speaks to unprecedented heat, not to heat STRESS. The
+      health-anchored alternative (`heatwave-2b`, HWMId AND Humidex >= 45) exists and is
+      built, but is silent over most of the extratropics. Any customer-facing claim about
+      worker safety limits or wet-bulb thresholds needs that layer, or a constructed index
+      from daily tasmax+hurs -- not this one.
     customer_note: >-
       Not assessed. Extreme heat drives workforce safety limits, equipment derating and cooling demand, and is often the leading hazard for occupied buildings and data centres.
     isimip_candidate:
@@ -206,19 +207,27 @@ families:
       - "ISIMIP2b OutputData/health/TRM-Tsukuba `an-tot-heat-all` -- gridded annual COUNT of heat-attributable excess deaths at a fixed 2005 population, 4 GCMs x rcp26/rcp60, ~113 MB. A different quantity, not an asset-facing exposure layer."
       - "ISIMIP3b InputData bias-adjusted daily `tasmax` (+`hurs`) -- a CONSTRUCTED index, not an aggregation (GUARDRAILS 1-2); ~254 GB for tasmax alone across 5 GCMs x 3 SSPs."
     blocker: >-
-      SOURCE CHOSEN and INGESTED 2026-08-13, not yet processed. ISIMIP3b `heatwave`
-      (user decision: prefer the more recent data); 15/15 files sha512-verified into
-      data/raw/heatwave-isimip3b_heatwave_annual/. Value check (scripts/check_heatwave_nature.py)
-      settled three of the four unknowns: the field is BINARY {0,1} in all 15 members so
-      "area share" is a misnomer and the decadal mean is a FREQUENCY; it is a land
-      footprint with no ocean leak; and the finite mask is identical across all 5 GCM
-      members, which makes the missing ">=2 models" rule moot rather than unresolved.
-      What still blocks a processor is NEW and specific to this layer: the flag SATURATES.
-      45.9% of ssp585 2090s cells sit at exactly 1.0, where both slopes go to ~0 and mean
-      "permanently exposed" rather than "no trend", and a percentile-of-score ranking
-      collapses into one tie block holding nearly half the cells. Trend censoring and tie
-      treatment must be decided with the user before anything is written. No processor exists.
-
+      RESOLVED 2026-08-14: the user reviewed the dataset and selected `heatwave-3b`
+      (ISIMIP3b `heatwave`, ssp126/370/585) as the heatwave layer. It is registered
+      `status: preferred` with `qa_reviewed_on: 2026-08-14` -- the only layer in the
+      registry carrying a human QA date. `heatwave-2b` (ISIMIP2b `leh`, rcp26/60) remains
+      built and contract-passing but NOT selected, retained as the only health-anchored
+      heat source; it stays blocked pending its own QA review.
+      COVERAGE IS STILL EMPTY ON PURPOSE. `covered_by` is left `[]` because no asset type in
+      config/asset_catalog.yaml routes to `heatwave-3b` yet, so no delivery would actually
+      carry the hazard. Declaring coverage before the asset->layer mapping exists would
+      produce exactly the failure this file was built to prevent: a report that lists
+      heatwave as assessed while delivering nothing for it. Populate `covered_by` in the
+      SAME change that adds the layer to the asset catalog, and that mapping needs user
+      sign-off.
+      BEFORE THE FIRST DELIVERY QUOTES IT, rewrite materiality_note/customer_note: the
+      selected layer carries NO humidity term and cannot support a workforce-safety or
+      equipment-derating reading. Two must-disclose caveats now travel automatically from
+      the file -- RELATIVE-BASELINE (departure from each cell's own preindustrial normal;
+      Chicago outranks Delhi) and CENSORED-CEILING (45.9% of ssp585 2090s cells pinned at
+      1.0, where both slopes go to ~0 and agree, so a flat trend means "no headroom left").
+      See config/isimip_search_catalog.yaml search_results.heatwave, DATASET-ATTRIBUTES.md,
+      WORKFLOW-ISSUES.md 2026-08-14.
   heat-stress-chronic:
     name: "Chronic heat / rising mean temperature"
     esrs_class: chronic

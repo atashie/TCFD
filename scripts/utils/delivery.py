@@ -136,6 +136,17 @@ LAYER_ATTRS_EXPORTED = (
     "source_dataset",
     "spatial_smoothing",
     "interpretation_caveat",
+    #: A layer whose value is pinned at a BOUND -- the ceiling or the floor -- for a large
+    #: share of cells. There the pooled sample has no variance, so BOTH slopes go to ~0 and
+    #: agree, the CI collapses, and the percentile ties. Every number is correct and the
+    #: conclusion inverts, which is the same class of hazard as `relative_baseline` and is
+    #: promoted to MUST-DISCLOSE in `generate_delivery_caveats.layer_caveats()`.
+    #: Added 2026-08-14: this allowlist is closed, so a caveat written into a processed file
+    #: under any other attribute name is silently dropped at delivery. `heatwave-3b` carries
+    #: `saturation_caveat` (45.9% of ssp585 2090s cells at 1.0) and `heatwave-2b` carries
+    #: `sparsity_caveat` (65.7% of land at 0); before this both were invisible downstream.
+    "saturation_caveat",
+    "sparsity_caveat",
 )
 
 #: Attributes that MUST be identical across a layer's scenarios. If they are not, the layer

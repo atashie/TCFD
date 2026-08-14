@@ -310,6 +310,32 @@ def layer_caveats(delivery: Delivery) -> List[dict]:
                 )
             )
 
+        # A layer PINNED AT A BOUND is the same class of hazard as a relative baseline: the
+        # published number is correct and the reader's conclusion inverts. Where a cell sits
+        # at the ceiling (or the floor) for the whole decade the pooled sample has no
+        # variance, so the CI collapses to zero width, BOTH slopes go to ~0 and AGREE -- so
+        # the dual-slope disagreement rule gives no warning -- and the percentile ties.
+        # A flat trend then reads as "stable" and means "maximally exposed, no headroom
+        # left"; a floor reads as "low risk" and means "never crossed the threshold this
+        # index measures". MUST-DISCLOSE, for the reason the relative-baseline note was
+        # promoted on 2026-08-13. Added 2026-08-14 with `heatwave-3b`/`heatwave-2b`.
+        for attr, kind in (("saturation_caveat", "ceiling"), ("sparsity_caveat", "floor")):
+            note = str(row.get(attr) or "").strip()
+            if not note or note.lower() == "nan":
+                continue
+            out.append(
+                _cav(
+                    f"CENSORED-{kind.upper()}-{lid.upper()}",
+                    SEVERITY_MUST,
+                    f"layer:{lid}",
+                    f"{lid} is pinned at its {kind} over part of the domain, so slopes "
+                    f"and percentile ranks there are censored, not measured",
+                    note,
+                    evidence=f"layers.csv {attr}, read from {row.get('source_folder', '')}",
+                    affects=[lid],
+                )
+            )
+
         models = str(row.get("impact_models") or "")
         n_models = len([m for m in models.split(",") if m.strip()])
         if n_models == 1:

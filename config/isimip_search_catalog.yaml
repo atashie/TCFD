@@ -949,7 +949,32 @@ search_results:
         ingested: >-
           2026-08-14, 8/8 files sha512-matched against the publisher sidecars, 36.3 MiB ->
           data/raw/heatwave-isimip2b_leh_annual/. scripts/download_leh_isimip2b.py.
-          NOT YET PROCESSED -- no processor exists; the sparsity question above is open.
+        processed: >-
+          2026-08-14 -> data/processed/heatwave-isimip2b_leh_annual/,
+          scripts/process_leh_isimip2b.py. test_shared_baseline.py: ALL CHECKS PASSED
+          (baseline at decade index 1, 2020s bit-identical across scenarios, 0 CI
+          violations, 0 ocean leak, n_members 4-4, n_models 1-1). Registered as
+          `heatwave-2b`, status BLOCKED pending the user's determination against
+          `heatwave-3b`.
+          MEASURED AT BUILD: global-mean frequency rcp26 0.0259 (2010s) -> 0.0444 (2090s),
+          PLATEAUING after the 2040s; rcp60 0.0234 -> 0.0916, with the silent share of land
+          falling 78.0% -> 65.7%. Even at rcp60 2090s, 65.7% of land is exactly zero.
+          71.5% of land sits in percentile tier 1 on the baseline.
+          ENSEMBLE AGREEMENT IS THE SECOND CAVEAT, separate from sparsity: only 8.4% of land
+          is active in all 4 GCMs, and of the 28.5% active in ANY member, 22% rests on a
+          SINGLE GCM. Per-member land mean spans 0.0204 (gfdl-esm2m) to 0.0440
+          (ipsl-cm5a-lr), 2.16x, CV 28.5%. Contrast heatwave-3b: 74.8% active in all 5,
+          1.58x, CV 17.5%. A hard absolute threshold amplifies small GCM differences.
+          CONTACT SHEET VIEWED: the active footprint is a coherent humid-heat belt (Central
+          America, Amazon, Sahel/West Africa, Horn of Africa, Arabian Gulf, Indus/Ganges,
+          maritime SE Asia, northern Australia), broad and contiguous rather than speckle --
+          which is why NO smoothing was applied despite the 4-member ensemble matching
+          `let`'s depth. The sparsity is a THRESHOLD boundary; smoothing would bleed
+          non-zero frequency across it into cells the index says never cross Humidex 45.
+          TIME AXIS: `years since 1661-1-1` on a 360_day calendar, which xarray CANNOT
+          decode (decode_times=True raises). The processor parses the epoch from the units
+          string and asserts the span against the filename. Third convention in three
+          publications of the same concept.
       heatwave_exposure_3b:
         path: "ISIMIP3b/DerivedOutputData/Zantout2025/HWMID-NONE/{gcm}/future/"
         variables: "heatwave ONLY"
@@ -1182,7 +1207,18 @@ search_results:
       built and contract-passing but not cleared for delivery, pending the saturation
       tie-ranking decision and a rewrite of the hazard's workforce-safety copy. No asset
       type references it, so it cannot reach a delivery.
-      2026-08-14 user decision: prefer the ABSOLUTE, health-anchored quantification over the
+      SELECTED 2026-08-14 -- user reviewed the dataset and chose this layer as THE heatwave
+      layer. Registry status `preferred`, `qa_reviewed_on: 2026-08-14` (the only layer with a
+      human QA date). `leh` remains built but not selected; see representations.leh_exposure_2b.
+      Its two defining limitations now travel automatically as MUST-DISCLOSE caveats
+      (CENSORED-CEILING from `saturation_caveat`, RELATIVE-BASELINE from the registry), after
+      `saturation_caveat`/`sparsity_caveat` were added to the closed LAYER_ATTRS_EXPORTED
+      allowlist in scripts/utils/delivery.py -- before that they were dropped before reaching
+      layers.csv or either report.
+      STILL OPEN: no asset type routes to this layer, so hazard_taxonomy `covered_by` is
+      deliberately still empty; and the hazard's workforce-safety copy must be rewritten,
+      since this index carries no humidity term.
+      2026-08-14 earlier decision: prefer the ABSOLUTE, health-anchored quantification over the
       out-of-distribution one, which is why `leh` was ingested alongside -- see
       representations.leh_exposure_2b.sparsity_measured before assuming it can be primary.
     open_decisions: |
