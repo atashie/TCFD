@@ -663,6 +663,16 @@ search_results:
           0.057): a uniform 40-year standard is more protection than the empirical standard
           in some places and less in others. Neither is a scaled version of the other.
         protection_behaves_correctly: "flopros <= none in EVERY cell (verified, not assumed). Spatial Spearman none-vs-flopros 0.367, none-vs-2yr 0.911 -- defences REORDER the map, they do not scale it."
+      latitude_seam_check: >-
+        NO 60 N SEAM IN THIS PRODUCT. The process-visualize skill records that ISIMIP2b
+        Zimmer2023 `fldfrc` (150 arcsec) halves across one row at exactly 60.0 N, where
+        CaMa-Flood switches DEM at the SRTM/HydroSHEDS limit. Checked on the NATIVE
+        TipESM2025 data 2026-08-15 (classic/gfdl-esm4/ssp585/none, time mean): the
+        59-60 N band means 0.04411 against 0.05161 for 60-61 N, a ratio of 0.855, and the
+        row-by-row means cross the boundary smoothly (0.048, 0.043, 0.039 | 0.046, 0.049,
+        0.052). No discontinuity. The trap is real for the 2b product and does NOT transfer
+        to this one -- scope it to the product it was measured on, not to CaMa-Flood
+        generally. Re-check if the 2b `flddph`/`fldfrc` layers are ever built.
       defects_found_in_the_probe:
         latitude_orientation_differs_between_protection_variants: >-
           CRITICAL AND SILENT, and SYSTEMATIC -- verified across all 258 ingested members

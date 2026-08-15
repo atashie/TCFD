@@ -321,6 +321,166 @@ layers:
       conclusion from a zero -- the DEM understates absolute exposure and South Florida reads
       0.00000 at every decade.
 
+  # -------------------------------------------------------------------------------------
+  # Riverine flood -- THREE PROTECTION VARIANTS OF ONE PRODUCT, not three products.
+  # -------------------------------------------------------------------------------------
+  # Same model chain, same members, same grid; they differ only in the flood-protection
+  # assumption applied. OUTPUT-SPEC has no protection dimension, so they are three layers.
+  #
+  # ALL THREE RANK AGAINST THE flopros 2020s BASELINE (user decision 2026-08-14), so a
+  # percentile means the same thing across them. Every raw value -- median, CIs, both
+  # slopes -- is the variant's own. Do not compare a percentile from these layers against
+  # one from a layer outside this family without saying that the references differ.
+  #
+  # THE ENSEMBLES ARE NOT THE SAME SIZE: `none` has 32 members from 7 impact models, the
+  # protected variants 27 from 6, because CWATM publishes the unprotected field only. A
+  # `none` minus `flopros` difference therefore mixes a defence effect with an ensemble
+  # change unless it is restricted to the common 27.
+
+  flood-3b-flopros:
+    folder: flood-isimip3b_fldfrcmax-flopros_annual
+    file_prefix: fldfrcmax-flopros
+    hazard: Riverine flood
+    hazard_measure: Annual maximum flooded fraction of the cell, behind FLOPROS defences
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on 97.3-98.1% of active cells across the three scenarios (2090s;
+      measured 2026-08-14), with ols/sen sign agreement 1.6-2.5%. Heavily zero-inflated
+      behind defences -- most year-pairs are 0->0 -- so the robust estimator carries almost
+      no signal. READ ols_slope. Theil-Sen pairs are subsampled at max_pairs=50000
+      (deterministic, rng_seed=0); ols is unaffected by that cap and sen moves only at the
+      1e-7 level, which is immaterial on a collapsed estimator. See the file's `slope_note`.
+    relative_baseline: false
+    delivery_note: >-
+      A ZERO HERE MEANS "PROTECTED TO STANDARD", NOT "NO HAZARD". This variant applies the
+      FLOPROS database of observed flood-protection standards, so a well-defended site reads
+      at or near zero while its underlying hazard may be large: measured 2026-08-14, the
+      Rhine (NL/DE) box falls from 0.05909 unprotected to 0.00122, and the Lower Mississippi
+      from 0.14505 to 0.00358. Protection is held CONSTANT into the future, so the layer
+      embeds a no-further-adaptation assumption and says nothing about defences being
+      maintained, overtopped or breached. Where a customer needs the raw climate signal,
+      deliver `flood-3b-none` alongside it -- and note that `flood-3b-40yr` is NOT an
+      ordered midpoint between them: a uniform 40-year standard exceeds the empirical
+      standard in some countries and falls short in others, so the ranking REVERSES by
+      region (Amazon 0.01077 at 40yr vs 0.01607 at flopros; Ganges 0.06853 vs 0.05664).
+      GRID: 0.25 deg (~28 km), NOT the 0.5 deg of most layers, so this layer's extraction
+      window is proportionally smaller and its footprint figures differ -- see
+      `manifest.json` `per_layer_geometry`. Permanent water (inland bodies, mostly the
+      Caspian) is masked out. Statistic is `pooled_mean_zero_inflated`: measured on this
+      variant, the median branch would leave 92.68% of published cells at exactly zero.
+
+  flood-3b-40yr:
+    folder: flood-isimip3b_fldfrcmax-40yr_annual
+    file_prefix: fldfrcmax-40yr
+    hazard: Riverine flood
+    hazard_measure: Annual maximum flooded fraction of the cell, behind a uniform 40-year standard
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      sen_slope == 0 on 98.7-98.8% of active cells (2090s; measured 2026-08-14), sign
+      agreement 1.0-1.2% -- the most collapsed of the three variants. READ ols_slope. Same
+      max_pairs=50000 subsampling as the sibling variants.
+    relative_baseline: false
+    delivery_note: >-
+      A COUNTERFACTUAL, NOT AN OBSERVATION: it assumes a 40-year flood-protection standard
+      EVERYWHERE, including places that have no defences at all. Its value is as a uniform
+      yardstick for comparing regions without the country-by-country variation FLOPROS
+      carries, not as a description of any real place. Not an ordered midpoint between
+      `none` and `flopros` -- the ranking reverses by region. Grid 0.25 deg, permanent water
+      masked, percentile ranked against the flopros 2020s baseline, statistic
+      `pooled_mean_zero_inflated` (median branch would leave 97.25% of cells at zero).
+
+  flood-3b-none:
+    folder: flood-isimip3b_fldfrcmax-none_annual
+    file_prefix: fldfrcmax-none
+    hazard: Riverine flood
+    hazard_measure: Annual maximum flooded fraction of the cell, no defences assumed
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      THE ONLY VARIANT WHERE THIS IS A JUDGEMENT RATHER THAN A READING OFF THE NUMBERS, and
+      it is open to revision. Measured 2026-08-14: sen_slope == 0 on 33.9-38.1% of active
+      cells -- NOT the collapse the protected variants show -- but ols/sen sign agreement is
+      only 57.7-62.8%, so the two estimators disagree on roughly 40% of cells and those
+      trends are not robust by our own dual-slope rule. ols_slope is chosen because the
+      field is still substantially zero-inflated (17.5% of annual cell-years are exactly
+      zero) and because the three variants share a percentile reference: reading sen here
+      and ols on the siblings would put a third incomparability into a family built to be
+      comparable. Both slopes are published; a user who wants the robust estimator on this
+      variant has it, and should treat sign disagreement as the signal it is.
+    relative_baseline: false
+    delivery_note: >-
+      THE RAW CLIMATE SIGNAL, WITH NO DEFENCES ASSUMED -- it therefore OVERSTATES residual
+      risk anywhere flood protection exists, which is most developed floodplains. Measured
+      2026-08-14, last decade: Amazon main stem 0.11496, Mekong delta 0.47296,
+      Ganges-Brahmaputra 0.30458, Lower Mississippi 0.14505, Rhine 0.05909. Pair it with
+      `flood-3b-flopros` rather than delivering it alone where defences are material.
+      DEEPER ENSEMBLE THAN ITS SIBLINGS: 32 members from 7 impact models against 27 from 6,
+      because CWATM publishes the unprotected field only -- so a none-minus-flopros
+      difference mixes the defence effect with an ensemble change unless restricted to the
+      common 27. PERCENTILE COMPRESSES AT THE TOP: ranked against the flopros 2020s
+      baseline (a much lower distribution), this variant's median percentile is ~90 with
+      ~11% of cells at 99 or above, against 50 and 1% on its own baseline. That is the
+      accepted cost of cross-variant comparability, and it means percentile CONTRAST within
+      this layer is weaker than its raw values suggest -- read the raw fraction alongside it.
+      Grid 0.25 deg, permanent water masked, statistic `pooled_mean_zero_inflated` (taken
+      for estimator consistency with the siblings; this variant's own median is healthy at
+      13.31% zeros and did not require the deviation -- see `decadal_statistic_rationale`).
+
+  # -------------------------------------------------------------------------------------
+  # Soil organic carbon -- an ASSET-CONDITION layer pending a user decision, not a hazard.
+  # -------------------------------------------------------------------------------------
+  # Rebuilt 2026-08-14/15 after the 2026-07-25 output was lost from disk. It is the
+  # entry-level indicator for the `soil-degradation` hazard family (more carbon = healthier
+  # soil, less = degrading soil), but it is registered here WITHOUT that family's
+  # `covered_by` being populated, because two things are still open and both are the user's:
+  #
+  #   1. HAZARD OR ASSET CONDITION? Like `conifer-npp` -- which this file's sibling
+  #      `hazard_taxonomy.yaml` classifies under `non_hazard_layers` -- this is
+  #      `higher_is_better` with an inverted percentile, and declining soil carbon reads more
+  #      like the asset's condition than a hazard acting on it. Unless the asset IS the soil.
+  #   2. NO ASSET TYPE ROUTES TO IT YET. Declaring hazard coverage before the asset->layer
+  #      mapping exists produces exactly the failure hazard_taxonomy.yaml was built to
+  #      prevent: a report listing soil degradation as assessed while delivering nothing.
+  csoil:
+    folder: soilcarbon_csoil_annual
+    file_prefix: csoil
+    hazard: Soil organic carbon
+    hazard_measure: Soil organic carbon stock (subsurface storage pool)
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: sen_slope
+    recommended_slope_rationale: >-
+      MEASURED 2026-08-15 -- see the run log. This is the one shipped layer in the
+      ols-is-biased regime rather than the sen-collapses regime, and the two estimators
+      disagree in SIGN on the global mean: at ssp126 the 2080s panel reads
+      ols -0.0372 against sen -0.0030 kg m-2/dec, and at the 2030s-2060s panels ols is
+      negative while sen is positive throughout. That is the signature OUTPUT-SPEC predicts
+      for an ensemble whose between-member level offset (~68.7x the interannual SD) is large
+      and whose member coverage is uneven -- CLASSIC contributes 2 GCMs against 5 for each of
+      the other three models, and the four models' 2020s medians span 5.70 to 16.64 kg m-2.
+      ols absorbs those level offsets as trend. READ sen_slope.
+    relative_baseline: false
+    delivery_note: >-
+      NOT A SOIL-DEGRADATION LAYER, AND MUST NOT BE LABELLED ONE. Soil organic carbon is ONE
+      of the ten degradation processes enumerated in recital 4 of Directive (EU) 2025/2360;
+      it carries nothing about sealing, compaction, contamination, nutrient balance,
+      acidification, salinisation or erosion, and no framework defines "soil degradation" as
+      a climate hazard at all (ESRS E1 AR 11 names it and defines nothing). LAND USE IS HELD
+      FIXED in every member, so the layer cannot see management-driven carbon loss, which is
+      most of observed loss -- deliberate, because it isolates the climate signal, and a hard
+      limit on any claim about soil condition in general. DIRECTION IS INVERTED: this is
+      `higher_is_better`, so a LOW stock or a decline earns a HIGH risk percentile, exactly
+      like `conifer-npp`; a Climate Score averaging it with hazard-exposure layers is mixing
+      axes and must say so. The models agree on the ordering and disagree on the magnitude,
+      most sharply in high-latitude organic soils, and only one of four projects large
+      northern peat losses -- read the CI at high latitudes, not the median alone. The full
+      statement is in the file's `interpretation_caveat`, which delivery exports.
+
 # Layers refused by the loader. A folder carrying INVALID-DO-NOT-USE.md is ALSO refused
 # automatically, so this list is belt-and-braces rather than the only guard.
 blocked:

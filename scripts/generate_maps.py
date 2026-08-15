@@ -160,6 +160,36 @@ def grid_cell_size_of(ds) -> float:
         return DEFAULT_CELL_SIZE
     return float(np.abs(np.diff(lat)).mean()) if lat.size > 1 else DEFAULT_CELL_SIZE
 
+
+#: Display settings for the current run, set once in main() from the layer's own grid.
+#: `target_cell` is the grid the MAPS are drawn on -- never finer than the data, and by
+#: default 0.5 deg regardless of how fine the data is, because marker count is the binding
+#: browser constraint (one DOM marker per land cell; ~70,849 at 0.5 deg, 251,890 at 0.25 deg,
+#: and a 6-panel Trend page at the finer grid would ask for ~1.5M).
+#: A 0.5 deg layer therefore gets stride 1 and renders byte-identically to before.
+DISPLAY = {"coord_decimals": COORD_DECIMALS, "target_cell": DEFAULT_CELL_SIZE}
+
+
+def _decimate_for_display(lons: np.ndarray, lats: np.ndarray, values: np.ndarray):
+    """Block-mean onto DISPLAY['target_cell'] when the incoming grid is finer.
+
+    Returns the inputs untouched when the grid already is the target, so every 0.5 deg
+    layer takes a no-op path. Uses block_mean (NaN-aware), never slicing: slicing samples
+    every other cell and silently deletes exposed cells on a sparse hazard.
+    """
+    if lats.size < 2 or lons.size < 2:
+        return lons, lats, values, 1
+    cell = float(np.abs(np.diff(lats)).mean())
+    stride = int(round(DISPLAY["target_cell"] / cell)) if cell > 0 else 1
+    if stride <= 1:
+        return lons, lats, values, 1
+    values = block_mean(values, stride)
+    ny = lats.size - lats.size % stride
+    nx = lons.size - lons.size % stride
+    lats = lats[:ny].reshape(-1, stride).mean(axis=1)
+    lons = lons[:nx].reshape(-1, stride).mean(axis=1)
+    return lons, lats, values, stride
+
 # Non-projection scenarios to exclude from report generation
 # These are used to enhance baseline robustness but not shown as separate projections
 EXCLUDED_SCENARIOS = {"picontrol", "historical"}
@@ -311,6 +341,24 @@ def create_map_figure(
     Returns:
         Plotly Figure object
     """
+    # Payload control: draw on the display grid, which is the data grid for every 0.5 deg
+    # layer and a block-mean of it for finer ones. The NetCDF keeps full resolution; this
+    # only bounds the number of SVG markers the browser is asked to build.
+    lons, lats, values, _display_stride = _decimate_for_display(lons, lats, values)
+    if _display_stride > 1:
+        if anomaly_mask is not None:
+            # The mask must follow the values onto the display grid or the two disagree in
+            # shape. A block counts as anomalous when ANY native cell in it is -- block
+            # MEAN would dilute a single anomalous cell below any threshold and hide it,
+            # which is the opposite of what an anomaly panel is for.
+            s = _display_stride
+            am = np.asarray(anomaly_mask, dtype=bool)
+            ny, nx = am.shape[0] - am.shape[0] % s, am.shape[1] - am.shape[1] % s
+            anomaly_mask = am[:ny, :nx].reshape(ny // s, s, nx // s, s).any(axis=(1, 3))
+        note = (f"displayed at {DISPLAY['target_cell']:g} deg "
+                f"(block mean of {_display_stride}x{_display_stride} native cells)")
+        subtitle = f"{subtitle} — {note}" if subtitle else note
+
     # Create meshgrid and flatten
     lon_grid, lat_grid = np.meshgrid(lons, lats)
     lon_flat = lon_grid.flatten()
@@ -333,8 +381,8 @@ def create_map_figure(
 
     # Main data scatter
     fig.add_trace(go.Scattergeo(
-        lon=np.round(lon_valid, COORD_DECIMALS).tolist(),
-        lat=np.round(lat_valid, COORD_DECIMALS).tolist(),
+        lon=np.round(lon_valid, DISPLAY["coord_decimals"]).tolist(),
+        lat=np.round(lat_valid, DISPLAY["coord_decimals"]).tolist(),
         mode='markers',
         marker=dict(
             size=2,
@@ -1089,7 +1137,9 @@ class MapCollectionGenerator:
         # This tab is 22 panels on one page -- at full 0.5 deg it was 37.6 MB. Block-mean
         # to a coarser grid; the question it answers (do members differ in level or
         # distribution?) does not need per-cell resolution.
-        stride = MEMBERS_GRID_STRIDE
+        # Grid-aware: 2 at 0.5 deg (unchanged), 4 at 0.25 deg, so the 22-panel
+        # Members page keeps roughly the marker count the 0.5 deg budget was set at.
+        stride = payload_settings(float(np.abs(np.diff(lats)).mean()))["stride"]
         if stride > 1:
             vals = np.stack([block_mean(vals[i], stride) for i in range(vals.shape[0])])
             ny = lats.size - lats.size % stride
@@ -1523,12 +1573,26 @@ def main():
     processed_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else project_root / "data" / "processed"
     output_dir = Path(sys.argv[3]) if len(sys.argv) > 3 else project_root / "reports" / "maps"
 
+    # Display grid. Optional 4th arg overrides it -- pass the layer's own cell size to
+    # render at full native resolution, at the cost of a much heavier page.
+    override = float(sys.argv[4]) if len(sys.argv) > 4 else None
+    native = DEFAULT_CELL_SIZE
+    probe = sorted(Path(processed_dir).glob(f"{variable}_*_processed.nc"))
+    if probe:
+        with xr.open_dataset(probe[0]) as _ds:
+            native = grid_cell_size_of(_ds)
+    DISPLAY["target_cell"] = override if override else max(DEFAULT_CELL_SIZE, native)
+    DISPLAY["coord_decimals"] = payload_settings(DISPLAY["target_cell"])["coord_decimals"]
+
     log("=" * 60)
     log("Generating Synoptic and Diagnostic Maps")
     log("=" * 60)
     log(f"Variable: {variable}")
     log(f"Processed data: {processed_dir}")
     log(f"Output directory: {output_dir}")
+    log(f"Native grid: {native:g} deg | display grid: {DISPLAY['target_cell']:g} deg"
+        + ("  (block-meaned for browser payload; NetCDF keeps full resolution)"
+           if DISPLAY["target_cell"] > native + 1e-9 else ""))
     log("=" * 60)
 
     generator = MapCollectionGenerator(processed_dir, output_dir)
