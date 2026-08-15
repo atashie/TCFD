@@ -27,10 +27,26 @@ layer you are working on; see *Scope discipline* in CLAUDE.md before reading the
 
 ## Spatial support: every layer here is a REGIONAL result, not a site result
 
-**Read this before quoting any number at a location.** Every layer in this product is
-published on a **0.5° grid — roughly 55 km at the equator**. The value returned for a site
-is the statistic for the whole cell containing that site. It is not the value at the site,
-and no amount of precision in the number changes that.
+**Read this before quoting any number at a location.** The value returned for a site is the
+statistic for the whole cell containing that site. It is not the value at the site, and no
+amount of precision in the number changes that.
+
+**Resolution is a per-layer property, not a product constant** — it was one until
+2026-08-14, and the habit of saying "the grid is 0.5°" outlived the fact.
+
+| Grid | Layers |
+|---|---|
+| **0.5°** (~55 km) — the default and preferred grid | every layer except the three below |
+| **0.25°** (~28 km, 15 arcmin) | `flood-3b-flopros`, `flood-3b-40yr`, `flood-3b-none` |
+
+Each file declares its own `spatial_resolution_degrees`, `test_shared_baseline.py` checks
+that it matches the coordinates, and delivery geometry follows each layer's own cell size —
+so a 0.25° layer blends a proportionally smaller neighbourhood rather than inheriting the
+0.5° window. `manifest.json` records the grid and extraction geometry **per layer**, and the
+delivered README states them per layer whenever a delivery spans more than one grid. Never
+compare a cell count across layers on different grids without saying so: the flood layers
+publish 251,890 cells where a 0.5° layer publishes ~70,000, and that is resolution, not
+coverage.
 
 For hazards that vary over comparable distances — drought, heatwave, wildfire — that is a
 tolerable approximation and the cell value is a fair description of the site. For hazards
@@ -69,10 +85,23 @@ straight.
 | Heatwave (health threshold), ISIMIP2b | `heatwave-2b` | `leh` | 2b `Lange2020`, rcp26/60 | `process_leh_isimip2b.py` (2026-08-14) |
 | Permafrost thaw | `permafrost-3b` | `thawfrac` (from `thawdepth`) | 3b `permafrost`+`biomes`, ssp126/370/585 | `process_thawdepth_permafrost.py` (2026-08-14) |
 | Sea level rise (inundation) | `sealevel-2b` | `coastalinundation` | 2b `sealevelrise` x GEBCO_2026, rcp26/60 | `process_coastal_inundation.py` (2026-08-14) |
+| Riverine flood (inundation, FLOPROS defences) | `flood-3b-flopros` | `fldfrcmax-flopros` | 3b `TipESM2025` CaMa-Flood, ssp126/370/585 | `process_fldfrcmax_isimip3b.py` (2026-08-14) |
+| Riverine flood (inundation, uniform 40-yr standard) | `flood-3b-40yr` | `fldfrcmax-40yr` | 3b `TipESM2025` CaMa-Flood, ssp126/370/585 | `process_fldfrcmax_isimip3b.py` (2026-08-14) |
+| Riverine flood (inundation, no defences) | `flood-3b-none` | `fldfrcmax-none` | 3b `TipESM2025` CaMa-Flood, ssp126/370/585 | `process_fldfrcmax_isimip3b.py` (2026-08-14) |
 | Temperate conifer productivity | `conifer-npp` | `npp-tempnle` | 2b `biomes` CLM45+ORCHIDEE+LPJmL, rcp26/60/85 | `process_tempnle_npp.py` (2026-08-12) |
+| Soil organic carbon | `csoil` | `csoil-total` | 3b `biomes`, ssp126/370/585 | `process_csoil_soilcarbon.py` (rebuilt 2026-08-15) |
 
 `conifer-npp` is **not a hazard** — it is an asset-condition layer and is excluded from every
 hazard count. `config/hazard_taxonomy.yaml` records that under `non_hazard_layers`.
+
+`csoil` is the **same shape and its classification is an open user decision**: it is
+`higher_is_better` with an inverted percentile, and declining soil carbon reads more like the
+asset's condition than a hazard acting on the asset — unless the asset *is* the soil. It is
+registered `status: alternate` with **no asset type routing to it** and the `soil-degradation`
+family's `covered_by` deliberately left empty, so nothing counts it as a hazard yet. It is
+also **not** a soil-degradation layer: soil organic carbon is one of the ten degradation
+processes in recital 4 of Directive (EU) 2025/2360, and land use is held fixed in every
+member, so the layer cannot see management-driven loss at all.
 
 ## Ensemble and framing, per layer
 
@@ -90,7 +119,11 @@ knob is not a reason for a third to adopt it.
 | `heatwave-2b` | 4 (**1 index model** × 4 GCMs) | `pooled_mean_boolean` | **explicit ISIMIP2b `LSM` land mask** — the source zero-fills all 259,200 cells, so `isfinite` is not a footprint; min-model rule void | none | two-tier, `higher_is_worse` |
 | `permafrost-3b` | 12 (3 models × {5,5,2} GCMs) | **`pooled_mean_multimodel`** | 2020s permafrost footprint, **≥2 of 3 models** | none | two-tier, `higher_is_worse` |
 | `sealevel-2b` | 4 (**1 sea-level model** × 4 GCMs) | `pooled_median` | GEBCO `TID==0` land, ocean-connected; **per-cell consensus mask** drops a member deviating >0.5 m from the all-member median | none | **absolute calibration**, `higher_is_worse` — NOT percentile-of-score |
+| `flood-3b-flopros` | 27 (6 models × {2,5,5,5,5,5} GCMs) | `pooled_mean_zero_inflated` | uniform 24.34% grid coverage in **every** member, so **no min-model rule exists to apply**; permanent water (493 always-flooded cells, mostly Caspian) excluded | none | two-tier, `higher_is_worse` — ranked against **its own** 2020s, which is also the shared reference |
+| `flood-3b-40yr` | 27 (same 6 models) | `pooled_mean_zero_inflated` | as above | none | two-tier, `higher_is_worse` — ranked against the **flopros** 2020s |
+| `flood-3b-none` | **32** (7 models — CWATM publishes the unprotected field only) | `pooled_mean_zero_inflated` — taken for estimator consistency, **not** because its own median failed | as above | none | two-tier, `higher_is_worse` — ranked against the **flopros** 2020s; compresses at the top |
 | `conifer-npp` | — | `pooled_median` | 2% cover presence mask | none | **`higher_is_better`** — percentile is already inverted in the file |
+| `csoil` | **17** (4 models × {2,5,5,5} GCMs) | `pooled_median` — branch 4 declined on measurement | union of finite cells, 71,251; `isfinite` IS a footprint here | none — split-half r=0.992 | single-tier, **`higher_is_better`** — inverted in the file |
 
 ### Which slope to read
 
@@ -304,6 +337,14 @@ as defined — the intensity of change relative to local norms genuinely is grea
 and a farming system built around a stable climate has further to fall. A permanently arid
 cell with a stable regime scores LOW on the drought layers for the same reason.
 
+**The three flood layers are NOT in this class**, and that is the whole reason they exist.
+They publish absolute inundation, so a high value means "deep or frequent flooding here",
+full stop. The relative-baseline alternative for this hazard — the 0.5° `floodedarea`
+exposure flag — reads **0.000 across the Amazon floodplain**, which is a correct
+departure-from-preindustrial answer and an unusable flood layer. Flagging these three as
+relative-baseline would be its own false claim; `relative_baseline: false` is set
+deliberately on all three, not left at a default.
+
 ### Per-layer specifics worth knowing before use
 
 - **`cropfailure-3b`** — the publisher **zero-fills the entire globe**: ocean, Antarctica,
@@ -361,13 +402,51 @@ full union), which is the intended behaviour.
 `cropfailure-3b` has an unshipped 2b sibling in the same relationship: `lec` (Lange2020,
 GEPIC + PEPIC × 4 CMIP5 GCMs, rcp26/60).
 
+**The three flood layers are variants, which is a tighter relationship than siblings.** Same
+model chain, same members, same grid, same years — they differ only in the flood-protection
+assumption. They are three `layer_id`s because OUTPUT-SPEC has no protection dimension, not
+because they are three products.
+
+### The flood variants: what the protection level does, and the one number it changes
+
+`flood-3b-flopros` applies the empirical FLOPROS protection standards and is the delivery
+default. `flood-3b-40yr` assumes a uniform 40-year standard **everywhere**, including places
+with no defences at all — a yardstick, not a description of anywhere real. `flood-3b-none`
+is the raw climate signal.
+
+- **A zero under `flopros` means PROTECTED TO STANDARD, not NO HAZARD.** Measured: the Rhine
+  (NL/DE) box falls from 0.05909 unprotected to 0.00122, the Lower Mississippi from 0.14505
+  to 0.00358. Protection is held constant into the future, so the layer also embeds a
+  no-further-adaptation assumption.
+- **`40yr` is not an ordered midpoint between the other two.** The ranking *reverses* by
+  region — Amazon 0.01077 at `40yr` against 0.01607 at `flopros`, Ganges 0.06853 against
+  0.05664 — because a uniform standard exceeds the empirical one in some countries and falls
+  short in others. Spatial Spearman `none` vs `flopros` is 0.367: defences **reorder** the
+  map, they do not scale it.
+- **The ensembles differ.** `none` carries 32 members from 7 impact models, the protected
+  variants 27 from 6, because CWATM publishes only the unprotected field. A `none` − `flopros`
+  difference therefore mixes a defence effect with an ensemble change unless restricted to
+  the common 27.
+- **All three rank against the `flopros` 2020s baseline** so a percentile means the same
+  thing across them, while every raw value stays the variant's own. The cost lands on
+  `none`: its median percentile is ~90 with ~11% of cells at ≥99, against 50 and 1% on its
+  own baseline. Real sites show it — Manaus 99.0, Dhaka 99.9, Rotterdam 99.9, and dry Phoenix
+  still 91.8. **Judge `none` on its median, not its percentile.**
+- **These are ABSOLUTE inundation, so they are NOT in the departure-from-local-baseline
+  class above.** That is exactly why the product was chosen: the 0.5° `floodedarea` exposure
+  flag scores departure from a preindustrial reference and reads **0.000 across the Amazon
+  floodplain in all 45 of its members**, where this layer reads 0.11496 unprotected.
+- `sen_slope` is not collapsed on `none` (34–38% zero, ~60% sign agreement) the way it is on
+  the protected variants (97–99%). `ols_slope` is still the recommended read on all three —
+  on `none` that is a judgement recorded in the registry, not a reading off the numbers.
+
 ### Withdrawn, superseded and unregistered
 
 | | Status |
 |---|---|
 | `yield-sug-noirr`, `yield-sug-firr` | **WITHDRAWN 2026-08-11, upstream data defect.** ISIMIP2b LPJmL does not simulate cane in the cane belt (São Paulo, UP India, Queensland, Florida all sentinel-zero). Passed the contract and meant nothing. No ISIMIP source supports a scenario-bearing sugarcane layer. Refused by the loader via `blocked:` in the registry. |
 | `burntarea` (2b `biomes`, rcp26/60/85) | **SUPERSEDED 2026-08-10** by the 3b layer. |
-| `csoil-total` | **Processed 2026-07-25, output no longer on disk** (`data/processed/soilcarbon_csoil_annual/` is empty, no raw remains, and no `download_csoil*.py` exists). Never registered. `process_csoil_soilcarbon.py` is still the OUTPUT-SPEC **reference implementation** — its architecture is current, but its *evidence* predates five post-2026-07-25 standards. It is the named candidate for the `soil-degradation` family; the rebuild checklist is that family's `blocker` in `config/hazard_taxonomy.yaml`. |
+| `csoil-total` | **Rebuilt and registered 2026-08-15** — see the `csoil` rows above. The 2026-07-25 build's output had been lost from disk and its 12-member/3-model ensemble was wrong by omission (LPJmL missing). `process_csoil_soilcarbon.py` remains the OUTPUT-SPEC **reference implementation**. |
 | Timber, fisheries, health, … | Various `process_*.py`, not registered. |
 
 ## Source families in the ISIMIP repository
