@@ -189,6 +189,65 @@ layers:
       that site's risk. See the must-disclose RELATIVE-BASELINE caveat for how to read the
       score itself.
 
+  permafrost-3b:
+    folder: permafrost-isimip3b_thawdepth_annual
+    file_prefix: thawfrac
+    hazard: Permafrost thaw
+    hazard_measure: Thawed fraction of the modelled soil column, and its change against the 2020s
+    # REGISTERED 2026-08-16, two days after the layer shipped. Commit 12b758a processed it,
+    # documented it in DATASET-ATTRIBUTES.md and set families.permafrost-thaw.covered_by to
+    # [permafrost-3b] -- and never added it here. Because coverage_summary() in
+    # report_common.py scopes coverage to the layers a DELIVERY actually carries, an
+    # unregistered layer can never be delivered, so every report would have listed permafrost
+    # thaw under "hazards not assessed" while the taxonomy said it was covered. The blocker
+    # enumerates what is still open on this hazard (the ISIMIP2b route, `tsl`, solifluction)
+    # and registration was not among them: this was an omission, not a deferral.
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: >-
+      MEASURED 2026-08-14: 14,455 active cells, sen exactly zero on 15.2%, sign agreement
+      84.4%. Those two figures read like a well-behaved field on which either estimator would
+      do, AND THEY ARE MISLEADING HERE -- this layer is the counter-example to "low sen==0
+      means Sen is safe". On a MULTIMODAL ensemble (see the file's decadal_statistic_rationale)
+      the pairwise sample Theil-Sen takes its median over is dominated by CROSS-CLUSTER pairs,
+      whose slopes carry the between-cluster level offset rather than the trend, and the
+      median over those pairs is dragged toward the flat cluster. Measured on ssp585 over the
+      published footprint: the 12 members' own OLS trends span +0.0104 to +0.0826 dec-1, their
+      mean is +0.0326, the published ols_slope is +0.0326 (exact), and sen_slope is +0.0069 --
+      BELOW EVERY SINGLE MEMBER. An estimator outside the range of the things it summarises is
+      not robust. READ ols_slope. Read it WITH the Anomaly panel: the file's slope_definition
+      records that both slopes are censored where a column is fully thawed, so a flat slope
+      there means "no permafrost left", not "no trend".
+    relative_baseline: false
+    relative_baseline_note: ""
+    delivery_note: >-
+      THE PERCENTILE IS RANKED WITHIN THE PERMAFROST FOOTPRINT, SO IT IS NOT ON THE SAME AXIS
+      AS EVERY OTHER LAYER'S. The file says the rank is among permafrost cells; the delivery
+      consequence is what matters here -- a Climate Score that averages this percentile with
+      layers ranked against ALL LAND is averaging two different reference populations, and the
+      95th percentile of 18.17 M km2 of permafrost is not the 95th percentile of the land
+      surface. State the reference population wherever the number travels beside another
+      layer's. A site outside the footprint is NaN by design and must render as OFF_LAYER_MASK,
+      never as a low score: a place with no permafrost has no thaw hazard, which is an absence
+      of the hazard, not safety from it.
+      THE MODELS AGREE ON HOW MUCH AND DISAGREE ON WHERE, which is a limit on SITE-level use
+      specifically. Over each model's own domain the 2090s ssp585 loss share is comparable
+      (CLASSIC 31.0%, JULES 58.0%, LPJmL 32.3%), but on the cells CLASSIC and LPJmL BOTH call
+      permafrost, CLASSIC loses 28.6% of them and LPJmL 4.0% -- a Jaccard overlap of 2.8%.
+      Comparable totals, different maps. The regional and global figures are far better
+      supported than any one cell, and the wide CI is reporting exactly this; read the CI, and
+      do not quote a single site's loss without it.
+      THIS IS NOT A GROUND-STABILITY LAYER and the delivery must not let it be read as one --
+      the file's interpretation_caveat carries the full statement. A high-latitude asset owner
+      asks whether the ground under a foundation, runway or pipeline will move; that needs
+      ground ice and terrain, and ISIMIP publishes neither. Solifluction has no candidate
+      variable in any ISIMIP sector at all. This layer says where permafrost is being lost, and
+      nothing about what happens to a structure when it is.
+      ONLY ONE PERMAFROST LAYER EXISTS. The ISIMIP2b route (5 models, 18 members at rcp26 and
+      rcp60 but only 8 at rcp85) is un-ingested, so there is no RCP sibling and no cross-round
+      comparison to offer.
+
   heatwave-3b:
     folder: heatwave-isimip3b_heatwave_annual
     file_prefix: heatwave
@@ -498,6 +557,276 @@ layers:
       near-zero stock means "no soil carbon here", never "soil carbon is being lost here".
       Greenland is in the published footprint at all only because two of four models write 0
       over the ice sheet rather than NaN.
+
+  heatdays-hd30:
+    folder: heatdays-isimip3b_hd30_annual
+    file_prefix: hd30
+    hazard: Chronic heat
+    hazard_measure: Days per year with daily maximum temperature above 30 C
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
+      and coverage here is exactly 12 members in EVERY cell of every rung and scenario -- so the bias
+      has no mechanism. (2) sen_slope collapses to exactly 0 where most year-pairs are tied, which on
+      a threshold count happens wherever the threshold is rarely crossed: measured 18.1%-31.6% of ACTIVE
+      cells (either slope non-zero) across all 3 scenarios and every post-baseline panel. One estimator
+      across the ladder, for the same reason it takes one statistic. BOTH slopes are in this file and
+      their DISAGREEMENT remains the per-cell signal that a trend is not robust -- this names the headline,
+      not the only number worth reading. NOTE the denominator: shares quoted over ALL FINITE cells run
+      far higher because cells that never cross the threshold have both slopes correctly at 0 and are
+      not Sen failures.'
+    relative_baseline: false
+    delivery_note: Absolute dry-bulb threshold count from ISIMIP3b bias-adjusted daily tasmax, 12 GCMs
+      x 3 SSPs, no impact model in the chain -- the confidence band carries GCM spread and interannual
+      variability only. THE ABSOLUTE COMPLEMENT TO `heatwave-3b`, NOT A SUBSTITUTE FOR IT. That layer
+      scores departure from each cell's own preindustrial normal and ranks Chicago above Delhi; this
+      one counts crossings of a fixed physical threshold. Measured over the 65,797 shared land cells,
+      the 2020s rank correlation is +0.554 and the two agree on only 47.2% of their worst-decile cells,
+      so screening on one gives a materially different site list than screening on the other. Deliver
+      them together and say which question each answers. SATURATES at the calendar ceiling in the late
+      century, where both slope estimators go to zero and AGREE -- a flat trend there means no headroom
+      left, not stability.
+  heatdays-hd35:
+    folder: heatdays-isimip3b_hd35_annual
+    file_prefix: hd35
+    hazard: Chronic heat
+    hazard_measure: Days per year with daily maximum temperature above 35 C
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
+      and coverage here is exactly 12 members in EVERY cell of every rung and scenario -- so the bias
+      has no mechanism. (2) sen_slope collapses to exactly 0 where most year-pairs are tied, which on
+      a threshold count happens wherever the threshold is rarely crossed: measured 30.1%-43.7% of ACTIVE
+      cells (either slope non-zero) across all 3 scenarios and every post-baseline panel. One estimator
+      across the ladder, for the same reason it takes one statistic. BOTH slopes are in this file and
+      their DISAGREEMENT remains the per-cell signal that a trend is not robust -- this names the headline,
+      not the only number worth reading. NOTE the denominator: shares quoted over ALL FINITE cells run
+      far higher because cells that never cross the threshold have both slopes correctly at 0 and are
+      not Sen failures.'
+    relative_baseline: false
+    delivery_note: Absolute dry-bulb threshold count from ISIMIP3b bias-adjusted daily tasmax, 12 GCMs
+      x 3 SSPs, no impact model in the chain -- the confidence band carries GCM spread and interannual
+      variability only. THE ABSOLUTE COMPLEMENT TO `heatwave-3b`, NOT A SUBSTITUTE FOR IT. That layer
+      scores departure from each cell's own preindustrial normal and ranks Chicago above Delhi; this
+      one counts crossings of a fixed physical threshold. Measured over the 65,797 shared land cells,
+      the 2020s rank correlation is +0.554 and the two agree on only 47.2% of their worst-decile cells,
+      so screening on one gives a materially different site list than screening on the other. Deliver
+      them together and say which question each answers.
+  heatdays-hd40:
+    folder: heatdays-isimip3b_hd40_annual
+    file_prefix: hd40
+    hazard: Chronic heat
+    hazard_measure: Days per year with daily maximum temperature above 40 C
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
+      and coverage here is exactly 12 members in EVERY cell of every rung and scenario -- so the bias
+      has no mechanism. (2) sen_slope collapses to exactly 0 where most year-pairs are tied, which on
+      a threshold count happens wherever the threshold is rarely crossed: measured 52.9%-69.9% of ACTIVE
+      cells (either slope non-zero) across all 3 scenarios and every post-baseline panel. One estimator
+      across the ladder, for the same reason it takes one statistic. BOTH slopes are in this file and
+      their DISAGREEMENT remains the per-cell signal that a trend is not robust -- this names the headline,
+      not the only number worth reading. NOTE the denominator: shares quoted over ALL FINITE cells run
+      far higher because cells that never cross the threshold have both slopes correctly at 0 and are
+      not Sen failures.'
+    relative_baseline: false
+    delivery_note: Absolute dry-bulb threshold count from ISIMIP3b bias-adjusted daily tasmax, 12 GCMs
+      x 3 SSPs, no impact model in the chain -- the confidence band carries GCM spread and interannual
+      variability only. THE ABSOLUTE COMPLEMENT TO `heatwave-3b`, NOT A SUBSTITUTE FOR IT. That layer
+      scores departure from each cell's own preindustrial normal and ranks Chicago above Delhi; this
+      one counts crossings of a fixed physical threshold. Measured over the 65,797 shared land cells,
+      the 2020s rank correlation is +0.554 and the two agree on only 47.2% of their worst-decile cells,
+      so screening on one gives a materially different site list than screening on the other. Deliver
+      them together and say which question each answers.
+  heatdays-hd45:
+    folder: heatdays-isimip3b_hd45_annual
+    file_prefix: hd45
+    hazard: Chronic heat
+    hazard_measure: Days per year with daily maximum temperature above 45 C
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
+      and coverage here is exactly 12 members in EVERY cell of every rung and scenario -- so the bias
+      has no mechanism. (2) sen_slope collapses to exactly 0 where most year-pairs are tied, which on
+      a threshold count happens wherever the threshold is rarely crossed: measured 76.3%-85.4% of ACTIVE
+      cells (either slope non-zero) across all 3 scenarios and every post-baseline panel. One estimator
+      across the ladder, for the same reason it takes one statistic. BOTH slopes are in this file and
+      their DISAGREEMENT remains the per-cell signal that a trend is not robust -- this names the headline,
+      not the only number worth reading. NOTE the denominator: shares quoted over ALL FINITE cells run
+      far higher because cells that never cross the threshold have both slopes correctly at 0 and are
+      not Sen failures.'
+    relative_baseline: false
+    delivery_note: 'Absolute dry-bulb threshold count from ISIMIP3b bias-adjusted daily tasmax, 12 GCMs
+      x 3 SSPs, no impact model in the chain -- the confidence band carries GCM spread and interannual
+      variability only. THE ABSOLUTE COMPLEMENT TO `heatwave-3b`, NOT A SUBSTITUTE FOR IT. That layer
+      scores departure from each cell''s own preindustrial normal and ranks Chicago above Delhi; this
+      one counts crossings of a fixed physical threshold. Measured over the 65,797 shared land cells,
+      the 2020s rank correlation is +0.554 and the two agree on only 47.2% of their worst-decile cells,
+      so screening on one gives a materially different site list than screening on the other. Deliver
+      them together and say which question each answers. SPARSE: most sites read exactly 0 and tie at
+      percentile tier 1. Use a lower rung of the ladder for a measure that discriminates globally.'
+  tropicalnights-tr20:
+    folder: tropicalnights-isimip3b_TR20_annual
+    file_prefix: TR20
+    hazard: Chronic heat
+    hazard_measure: Days per year with daily minimum temperature above 20 C (tropical nights)
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
+      and coverage here is exactly 12 members in EVERY cell of every rung and scenario -- so the bias
+      has no mechanism. (2) sen_slope collapses to exactly 0 where most year-pairs are tied, which on
+      a threshold count happens wherever the threshold is rarely crossed: measured 30.3%-43.9% of ACTIVE
+      cells (either slope non-zero) across all 3 scenarios and every post-baseline panel. One estimator
+      across the ladder, for the same reason it takes one statistic. BOTH slopes are in this file and
+      their DISAGREEMENT remains the per-cell signal that a trend is not robust -- this names the headline,
+      not the only number worth reading. NOTE the denominator: shares quoted over ALL FINITE cells run
+      far higher because cells that never cross the threshold have both slopes correctly at 0 and are
+      not Sen failures.'
+    relative_baseline: false
+    delivery_note: Absolute dry-bulb threshold count from ISIMIP3b bias-adjusted daily tasmin, 12 GCMs
+      x 3 SSPs, no impact model in the chain -- the confidence band carries GCM spread and interannual
+      variability only. THE ABSOLUTE COMPLEMENT TO `heatwave-3b`, NOT A SUBSTITUTE FOR IT. That layer
+      scores departure from each cell's own preindustrial normal and ranks Chicago above Delhi; this
+      one counts crossings of a fixed physical threshold. Measured over the 65,797 shared land cells,
+      the 2020s rank correlation is +0.554 and the two agree on only 47.2% of their worst-decile cells,
+      so screening on one gives a materially different site list than screening on the other. Deliver
+      them together and say which question each answers. SATURATES at the calendar ceiling in the late
+      century, where both slope estimators go to zero and AGREE -- a flat trend there means no headroom
+      left, not stability.
+  tropicalnights-tr25:
+    folder: tropicalnights-isimip3b_TR25_annual
+    file_prefix: TR25
+    hazard: Chronic heat
+    hazard_measure: Days per year with daily minimum temperature above 25 C
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
+      and coverage here is exactly 12 members in EVERY cell of every rung and scenario -- so the bias
+      has no mechanism. (2) sen_slope collapses to exactly 0 where most year-pairs are tied, which on
+      a threshold count happens wherever the threshold is rarely crossed: measured 44.7%-52.5% of ACTIVE
+      cells (either slope non-zero) across all 3 scenarios and every post-baseline panel. One estimator
+      across the ladder, for the same reason it takes one statistic. BOTH slopes are in this file and
+      their DISAGREEMENT remains the per-cell signal that a trend is not robust -- this names the headline,
+      not the only number worth reading. NOTE the denominator: shares quoted over ALL FINITE cells run
+      far higher because cells that never cross the threshold have both slopes correctly at 0 and are
+      not Sen failures.'
+    relative_baseline: false
+    delivery_note: Absolute dry-bulb threshold count from ISIMIP3b bias-adjusted daily tasmin, 12 GCMs
+      x 3 SSPs, no impact model in the chain -- the confidence band carries GCM spread and interannual
+      variability only. THE ABSOLUTE COMPLEMENT TO `heatwave-3b`, NOT A SUBSTITUTE FOR IT. That layer
+      scores departure from each cell's own preindustrial normal and ranks Chicago above Delhi; this
+      one counts crossings of a fixed physical threshold. Measured over the 65,797 shared land cells,
+      the 2020s rank correlation is +0.554 and the two agree on only 47.2% of their worst-decile cells,
+      so screening on one gives a materially different site list than screening on the other. Deliver
+      them together and say which question each answers.
+  icedays-id:
+    folder: icedays-isimip3b_ID_annual
+    file_prefix: ID
+    hazard: Cold and frost
+    hazard_measure: Days per year with daily maximum temperature below 0 C (ice days)
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
+      and coverage here is exactly 12 members in EVERY cell of every rung and scenario -- so the bias
+      has no mechanism. (2) sen_slope collapses to exactly 0 where most year-pairs are tied, which on
+      a threshold count happens wherever the threshold is rarely crossed: measured 13.5%-24.6% of ACTIVE
+      cells (either slope non-zero) across all 3 scenarios and every post-baseline panel. One estimator
+      across the ladder, for the same reason it takes one statistic. BOTH slopes are in this file and
+      their DISAGREEMENT remains the per-cell signal that a trend is not robust -- this names the headline,
+      not the only number worth reading. NOTE the denominator: shares quoted over ALL FINITE cells run
+      far higher because cells that never cross the threshold have both slopes correctly at 0 and are
+      not Sen failures.'
+    relative_baseline: false
+    delivery_note: 'Absolute dry-bulb threshold count from ISIMIP3b bias-adjusted daily tasmax, 12 GCMs
+      x 3 SSPs, no impact model in the chain -- the confidence band carries GCM spread and interannual
+      variability only. THE ABSOLUTE COMPLEMENT TO `heatwave-3b`, NOT A SUBSTITUTE FOR IT. That layer
+      scores departure from each cell''s own preindustrial normal and ranks Chicago above Delhi; this
+      one counts crossings of a fixed physical threshold. Measured over the 65,797 shared land cells,
+      the 2020s rank correlation is +0.554 and the two agree on only 47.2% of their worst-decile cells,
+      so screening on one gives a materially different site list than screening on the other. Deliver
+      them together and say which question each answers. DIRECTION: higher_is_worse on the frost/ice-day
+      COUNT (user decision 2026-08-14), so this layer reports a hazard FALLING almost everywhere. A
+      declining percentile here is the physical result, not a data defect. Note the opposite reading
+      is also legitimate for some assets -- loss of reliable frost harms crops needing vernalisation
+      and winter roads needing frozen ground -- and this layer does NOT represent that.'
+  frostdays-fd:
+    folder: frostdays-isimip3b_FD_annual
+    file_prefix: FD
+    hazard: Cold and frost
+    hazard_measure: Days per year with daily minimum temperature below 0 C (frost days)
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
+      and coverage here is exactly 12 members in EVERY cell of every rung and scenario -- so the bias
+      has no mechanism. (2) sen_slope collapses to exactly 0 where most year-pairs are tied, which on
+      a threshold count happens wherever the threshold is rarely crossed: measured 16.0%-22.1% of ACTIVE
+      cells (either slope non-zero) across all 3 scenarios and every post-baseline panel. One estimator
+      across the ladder, for the same reason it takes one statistic. BOTH slopes are in this file and
+      their DISAGREEMENT remains the per-cell signal that a trend is not robust -- this names the headline,
+      not the only number worth reading. NOTE the denominator: shares quoted over ALL FINITE cells run
+      far higher because cells that never cross the threshold have both slopes correctly at 0 and are
+      not Sen failures.'
+    relative_baseline: false
+    delivery_note: 'Absolute dry-bulb threshold count from ISIMIP3b bias-adjusted daily tasmin, 12 GCMs
+      x 3 SSPs, no impact model in the chain -- the confidence band carries GCM spread and interannual
+      variability only. THE ABSOLUTE COMPLEMENT TO `heatwave-3b`, NOT A SUBSTITUTE FOR IT. That layer
+      scores departure from each cell''s own preindustrial normal and ranks Chicago above Delhi; this
+      one counts crossings of a fixed physical threshold. Measured over the 65,797 shared land cells,
+      the 2020s rank correlation is +0.554 and the two agree on only 47.2% of their worst-decile cells,
+      so screening on one gives a materially different site list than screening on the other. Deliver
+      them together and say which question each answers. DIRECTION: higher_is_worse on the frost/ice-day
+      COUNT (user decision 2026-08-14), so this layer reports a hazard FALLING almost everywhere. A
+      declining percentile here is the physical result, not a data defect. Note the opposite reading
+      is also legitimate for some assets -- loss of reliable frost harms crops needing vernalisation
+      and winter roads needing frozen ground -- and this layer does NOT represent that.'
+  frostdays-fdm10:
+    folder: frostdays-isimip3b_FDm10_annual
+    file_prefix: FDm10
+    hazard: Cold and frost
+    hazard_measure: Days per year with daily minimum temperature below -10 C (hard frost)
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
+      and coverage here is exactly 12 members in EVERY cell of every rung and scenario -- so the bias
+      has no mechanism. (2) sen_slope collapses to exactly 0 where most year-pairs are tied, which on
+      a threshold count happens wherever the threshold is rarely crossed: measured 14.6%-24.7% of ACTIVE
+      cells (either slope non-zero) across all 3 scenarios and every post-baseline panel. One estimator
+      across the ladder, for the same reason it takes one statistic. BOTH slopes are in this file and
+      their DISAGREEMENT remains the per-cell signal that a trend is not robust -- this names the headline,
+      not the only number worth reading. NOTE the denominator: shares quoted over ALL FINITE cells run
+      far higher because cells that never cross the threshold have both slopes correctly at 0 and are
+      not Sen failures.'
+    relative_baseline: false
+    delivery_note: 'Absolute dry-bulb threshold count from ISIMIP3b bias-adjusted daily tasmin, 12 GCMs
+      x 3 SSPs, no impact model in the chain -- the confidence band carries GCM spread and interannual
+      variability only. THE ABSOLUTE COMPLEMENT TO `heatwave-3b`, NOT A SUBSTITUTE FOR IT. That layer
+      scores departure from each cell''s own preindustrial normal and ranks Chicago above Delhi; this
+      one counts crossings of a fixed physical threshold. Measured over the 65,797 shared land cells,
+      the 2020s rank correlation is +0.554 and the two agree on only 47.2% of their worst-decile cells,
+      so screening on one gives a materially different site list than screening on the other. Deliver
+      them together and say which question each answers. DIRECTION: higher_is_worse on the frost/ice-day
+      COUNT (user decision 2026-08-14), so this layer reports a hazard FALLING almost everywhere. A
+      declining percentile here is the physical result, not a data defect. Note the opposite reading
+      is also legitimate for some assets -- loss of reliable frost harms crops needing vernalisation
+      and winter roads needing frozen ground -- and this layer does NOT represent that.'
 
 # Layers refused by the loader. A folder carrying INVALID-DO-NOT-USE.md is ALSO refused
 # automatically, so this list is belt-and-braces rather than the only guard.
