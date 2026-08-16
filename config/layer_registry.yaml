@@ -19,8 +19,11 @@
 # staying quiet. Passing the output contract means a file is SHAPED right, not that its
 # input is about what its name says -- both sugarcane layers passed every check and were
 # meaningless. Set the date only after actually doing it.
-# As of 2026-08-14 exactly ONE layer carries a date: `heatwave-3b`, reviewed by the user on
-# that date. Every other layer is still null -- do not read their nulls as a formality.
+# As of 2026-08-16 TEN layers carry a date: `heatwave-3b` (reviewed 2026-08-14) and the nine
+# threshold rungs (reviewed 2026-08-16 -- see DATASET-ATTRIBUTES.md for what that review had
+# in front of it). The other thirteen are still null -- do not read their nulls as a
+# formality, and do not infer that a layer sharing a processor with a reviewed one inherits
+# its date. The review is of the DATA, not of the code that made it.
 #
 # Scenarios are NEVER listed here. They are globbed from disk per GUARDRAILS.md §3 --
 # a hardcoded scenario list once made 25% of processed data invisible.
@@ -564,7 +567,7 @@ layers:
     hazard: Chronic heat
     hazard_measure: Days per year with daily maximum temperature above 30 C
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-16'
     recommended_slope: ols_slope
     recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
@@ -594,7 +597,7 @@ layers:
     hazard: Chronic heat
     hazard_measure: Days per year with daily maximum temperature above 35 C
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-16'
     recommended_slope: ols_slope
     recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
@@ -622,7 +625,7 @@ layers:
     hazard: Chronic heat
     hazard_measure: Days per year with daily maximum temperature above 40 C
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-16'
     recommended_slope: ols_slope
     recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
@@ -650,7 +653,7 @@ layers:
     hazard: Chronic heat
     hazard_measure: Days per year with daily maximum temperature above 45 C
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-16'
     recommended_slope: ols_slope
     recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
@@ -679,7 +682,7 @@ layers:
     hazard: Chronic heat
     hazard_measure: Days per year with daily minimum temperature above 20 C (tropical nights)
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-16'
     recommended_slope: ols_slope
     recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
@@ -709,7 +712,7 @@ layers:
     hazard: Chronic heat
     hazard_measure: Days per year with daily minimum temperature above 25 C
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-16'
     recommended_slope: ols_slope
     recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
@@ -737,7 +740,7 @@ layers:
     hazard: Cold and frost
     hazard_measure: Days per year with daily maximum temperature below 0 C (ice days)
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-16'
     recommended_slope: ols_slope
     recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
@@ -769,7 +772,7 @@ layers:
     hazard: Cold and frost
     hazard_measure: Days per year with daily minimum temperature below 0 C (frost days)
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-16'
     recommended_slope: ols_slope
     recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,
@@ -801,7 +804,7 @@ layers:
     hazard: Cold and frost
     hazard_measure: Days per year with daily minimum temperature below -10 C (hard frost)
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-16'
     recommended_slope: ols_slope
     recommended_slope_rationale: 'ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope''s documented failure mode requires UNEVEN member coverage,

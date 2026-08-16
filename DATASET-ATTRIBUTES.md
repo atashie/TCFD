@@ -589,6 +589,36 @@ TCFD contract applies: no trends, no percentile scoring, no kernel smoothing.
 | `precip` | **sum** | TBD | TODO — climate forcing InputData, not model output |
 
 
+### QA sign-off: the threshold ladder, 2026-08-16
+
+**Signed off by the user on 2026-08-16**, recorded as `qa_reviewed_on: '2026-08-16'` on all
+nine rungs in `config/layer_registry.yaml`. Only one other layer carries a human QA date
+(`heatwave-3b`, 2026-08-14), so a null elsewhere is a real gap, not a formality.
+
+A date is only auditable if the evidence behind it is recorded, so this is what the review had
+in front of it:
+
+- **Contract**: `test_shared_baseline.py` on all nine — 2020s panel bit-identical across
+  scenarios, `percentile` within [1,100] and correctly oriented, no slope finite where the
+  median is NaN, `n_members` 12 everywhere. Re-run and re-passed after the two in-place
+  attribute corrections.
+- **Containment across the ladder** — `hd30 ≥ hd35 ≥ hd40 ≥ hd45`, `TR20 ≥ TR25`,
+  `FD ≥ FDm10`, `FD ≥ ID`: **0 violations** in all three scenarios. No per-layer check can
+  establish this, and a flipped operator or swapped threshold could not survive it.
+- **Reference sites, all nine rungs** (GUARDRAILS §12) — Singapore 347 `hd30` / 7 `hd35` /
+  365 `TR20`; Kuwait 94 `hd45`; Yakutsk 228 `FD`, 181 `FDm10`, 178 `ID`; Nairobi 15 `hd30` and
+  0 `hd35` at 1,795 m; tropics 0 on every cold rung.
+- **Per-member statistics and contact sheets** for `hd35` and `FD`, viewed. 1.31× and 1.09×
+  spreads with the member ordering following climate sensitivity and **inverting** between the
+  hot and cold rungs; no block structure, seams, hemisphere flips or mask errors; the Andes
+  and the Tibetan Plateau resolve correctly on `FD`.
+- **Cross-layer**: rank correlation and top-decile agreement against `heatwave-3b`
+  (+0.554 / 47.2%), establishing the two as complements rather than duplicates.
+
+Dashboards for all nine are at `reports/maps/{rung}/`; contact sheets at
+`reports/contact_sheets/`. **The review is of the DATA, not of the processor** — a future rung
+built by the same script does not inherit this date.
+
 ### The threshold ladder: nine rungs, one ingest, and the absolute counterpart to `heatwave-3b`
 
 Built 2026-08-16 from ISIMIP3b bias-adjusted daily `tasmax`/`tasmin`, 12 GCMs × 3 SSPs.
