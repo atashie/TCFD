@@ -372,56 +372,41 @@ families:
       - "ISIMIP2b biomes `csoil` -- ~8 annual models (lpj-guess, lpjml, orchidee, orchidee-dgvm, caraib, dlem, jules-es-55, mc2-usfs) plus visit monthly, rcp26/60/85. A DEEPER ensemble on older scenarios; entirely un-ingested."
       - "NO ISIMIP VARIABLE EXISTS for soil sealing, compaction, contamination, nutrient balance, acidification or salinisation. Nine of recital 4's ten processes have no candidate in this repository and are not closable from it. Soil erosion would be a CONSTRUCTED index from rainfall erosivity (SPARCCLE2025 `pr-extreme-99-9` / `pr-annual-max`), which is GUARDRAILS §1-2 territory, and belongs to the `soil-coastal-erosion` family in any case."
     blocker: >-
-      A PROCESSOR EXISTS AND ITS OUTPUT DOES NOT. `scripts/process_csoil_soilcarbon.py` is the
-      OUTPUT-SPEC reference implementation and ran 2026-07-25, but as of 2026-08-14
-      data/processed/soilcarbon_csoil_annual/ is EMPTY, no raw csoil remains under data/, and
-      there is no download_csoil*.py -- every other shipped layer has one. The catalog's
-      `processed:` field still names the three files; it is stale. Nothing can be registered,
-      contract-tested or delivered until the layer is re-downloaded and re-run, and
-      `covered_by` STAYS EMPTY until it is (the permafrost entry is the counter-example: it
-      declares coverage while no asset type routes to it, so a report lists the hazard as
-      assessed and delivers nothing for it).
-      THE PROCESSOR ITSELF ALSO PREDATES FIVE STANDARDS ADOPTED AFTER 2026-07-25, all of which
-      apply on rebuild:
-        (1) GUARDRAILS §12 reference-site check -- the docstring records per-model medians but
-            NO named locations. Added 2026-08-11 after the sugarcane withdrawal. Soil carbon
-            has obvious references: West Siberian and Hudson Bay peatlands, Congo peat, Irish
-            and Scottish blanket bog high; Sahara, Atacama, Arabian desert low.
-        (2) Which slope to read is INFERRED, not measured. The docstring argues sen_slope from
-            the 68.7x level-offset ratio (OUTPUT-SPEC cites the same number). The standard is
-            now `generate_customer_delivery.py --measure-slopes` on ACTIVE cells; csoil is
-            absent from that table in DATASET-ATTRIBUTES.md.
-        (3) The FOURTH decadal-statistic branch (`pooled_mean_multimodel`, added 2026-08-14)
-            was never tested against. csoil takes `pooled_median` on a 3-model ensemble with
-            per-model medians 5.76 / 10.28 / 7.67 and UNEVEN GCM counts (2 / 5 / 5) -- less
-            separated than permafrost's 0.035 / 0.046 / 0.951, so it probably is unimodal, but
-            that must be MEASURED (per-model distributions plus discontinuity in the decade
-            series), not assumed.
-        (4) Smoothing is declined on an ensemble-depth argument alone ("12 members is thick
-            enough"). `cropfailure-3b` showed depth alone does not settle it; measure roughness
-            and, if roughness and depth disagree, run the split-half test STRATIFIED BY MODEL
-            (permafrost, 2026-08-14).
-        (5) The `co2_treatment` attribute is NOT on `LAYER_ATTRS_EXPORTED` in
-            scripts/utils/delivery.py, which is a CLOSED allowlist, so it would be silently
-            dropped before reaching layers.csv, the caveat generator or either report. That
-            attribute carries this layer's single most consequential limitation -- jules-es-vn6p3
-            publishes only the fixed-2015-CO2 run, so a third of the ensemble has a muted
-            soil-carbon trend. Re-express it as `interpretation_caveat` (already on the
-            allowlist) or extend the allowlist, in the same change as the rebuild.
-      WHAT IS ALREADY CURRENT, so nobody re-derives it: the processor calls the shared
-      `decadal_stats.pooled_decadal_stat`, detects boolean-ness from VALUES via
-      `is_boolean_field` (§9), pools a shared 2020s baseline bit-identically across scenarios,
-      asserts baseline slopes are NaN and that no slope is finite where the median is NaN (the
-      ocean-leak guardrail), applies the x10 per-decade scaling exactly once and declares
-      `slope_units: kg m-2 decade-1`, floors the CI at 0 for a non-negative stock, and sets
-      `percentile_direction: higher_is_better` so a low stock earns a HIGH risk percentile.
-      BEFORE THE FIRST DELIVERY QUOTES IT, rewrite customer_note into the "assessed as X, not
-      as Y" form the crop-failure and permafrost entries use, and name the boundary explicitly:
-      soil ORGANIC CARBON is one of ten degradation processes, land use is held FIXED
-      (2015soc-from-histsoc / nat) so the layer cannot see management-driven loss by
-      construction, and the layer must therefore be named soil organic carbon, not soil
-      degradation.
-
+      THE LAYER IS BUILT AND REGISTERED (2026-08-15) BUT COVERAGE STAYS EMPTY ON PURPOSE.
+      `csoil` is in config/layer_registry.yaml at `status: alternate`, contract-passing, with
+      a per-member diagnostic and a dashboard. `covered_by` is still `[]` because TWO
+      decisions are open and both are the user's, and declaring coverage before either is
+      settled would produce exactly the failure this file exists to prevent.
+        (1) HAZARD OR ASSET CONDITION? The layer is `higher_is_better` with an inverted
+            percentile -- structurally identical to `conifer-npp`, which this file already
+            classifies under `non_hazard_layers`. Declining soil carbon reads more like the
+            asset's condition than a hazard acting on it, unless the asset IS the soil
+            (agricultural land, timber land, soil-carbon and restoration projects).
+        (2) NO ASSET TYPE ROUTES TO IT. config/asset_catalog.yaml has no entry pointing at
+            `csoil`, so no delivery would carry the hazard even if it were declared.
+            Populate `covered_by` in the SAME change that adds the routing, and that routing
+            needs user sign-off.
+      WHAT THE REBUILD SETTLED, so it is not re-litigated: the 2026-07-25 output had been
+      LOST from disk and its ensemble was understated -- LPJmL5-7-10-fire publishes
+      csoil-total annually and was missing from the catalog, so 12 members / 3 models became
+      17 / 4. Every framing decision was re-measured rather than inherited: normalization
+      still declined but on new grounds (2.92x median spread, a gradient not clusters),
+      `pooled_median` retained at a largest adjacent-model gap of 0.59x IQR, smoothing
+      declined on a model-stratified split-half (roughness 0.148, halves 0.149/0.150,
+      r=0.992), `sen_slope` confirmed by --measure-slopes (6.8% Sen-zero, 70.3% agreement).
+      The five post-2026-07-25 standards are all applied; see WORKFLOW-ISSUES.md 2026-08-15.
+      BEFORE THE FIRST DELIVERY QUOTES IT, rewrite customer_note into the "assessed as X,
+      not as Y" form the crop-failure and permafrost entries use, and carry three boundaries
+      into it. First, soil ORGANIC CARBON is one of recital 4's ten processes and the layer
+      must be named for that, not for this family. Second, land use is held FIXED in every
+      member, so it cannot see management-driven loss -- deliberate, because it isolates the
+      climate signal, and a hard limit on any claim about soil condition. Third, and least
+      obvious to a reader, A ZERO-CARBON CELL SCORES AS MAXIMUM RISK: the inversion puts the
+      Sahara at the 96th risk percentile and the Greenland ice sheet at the 97th, because a
+      place that never held soil carbon holds the least of it. Every number is correct and
+      the conclusion inverts, which is the RELATIVE-BASELINE class of trap; either restrict
+      the layer to sites with soil worth losing or say plainly that a high percentile over a
+      near-zero stock means "no soil carbon here", never "soil carbon is being lost here".
   # -- NOT COVERED, NO CANDIDATE IN SCOPE ------------------------------------------------
 
   flood-coastal:

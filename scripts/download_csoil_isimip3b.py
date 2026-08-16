@@ -44,10 +44,15 @@ decision on this same layer and with the standing preference for ensemble abunda
 
 What the heterogeneity costs, stated so it reaches the customer rather than dying here:
 
-  * CO2: 12 of 17 members run transient CO2; JULES's 5 run fixed 2015 CO2, so JULES's
-    soil-carbon TREND is muted (no fertilisation signal). Adding LPJmL improved this ratio
-    from 7/12 to 12/17 -- it takes `default`, the same tokens as CLASSIC, so it introduces
-    NO new heterogeneity dimension and is purely additive.
+  * CO2: 12 of 17 members run transient CO2; JULES's 5 run fixed 2015 CO2. Adding LPJmL
+    improved this ratio from 7/12 to 12/17 -- it takes `default`, the same tokens as
+    CLASSIC, so it introduces NO new heterogeneity dimension and is purely additive.
+    DO NOT CALL THE FIXED-CO2 TREND "MUTED". Measured 2026-08-15 on ssp585, those members
+    show the LARGEST relative soil-carbon loss of the four models (-4.37%, against -2.75%
+    lpjml, -0.05% mc2-usfs, +0.79% classic), because removing fertilisation removes litter
+    input -- so the mixed treatment makes the ensemble decline somewhat STRONGER than a
+    uniformly transient one would, not weaker. The direction a CO2 treatment biases a trend
+    is a measurement, never a deduction from the mechanism's name (GUARDRAILS 9).
   * LAND USE: `nat` (MC2) is a natural-vegetation run with no land-use forcing at all, while
     `2015soc-from-histsoc` holds land use fixed at 2015 after a historical transient. NEITHER
     lets the layer see management-driven soil-carbon loss -- which is the point for a

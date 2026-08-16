@@ -212,13 +212,18 @@ reads as falling risk — state the CO₂-fertilisation caveat wherever it is re
 
 ### process_csoil_soilcarbon.py
 
-Processes `csoil-total` (soil organic carbon stock, ISIMIP3b `biomes`) into the TCFD 6-value-class format — the direct **subsurface carbon-storage** signal (distinct from the vegetation pools `cveg`/`croot`/`cvegbg` and the net-sink flux `nbp`). Ensemble = 3 models (`classic`, `jules-es-vn6p3`, `mc2-usfs`) × their CMIP6 GCMs (2 + 5 + 5) × {ssp126, ssp370, ssp585} = 12 members/scenario. Value-checked 2026-07-25 (see WORKFLOW-ISSUES.md):
-- All 3 report **kg C m⁻²** with **comparable magnitudes** (2020s medians ~5.8/7.7/10.3) → **no normalization** (equal-weight "model democracy"); inter-member spread = CI. Layer starts at the 2020s baseline (ISIMIP3b csoil begins 2015 — no full 2010s).
-- **Direction is `higher_is_better`** (stored carbon is an asset; the risk is **loss**) → percentile **inverted** (low stock / decline → high risk; red = carbon loss in maps).
-- **Mixed CO₂**: `jules-es-vn6p3` publishes only its fixed-2015-CO₂ run for csoil, so its trend is muted; `classic`/`mc2-usfs` are transient. All hold land use fixed. Retained as 12 members per user decision. Baseline-anchored trend (kg C m⁻² decade⁻¹); no spatial smoothing (thick ensemble).
+Processes `csoil-total` (soil organic carbon stock, ISIMIP3b `biomes`) into the TCFD output contract — the direct **subsurface carbon-storage** signal (distinct from the vegetation pools `cveg`/`croot`/`cvegbg` and the net-sink flux `nbp`). **Rebuilt 2026-08-15**; the 2026-07-25 build is superseded, its output had been lost from disk, and its ensemble was understated. Ensemble = **4** models (`classic`, `jules-es-vn6p3`, `lpjml5-7-10-fire`, `mc2-usfs-r87g5c1`) × their CMIP6 GCMs (2 + 5 + 5 + 5) × {ssp126, ssp370, ssp585} = **17 members/scenario**. Value-checked 2026-08-15 by `check_csoil_nature.py` (see WORKFLOW-ISSUES.md):
+- All 4 report **kg C m⁻²**, but magnitudes are **not** as comparable as the 3-model build recorded: 2020s medians 5.70 / 7.55 / 10.45 / 16.82, a **2.92×** spread with `lpjml` carrying the upper tail alone (p95 91.1 vs 16.5–27.4). **No normalization** anyway — the models form a gradient rather than clusters, the disagreement about stock size *is* the structural uncertainty the CI carries, and the units are checkable against soil inventories. Layer starts at the 2020s baseline (ISIMIP3b csoil begins 2015 — no full 2010s).
+- **Direction is `higher_is_better`** (stored carbon is an asset; the risk is **loss**) → percentile **inverted** (low stock / decline → high risk; red = carbon loss in maps). Note the consequence: a **zero-carbon cell scores as maximum risk** — the Sahara sits at the 96th risk percentile and Greenland's ice sheet at the 97th. Correct arithmetic, inverted conclusion; see the registry `delivery_note`.
+- **Mixed CO₂**: `jules-es-vn6p3` publishes only its fixed-2015-CO₂ run. **Do not call that trend muted** — measured, those members are the *largest relative losers* (−4.37% vs −2.75% `lpjml`, −0.05% `mc2-usfs`, +0.79% `classic`), because removing fertilization removes litter input. All members hold land use fixed, so the layer cannot see management-driven loss. Retained as 17 members per user decision.
+- **`pooled_median`** retained on measurement (largest adjacent-model gap 0.59 × IQR, below the ~1.0 that triggers OUTPUT-SPEC's fourth branch); **no spatial smoothing** on a model-stratified split-half (roughness 0.148, halves 0.149/0.150, r = 0.992); **read `sen_slope`** (measured: 6.8% Sen-zero, but only 70.3% sign agreement — the lowest of any Sen layer).
+- **`classic` is natively 1°**, replicated 2×2 with a one-cell longitude offset — measured 100% adjacent-cell ties on odd column pairs, 0% on even. The other three are genuinely 0.5°. Visible only on the per-member contact sheet.
 
 ```bash
-python scripts/process_csoil_soilcarbon.py
+python scripts/download_csoil_isimip3b.py          # 51 files, publisher-sha512 verified
+python scripts/check_csoil_nature.py               # GUARDRAILS §9 + §12, before processing
+python scripts/process_csoil_soilcarbon.py --jobs 6
+python scripts/process_csoil_soilcarbon.py --members-only   # rebuild the Members diagnostic only
 ```
 
 **Input**: `data/raw/soilcarbon_csoil_annual/*_csoil-total_global_annual_2015_2100.nc`

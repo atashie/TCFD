@@ -132,12 +132,12 @@ Traps that have actually occurred:
 |---|---|
 | Wrong `long_name` | `burntarea` lpj-guess labels burnt-area % as "Fire Return Interval" |
 | Divergent time units | `burntarea` mc2-usfs uses `days since`, siblings use `years since` |
-| Divergent calendars | `csoil` jules is `proleptic_gregorian`, the other four `365_day` |
+| Divergent calendars | `csoil` jules is `proleptic_gregorian`, the others `365_day` — and **`classic` publishes BOTH**, one per GCM, so a per-model calendar lookup is wrong; read it per FILE |
 | Missing `calendar` | two ISIMIP2b `csoil` models omit it entirely |
 | Same variable, different name per round | ISIMIP2b `csoil` vs ISIMIP3b `csoil-total` |
 | Byte-identical cross-sector duplicate | `elm-eca` csoil-total under both `biomes` and `permafrost` — would double-weight the model |
-| Heterogeneous land masks | `csoil`: 58,714–67,647 cells across 5 models |
-| **Declared grid ≠ effective grid** | `csoil` classic declares 0.5°/360×720 but is natively **1°**, replicated 2×2 with a one-cell longitude offset |
+| Heterogeneous land masks | ISIMIP3b `csoil`: **58,919–67,647** cells across 4 models, and the gap concentrates at high latitude — `mc2-usfs` has 12,417 cells ≥60°N against ~17,200 for jules/lpjml, so ensemble support above 70°N falls to 12.2 of 17 members |
+| **Declared grid ≠ effective grid** | `csoil` classic declares 0.5°/360×720 but is natively **1°**, replicated 2×2 with a one-cell longitude offset. Re-confirmed 2026-08-15: **100%** adjacent-cell ties on odd column pairs vs **0%** on even. Test the values; `ds.sizes` cannot see it |
 | **Declared unit ≠ actual scale** | `burntarea` clm45/orchidee declare `%` on a 0–1 **fraction** scale (~1000× low) |
 | **Mis-scaling *within* one model, across GCMs** | `burntarea` classic `2015soc-from-histsoc`: gfdl-esm4 fraction-scaled, ukesm1-0-ll percent — identical `units` and `long_name`. A ~100× sibling gap is a unit error, not model spread |
 | **soc/sens variant sound for one variable, broken for another** | `classic`/`2015soc-from-histsoc` is fine for `csoil`, mixed-scale for `burntarea`. Never inherit a variant |
@@ -212,8 +212,11 @@ is auditable. Do not silently mask thin cells — that is a product decision for
 
 **Before differencing anything, assert `isfinite(trend) == isfinite(median)` per decade.** A
 bare `np.zeros()` for the baseline decade makes the entire **ocean** a finite zero, and QA
-does not catch it. This defect is live in `process_burntarea_fire.py` and
-`process_csoil_soilcarbon.py` and **propagates by copy-paste**.
+does not catch it. This defect is live in `process_burntarea_fire.py` and **propagates by
+copy-paste**. (`process_csoil_soilcarbon.py` was cleared 2026-08-15 — it asserts mask
+agreement and now also masks slopes to each decade's median mask, because its mask turned out
+to be **time-varying by one cell** at ssp585 2060s. A layer nobody expects to be in that
+regime can be; the assertion is what tells you.)
 
 **When members are two configurations of one model, pool by FAMILY, not by member.**
 `orchidee` and `orchidee-dgvm` are the same code with/without dynamic vegetation, so a flat

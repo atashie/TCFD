@@ -1958,15 +1958,47 @@ search_results:
       (pooled_median vs the pooled_mean_multimodel branch), exact-zero share (the
       zero-inflated branch and any sparsity_caveat), roughness plus a model-stratified
       split-half (smoothing), and the active-cell slope measurement (which slope to read).
-    co2_treatment: "MIXED (user decision 2026-07-25 to retain 12 members): jules-es-vn6p3 publishes ONLY the fixed-2015-CO2 (2015co2) csoil run; classic/mc2-usfs are transient (default). JULES's soil-C trend is muted (no fertilization). Land use fixed: 2015soc-from-histsoc (classic/jules) / nat (mc2-usfs). See GUARDRAILS §9."
+    co2_treatment: "MIXED (user decision 2026-07-25, re-affirmed on the 2026-08-15 rebuild at 17 members): jules-es-vn6p3 publishes ONLY the fixed-2015-CO2 (2015co2) csoil run; classic/lpjml/mc2-usfs are transient (default). Land use fixed: 2015soc-from-histsoc (classic/jules/lpjml) / nat (mc2-usfs). See GUARDRAILS §9."
+    co2_direction_measured: >-
+      DO NOT SAY THE FIXED-CO2 MEMBER'S TREND IS MUTED -- this entry said exactly that from
+      2026-07-25 to 2026-08-15 and it is measurably backwards. Measured on ssp585, 2090s
+      minus 2020s over each member's own footprint: jules-es-vn6p3 (FIXED CO2) -4.37%,
+      lpjml5-7-10-fire -2.75%, mc2-usfs-r87g5c1 -0.05%, classic +0.79%. The fixed-CO2 model
+      shows the LARGEST RELATIVE LOSS of the four, because removing fertilisation removes
+      litter input; the mixed treatment makes the ensemble decline somewhat STRONGER than a
+      uniformly transient one would. The direction a CO2 treatment biases a trend is a
+      MEASUREMENT, never a deduction from the mechanism's name (GUARDRAILS 9). The
+      /isimip-process-visualize skill already recorded this layer as the case that
+      established the rule; the catalog contradicted the skill and nobody reconciled them.
     data_nature: |
-      All 3 models report kg C m-2 with COMPARABLE magnitudes (2020s medians ~5.8/7.7/10.3), value-checked 2026-07-25:
-      classic         kg C m-2  median 5.76  max 70.3  zeros 4.48% (desert/ice)  calendar=365_day
-      jules-es-vn6p3  kg C m-2  median 10.28 max 67.9  zeros 0.00%               calendar=proleptic_gregorian
-      mc2-usfs        kg C m-2  median 7.67  max 37.8  zeros 0.00% (coarse biome model, nat soc)  calendar=365_day
-      Time axis 'days since 1601' for ALL; only the calendar differs -> calendar-aware year parse.
-    processed: "2026-07-25 -> TCFD layer. scripts/process_csoil_soilcarbon.py. Verified at the time: CI ordering 100%, baseline bit-identical, trend<->change corr 1.0, global-mean csoil +1.1% ssp126 / -1.4% ssp370 / -2.2% ssp585 by 2090s. See memory project_csoil_soilcarbon_layer, WORKFLOW-ISSUES.md 2026-07-25, GUARDRAILS §8-§9."
-    output_status: "GONE as of 2026-08-14. data/processed/soilcarbon_csoil_annual/ is EMPTY, no raw csoil remains under data/, and there is no download_csoil*.py (every other shipped layer has one). This field previously named the three .nc files as though they existed. data/ is local and ephemeral -- a `processed:` date is not evidence the artifact is still there, so CHECK THE DISK before planning off it. Re-download + re-run is required, and the processor must first be brought up to the five post-2026-07-25 standards enumerated in config/hazard_taxonomy.yaml families.soil-degradation.blocker."
+      RE-MEASURED 2026-08-15 at 4 models / 17 members by scripts/check_csoil_nature.py
+      (GUARDRAILS 9 + 12). Continuous, non-negative, unbounded above; all 4 report kg C m-2.
+      2020s medians -- classic 5.70, mc2-usfs-r87g5c1 7.55, jules-es-vn6p3 10.45,
+      lpjml5-7-10-fire 16.82. That is a 2.92x spread, NOT the "comparable magnitudes"
+      recorded from the 3-model build, and lpjml carries the upper tail alone (p95 91.1
+      against 16.5-27.4 for the other three). Normalization still declined -- the models form
+      a gradient rather than clusters and the units are checkable against soil inventories --
+      but on those grounds, not the old ones. pooled_median retained (largest adjacent-model
+      gap 0.59 x IQR, below the ~1.0 that would trigger the multimodal branch).
+      LAND MASKS DIFFER: 58,919 (mc2-usfs) to 67,647 (jules) cells, and the gap concentrates
+      at high latitude -- mc2-usfs has 12,417 cells >=60N against ~17,200 for jules/lpjml, so
+      mean ensemble support above 70N is 12.2 of 17 members.
+      TIME AXIS: 'days since 1601' for ALL; only the calendar differs -> calendar-aware year
+      parse. jules is proleptic_gregorian and the others 365_day, EXCEPT that classic
+      publishes BOTH, one per GCM -- read the calendar PER FILE, never per model.
+      GRID: classic declares 0.5 deg / 360x720 but is natively 1 deg, replicated 2x2 with a
+      one-cell longitude offset (100% adjacent-cell ties on odd column pairs, 0% on even).
+      Zeros are written over desert and ice by some models and NaN by others, which is why a
+      zero-carbon cell can appear in the published footprint at all.
+    processed: "2026-08-15 -> TCFD layer `csoil` (SUPERSEDES the 2026-07-25 12-member build, whose output was lost from disk and whose ensemble was understated by LPJmL). scripts/download_csoil_isimip3b.py -> scripts/check_csoil_nature.py -> scripts/process_csoil_soilcarbon.py. 17 members/scenario, contract PASS (scripts/test_shared_baseline.py), per-member diagnostic csoil_members.nc emitted. Read sen_slope. See WORKFLOW-ISSUES.md 2026-08-15, DATASET-ATTRIBUTES.md, GUARDRAILS §8-§9."
+    output_status: >-
+      REBUILT 2026-08-15 and registered as `csoil`. 17 members, contract PASS, per-member
+      diagnostic emitted, dashboard at reports/maps/csoil/.
+      HISTORY WORTH KEEPING: on 2026-08-14 this field named three .nc files as though they
+      existed and they did not -- data/processed/soilcarbon_csoil_annual/ was empty, no raw
+      remained, and no download_csoil*.py had ever been written. `data/` is local and
+      ephemeral, so a `processed:` date is a record that a run HAPPENED, never evidence the
+      artifact is still there. CHECK THE DISK before planning off one.
     enumeration_completeness: >-
       RESOLVED 2026-08-14 -- see re_enumerated_on. The sector trap was probed and is NOT the
       failure here: no sector holds a csoil model that `biomes` lacks. The real omission was

@@ -455,15 +455,21 @@ layers:
     qa_reviewed_on: null
     recommended_slope: sen_slope
     recommended_slope_rationale: >-
-      MEASURED 2026-08-15 -- see the run log. This is the one shipped layer in the
-      ols-is-biased regime rather than the sen-collapses regime, and the two estimators
-      disagree in SIGN on the global mean: at ssp126 the 2080s panel reads
-      ols -0.0372 against sen -0.0030 kg m-2/dec, and at the 2030s-2060s panels ols is
-      negative while sen is positive throughout. That is the signature OUTPUT-SPEC predicts
-      for an ensemble whose between-member level offset (~68.7x the interannual SD) is large
-      and whose member coverage is uneven -- CLASSIC contributes 2 GCMs against 5 for each of
-      the other three models, and the four models' 2020s medians span 5.70 to 16.64 kg m-2.
-      ols absorbs those level offsets as trend. READ sen_slope.
+      MEASURED 2026-08-15 with --measure-slopes: 70,910 active cells, sen exactly zero on
+      only 6.8%, sign agreement 70.3%. Sen has NOT collapsed, so the usual reason to fall
+      back to ols does not apply -- this is one of only two layers (with `conifer-npp`) that
+      reads sen_slope, and the only one in the ols-IS-BIASED regime rather than the
+      sen-collapses regime. The two estimators disagree in SIGN on the global mean
+      throughout: at ssp585 the 2050s panel reads ols -0.0119 against sen +0.0081, and by the
+      2090s ols -0.0475 against sen -0.0072 kg m-2/dec. That is the signature OUTPUT-SPEC
+      predicts for an ensemble whose between-member level offset (~68.7x the interannual SD)
+      is large and whose member coverage is uneven: CLASSIC contributes 2 GCMs against 5 for
+      each of the other three, and the four models' 2020s medians span 5.70 to 16.82 kg m-2,
+      so ols absorbs those level offsets as trend. READ sen_slope.
+      NOTE the 70.3% agreement is the LOWEST of any sen_slope layer (`conifer-npp` is 87.9%),
+      so on nearly a third of active cells the two estimators disagree in sign -- which is
+      the standing signal that a cell's trend is not robust. Do not quote a site-level trend
+      here without checking both.
     relative_baseline: false
     delivery_note: >-
       NOT A SOIL-DEGRADATION LAYER, AND MUST NOT BE LABELLED ONE. Soil organic carbon is ONE
@@ -480,6 +486,18 @@ layers:
       most sharply in high-latitude organic soils, and only one of four projects large
       northern peat losses -- read the CI at high latitudes, not the median alone. The full
       statement is in the file's `interpretation_caveat`, which delivery exports.
+      A ZERO-CARBON CELL SCORES AS MAXIMUM RISK, AND THAT IS AN ARTIFACT OF THE INVERSION,
+      NOT A FINDING. Measured on the processed ssp585 file 2026-08-15: the Sahara reads 0.00
+      kg m-2 at the 96th risk percentile, the Taklamakan 0.04 at the 93rd, and the Greenland
+      ice sheet 0.00 at the 97th -- because `higher_is_better` maps a low stock to a high
+      risk score, and a place that never held soil carbon holds the least of it. The ranking
+      is arithmetically correct and the conclusion inverts: a desert or an ice sheet has
+      nothing to lose, so it carries no soil-carbon RISK at all. This is the same class of
+      trap as RELATIVE-BASELINE. Any delivery routing this layer must either restrict it to
+      sites with soil worth losing or state plainly that a high percentile over a
+      near-zero stock means "no soil carbon here", never "soil carbon is being lost here".
+      Greenland is in the published footprint at all only because two of four models write 0
+      over the ice sheet rather than NaN.
 
 # Layers refused by the loader. A folder carrying INVALID-DO-NOT-USE.md is ALSO refused
 # automatically, so this list is belt-and-braces rather than the only guard.

@@ -133,6 +133,7 @@ first scenario. Reproduce with `python scripts/generate_customer_delivery.py --m
 | layer | active cells | `sen==0` | sign agreement | read |
 |---|---|---|---|---|
 | `conifer-npp` | 25,603 | 0.021 | 0.879 | `sen_slope` |
+| `csoil` | 70,910 | 0.068 | **0.703** | `sen_slope` — the only layer in the **ols-is-biased** regime; see below |
 | `cropfailure-3b` | 39,878 | 1.000 | 0.000 | `ols_slope` |
 | `cyclone` | 20,337 | 0.974 | 0.025 | `ols_slope` |
 | `drought-2b` | 66,741 | 1.000 | 0.000 | `ols_slope` |
@@ -143,7 +144,22 @@ first scenario. Reproduce with `python scripts/generate_customer_delivery.py --m
 | `permafrost-3b` | 14,455 | 0.152 | 0.844 | `ols_slope` — Sen has *not* collapsed here and is still wrong; see below |
 
 Measured 2026-08-12; `cropfailure-3b` added 2026-08-13; `heatwave-3b` and `permafrost-3b`
-added 2026-08-14.
+added 2026-08-14; `csoil` added 2026-08-15.
+
+**`csoil` is the layer the other column of the two-slope table was written for.** Every other
+entry above reads `ols_slope` *because Sen collapsed*; `conifer-npp` and `csoil` read
+`sen_slope` because it did not. But only `csoil` sits in the regime OUTPUT-SPEC names as
+ols's own failure mode — a large between-member **level offset** (~68.7× the interannual SD)
+with **uneven member coverage** (CLASSIC contributes 2 GCMs against 5 for each of the other
+three, and the four models' 2020s medians span 5.70–16.82 kg m⁻²). ols absorbs those offsets
+as trend, and the two estimators disagree in **sign** on the global mean throughout: ssp585
+reads ols −0.0119 against sen +0.0081 at the 2050s, and ols −0.0475 against sen −0.0072 by
+the 2090s. Read `sen_slope`.
+
+Its **70.3% sign agreement is the lowest of any `sen_slope` layer** (`conifer-npp` is 87.9%),
+so the two estimators disagree on nearly a third of active cells — which is precisely the
+standing signal that a cell's trend is not robust. Do not quote a site-level trend from this
+layer without checking both.
 
 **`permafrost-3b` is the counter-example to "low `sen==0` means Sen is safe".** Its Sen share
 is the second-lowest of any layer (0.152, against `conifer-npp`'s 0.021) and sign agreement is
@@ -347,6 +363,22 @@ deliberately on all three, not left at a default.
 
 ### Per-layer specifics worth knowing before use
 
+- **`csoil`** — **a zero-carbon cell scores as MAXIMUM risk.** `higher_is_better` maps a low
+  stock to a high risk percentile, and a place that never held soil carbon holds the least of
+  it: measured on ssp585, the Sahara reads 0.00 kg m⁻² at the **96th** risk percentile, the
+  Taklamakan 0.04 at the 93rd, and the **Greenland ice sheet 0.00 at the 97th**. The ranking
+  is arithmetically correct and the conclusion inverts — a desert has nothing to lose. Same
+  class of trap as a relative baseline. Greenland is in the footprint at all only because two
+  of four models write `0` over the ice sheet rather than NaN.
+  **`classic` is natively 1°**, replicated 2×2 with a one-cell longitude offset — measured
+  **100%** adjacent-cell ties on odd column pairs against **0%** on even; the other three are
+  genuinely 0.5°. Visible on the per-member contact sheet, invisible to every statistic in a
+  value-check table. **Model footprints differ sharply at high latitude**: `mc2-usfs` covers
+  58,919 cells against `jules`'s 67,647, and only 12,417 cells ≥60°N against ~17,200 — so
+  above 70°N mean ensemble support falls to **12.2 of 17 members**, weighted toward the two
+  models that read highest there. **Do not call the fixed-CO₂ member's trend "muted"**: it is
+  the largest relative loser (−4.37%, against −2.75% `lpjml`, −0.05% `mc2-usfs`, **+0.79%**
+  `classic` — which gains).
 - **`cropfailure-3b`** — the publisher **zero-fills the entire globe**: ocean, Antarctica,
   Greenland and the Sahara read exact `0`, not NaN, so `isfinite` carries no footprint and
   must never be used as its mask. Published on a **cropland footprint** (39,890 cells, 42.4%
