@@ -1117,6 +1117,36 @@ The fixed-CO₂ member is the **largest relative loser**, and one transient mode
 
 ---
 
+### 2026-08-16: The threshold ladder — a censoring result that was a continent, an invented caveat name, and a `git checkout` I should not have run
+
+**What happened**: nine threshold-exceedance layers were built from ISIMIP3b daily `tasmax`/`tasmin` (12 GCMs × 3 SSPs, ~1.34 TB streamed and deleted). Six things went wrong, all of them mine.
+
+**1. I reported a censoring result that was Antarctica, not the product.** I measured the cold rungs as heavily censored at the calendar ceiling — `FD` 30.25% of pooled observations at ≥364 days, `ID` 28.15%, `FDm10` 21.09% — and told the user this was the `heatwave-3b` regime requiring a declared `saturation_caveat`. It was measured on the **full** ISIMIP3b land mask. On `landseamask_no-ant.nc` the same numbers are **2.01%, 1.08% and 0.00%**, and Antarctica alone accounts for 98.85% / 94.04% / 72.83%. The censored rungs are in fact the **hot** ones (`hd30` 11.8%, `TR20` 11.4% by ssp585 2090s). A mask is not a neutral denominator: 27,092 of 92,889 cells (29%) were a permanently-frozen block that both saturated the estimator and filled the top of the frost percentile with land nobody sites an asset on.
+
+**Rule**: state the mask with every share-of-cells statistic. A percentage without its denominator named is not a measurement, and "share of land" is a different claim under two masks that both call themselves the ISIMIP3b landseamask.
+
+**2. I read a masked array's `.data` and got the whole globe as land.** `landseamask_no-ant.nc` encodes land as `1` and everything else as `_FillValue = 1e20`, unlike the full mask which encodes `0`/`1`. `np.asarray(ds.variables["mask"][:]) > 0.5` therefore returned **259,200 "land" cells** — every cell on the grid — because the fill value is greater than 0.5. Caught only because 259,200 is obviously wrong; a subtler fill value would have passed. Fix: `.filled(np.nan)` before any comparison, never `np.asarray` around a masked array.
+
+**3. I invented a caveat attribute name, which would have been dropped silently at delivery.** I wrote the GCM non-independence finding to `ensemble_independence_caveat`. `LAYER_ATTRS_EXPORTED` in `scripts/utils/delivery.py` is a **closed allowlist**, so it would have vanished between the file and the filing — the identical failure recorded on 2026-07-25 for `co2_treatment`. Diffing my attributes against the allowlist also found `source_dataset` expected and unwritten (no provenance at all would have reached the customer) and two applicable caveats missing (`sparsity_caveat`, `resolution_caveat`). **The incident log already contained this lesson and I reproduced it anyway** — so the check is now mechanical: assert the written attribute set against `LAYER_ATTRS_EXPORTED` before shipping, rather than trusting that a caveat written is a caveat delivered.
+
+**4. A per-scenario decision on a per-layer field.** `recommended_slope` was computed and written as each scenario finished. `hd35` measures `sen_slope == 0` on 51–53% of active cells — straddling the 0.5 cut — so ssp126 would have recorded `ols_slope` and ssp585 `sen_slope` **for one layer**, while `layer_registry.yaml` carries exactly one. Three files would have disagreed about how to read themselves. Fixed by computing every scenario before writing any file; `emit_tasthresh_registry.py` now asserts agreement across a rung's files rather than trusting it.
+
+**5. A caveat that said "none" would have been published as MUST-DISCLOSE.** Having added `saturation_caveat` and `sparsity_caveat`, I wrote them **unconditionally** — `"none -- the highest share at the ceiling is 0.69%"` on rungs that do not saturate. But `generate_delivery_caveats.layer_caveats()` promotes these to MUST-DISCLOSE on the test `if note and note.lower() != "nan"` — on the attribute being **non-empty**, not on it asserting anything. Seven of nine rungs would have carried a must-disclose caveat whose body reads "none", in both reports. That is precisely the defect `load_registry()` already refuses for a blank `relative_baseline_note`: a heading promising a caveat with nothing under it. The convention, visible in the shipped layers, is to **omit the attribute entirely when it does not apply** — `heatwave-3b` carries `saturation_caveat` because it saturates; `cropfailure-3b` carries none of the three. Fixed at write time, and the 27 built files patched in place (45 attributes renamed to `saturation_measured` / `sparsity_measured`, which are **not** on the allowlist, so the negative measurement stays auditable in the file without reaching a report). `resolution_caveat` remains unconditional, correctly — every rung is 0.5° support against a hazard that turns on elevation.
+
+**Rule**: when adding a caveat attribute, read the *promotion condition*, not just the allowlist. Being on `LAYER_ATTRS_EXPORTED` decides whether a caveat can be delivered; the promotion test decides whether it *will* be — and a mechanism that fires on non-emptiness will happily publish your negative result as a warning.
+
+**6. I ran `git checkout` on a file with uncommitted changes.** After destroying 92 comment lines by round-tripping `config/hazard_taxonomy.yaml` through `yaml.safe_load`/`yaml.dump`, I reverted with `git checkout` — a file that `git status` had shown as modified at session start. It happened to be safe (commit `07c63cc` had landed mid-session and already contained that work), but that was **luck, not diligence**: I discarded the working tree before establishing what was in it.
+
+**Rules**: never round-trip a hand-maintained YAML through `yaml.dump` — it strips every comment; use targeted text edits. And never `git checkout` a modified file without first capturing it (`git diff > /tmp/...` or a copy), because the change you are discarding may not be the one you made.
+
+**What went right, and is worth copying**: the **containment check**. Each higher threshold must be a strict subset of the lower one, so `hd30 ≥ hd35 ≥ hd40 ≥ hd45`, `TR20 ≥ TR25`, `FD ≥ FDm10`, and across variables `FD ≥ ID`. That is a *dimensional* check — it cannot be satisfied by a plausible-looking wrong answer — and it returned **0 violations** across all three scenarios, which no per-layer contract check could have established. It is the same class of check that caught the flood layers' "additive decomposition that was actually containment".
+
+Also: the calendar risk the stage-1 reducer was designed around (a 360-day member gets six fewer chances a year, a ~1.5% bias that is constant per member and never averages out) **did not materialise** — all 32 members measured `proleptic_gregorian`. Measuring it was still right; the reducer's `*_days_per_year_HETEROGENEOUS` flag is an artifact of dividing each chunk's day count by its own unique-year count and must not be read as a mixed calendar.
+
+**Files**: `scripts/download_reduce_tasthresh_isimip3b.py`, `scripts/process_tasthresh.py`, `scripts/emit_tasthresh_registry.py` (new), `config/layer_registry.yaml`, `config/hazard_taxonomy.yaml`, `config/isimip_search_catalog.yaml`, `DATASET-ATTRIBUTES.md`.
+
+---
+
 ## Adding New Incidents
 
 When documenting a new incident, include:

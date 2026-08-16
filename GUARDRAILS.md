@@ -404,3 +404,62 @@ walking *down*; this governs the level you *started at*.
 
 **Related**: §8 (never guess specifier codes; list every level going down), §11 (a recorded
 negative needs a receipt — as does a recorded option list).
+
+---
+
+## 14. Name the Denominator: a Mask, and an "Active Cell", Are Framing Decisions
+
+A share-of-cells statistic with an unnamed denominator is not a measurement. Two denominators
+sank the same layer family on one day (2026-08-16), in opposite directions.
+
+**The land mask.** Two files both call themselves the ISIMIP3b landseamask and differ by 29%:
+`landseamask.nc` has 92,889 cells, `landseamask_no-ant.nc` has 65,797, and the difference is
+Antarctica. On the threshold-count ladder that decided which end of the ladder was reported
+as censored:
+
+| rung, 2020s, at the 364-day ceiling | full mask | no-ant | Antarctica alone |
+|---|---|---|---|
+| `FD` | 30.25% | **2.01%** | 98.85% |
+| `ID` | 28.19% | **1.08%** | 94.04% |
+| `FDm10` | 21.25% | **0.00%** | 72.83% |
+
+A result was reported to the user as "the cold rungs are materially censored — the
+`heatwave-3b` regime" when it was 27,092 permanently-frozen cells that no asset occupies. The
+mask is a framing decision with the weight of the statistic branch: it changes which cells
+saturate, what the percentile ranks against, and whether a slope is readable at all. **State
+the mask with every share, and choose it on measurement, not on consistency with a sibling.**
+
+**The active-cell denominator.** `sen==0` shares are quoted over ACTIVE cells — either slope
+non-zero — because a cell that never crosses its threshold has both slopes correctly at 0 and
+is not a Theil-Sen failure. Over all *finite* cells `ID` reads 0.542; over active cells,
+0.182. The wrong denominator flipped four of nine slope recommendations.
+
+**Fill through NaN, never around it.** A masked NetCDF variable's `.data` still holds
+`_FillValue`. `np.asarray(ds.variables["mask"][:]) > 0.5` marked all 259,200 cells as land,
+because `1e20 > 0.5`. Use `.filled(np.nan)` before any comparison. The full mask encodes
+`0`/`1` and survives that mistake; the no-ant mask encodes land-or-fill and does not, so the
+bug appears only when you switch masks.
+
+**Related**: §9 (measure, do not infer), §11 (a claim needs its receipt).
+
+---
+
+## 15. Do Not Destroy the Working Tree to Fix Your Own Edit
+
+Two ways a repair can cost more than the defect, both hit on 2026-08-16.
+
+**Never round-trip a hand-maintained YAML through `yaml.safe_load` + `yaml.dump`.** It is
+lossless for *data* and silently destroys every *comment*: `config/hazard_taxonomy.yaml` lost
+**92 comment lines** in one call, including the header that defines which fields are
+customer-facing and which are internal — the distinction the file exists to enforce. It also
+reorders and re-wraps everything, so the diff is unreviewable. Use targeted text edits.
+
+**Never `git checkout` a modified file to undo your own change.** The revert discards
+*everything* uncommitted in that file, not just what you did, and `git` keeps no record of a
+change that was never staged. On 2026-08-16 this happened to be safe only because a commit
+had landed mid-session and already contained the other work — luck, not diligence. If you
+must revert, capture first (`git diff -- <file> > /tmp/x.patch`, or copy the file), then
+revert, then confirm what you discarded was only yours.
+
+**Related**: §11 (do not hand over a claim you have not verified — including "nothing was
+lost").

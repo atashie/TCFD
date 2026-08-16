@@ -50,9 +50,20 @@ coverage.
 
 For hazards that vary over comparable distances — drought, heatwave, wildfire — that is a
 tolerable approximation and the cell value is a fair description of the site. For hazards
-that turn on **fine terrain it is not**, and `sealevel-2b` is the case in point: coastal
-inundation depends on metres of elevation over hundreds of metres of ground, so a quayside
-and a hillside two kilometres apart sit in the same cell and receive the **same number**.
+that turn on **fine terrain it is not**, and two families are in that class:
+
+- **`sealevel-2b`** — coastal inundation depends on metres of elevation over hundreds of
+  metres of ground, so a quayside and a hillside two kilometres apart sit in the same cell
+  and receive the **same number**.
+- **the nine threshold rungs** (`heatdays-*`, `tropicalnights-*`, `frostdays-*`, `icedays-id`,
+  added 2026-08-16) — temperature falls ~6.5 °C per km of elevation, and on a day count that
+  is the difference between never crossing a threshold and crossing it for months. Measured
+  on each rung's own baseline, **adjacent** 0.5° cells differ by up to 59 d/yr at the 99th
+  percentile on `hd35` (max 296) and 110 d/yr on `hd30`; a cell spanning a valley floor and a
+  ridge varies over its own footprint by a comparable amount, and publishes the cell mean,
+  which matches neither. Urban heat island is not represented either, so a city centre runs
+  hotter than its cell. Visible in the `FD` contact sheet as the Andes rendering as a single
+  narrow ribbon of cells across an otherwise frost-free continent.
 
 These layers are a **first-pass screen**. They rank which regions, coastlines and sites
 deserve investigation. They cannot support a site-level conclusion, a design elevation, an
@@ -62,10 +73,22 @@ expected in future deliveries rather than from this product.
 
 A layer may declare a `resolution_caveat` attribute; where present it is promoted to a
 **`must_disclose`** caveat and both reports refuse to render without it (added 2026-08-14
-with `sealevel-2b`). Note what a layer's resolution does and does **not** mean: `sealevel-2b`
-reads terrain at 15″ (~460 m) and uses the **full elevation distribution inside each cell**
-rather than a cell mean — the coarseness is in the *published support and the sea-level
-forcing*, not in the terrain that fed it.
+with `sealevel-2b`; ten layers carry it as of 2026-08-16). Note what a layer's resolution
+does and does **not** mean: `sealevel-2b` reads terrain at 15″ (~460 m) and uses the **full
+elevation distribution inside each cell** rather than a cell mean — the coarseness is in the
+*published support and the sea-level forcing*, not in the terrain that fed it. The threshold
+rungs are the opposite case: their input **is** a 0.5° cell-mean temperature, so the
+sub-cell variation is genuinely absent from the data rather than collapsed at publication.
+
+**The attribute is set only where it applies, and that is enforced by convention, not by
+code.** `generate_delivery_caveats.layer_caveats()` promotes `resolution_caveat`,
+`saturation_caveat` and `sparsity_caveat` on the test *"is this attribute non-empty"* — not
+on it asserting anything. So writing `saturation_caveat: "none — 0.69% at the ceiling"`
+publishes a **must-disclose caveat whose body says "none"**, in both reports. Record a
+negative measurement under a name that is **not** on `LAYER_ATTRS_EXPORTED` — the threshold
+rungs use `saturation_measured` / `sparsity_measured` — so it stays auditable in the file
+without reaching a filing. Seven of the nine rungs shipped with exactly that defect for a
+few hours on 2026-08-16 before it was caught.
 
 ## Identity
 
@@ -90,6 +113,10 @@ straight.
 | Riverine flood (inundation, no defences) | `flood-3b-none` | `fldfrcmax-none` | 3b `TipESM2025` CaMa-Flood, ssp126/370/585 | `process_fldfrcmax_isimip3b.py` (2026-08-14) |
 | Temperate conifer productivity | `conifer-npp` | `npp-tempnle` | 2b `biomes` CLM45+ORCHIDEE+LPJmL, rcp26/60/85 | `process_tempnle_npp.py` (2026-08-12) |
 | Soil organic carbon | `csoil` | `csoil-total` | 3b `biomes`, ssp126/370/585 | `process_csoil_soilcarbon.py` (rebuilt 2026-08-15) |
+| Chronic heat (day threshold) | `heatdays-hd30/hd35/hd40/hd45` | `hd30`/`hd35`/`hd40`/`hd45` | 3b bias-adjusted daily `tasmax`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
+| Chronic heat (night threshold) | `tropicalnights-tr20/tr25` | `TR20`/`TR25` | 3b bias-adjusted daily `tasmin`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
+| Cold / frost | `frostdays-fd`, `frostdays-fdm10` | `FD`/`FDm10` | 3b bias-adjusted daily `tasmin`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
+| Cold / ice days | `icedays-id` | `ID` | 3b bias-adjusted daily `tasmax`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
 
 `conifer-npp` is **not a hazard** — it is an asset-condition layer and is excluded from every
 hazard count. `config/hazard_taxonomy.yaml` records that under `non_hazard_layers`.
@@ -124,6 +151,7 @@ knob is not a reason for a third to adopt it.
 | `flood-3b-none` | **32** (7 models — CWATM publishes the unprotected field only) | `pooled_mean_zero_inflated` — taken for estimator consistency, **not** because its own median failed | as above | none | two-tier, `higher_is_worse` — ranked against the **flopros** 2020s; compresses at the top |
 | `conifer-npp` | — | `pooled_median` | 2% cover presence mask | none | **`higher_is_better`** — percentile is already inverted in the file |
 | `csoil` | **17** (4 models × {2,5,5,5} GCMs) | `pooled_median` — branch 4 declined on measurement | union of finite cells, 71,251; `isfinite` IS a footprint here | none — split-half r=0.992 | single-tier, **`higher_is_better`** — inverted in the file |
+| the nine threshold rungs (`heatdays-*`, `tropicalnights-*`, `frostdays-*`, `icedays-id`) | **12** (12 GCMs × **no impact model**) | `pooled_mean_zero_inflated` — **all nine**, on measurement | **`landseamask_no-ant.nc`, 65,797 cells — ANTARCTICA EXCLUDED**; the counts are finite over the whole globe including ocean, so `isfinite` is **not** a mask here | none — 120 draws per cell-decade on already-coherent bias-adjusted forcing | two-tier, `higher_is_worse` (frost included — user decision) |
 
 ### Which slope to read
 
@@ -142,9 +170,39 @@ first scenario. Reproduce with `python scripts/generate_customer_delivery.py --m
 | `sealevel-2b` | 10,542 | 1.000 | 0.000 | `ols_slope` |
 | `heatwave-3b` | 67,171 | 1.000 | 0.000 | `ols_slope` — **but see the saturation caveat below; on this layer a near-zero slope is ambiguous** |
 | `permafrost-3b` | 14,455 | 0.152 | 0.844 | `ols_slope` — Sen has *not* collapsed here and is still wrong; see below |
+| `heatdays-hd30` | 59,974 | 0.290 | 0.710 | `ols_slope` — see the ladder note below; the whole family reads ols |
+| `heatdays-hd35` | 55,732 | 0.437 | 0.563 | `ols_slope` |
+| `heatdays-hd40` | 48,086 | 0.699 | 0.301 | `ols_slope` |
+| `heatdays-hd45` | 29,899 | 0.854 | 0.146 | `ols_slope` |
+| `tropicalnights-tr20` | 56,451 | 0.439 | 0.561 | `ols_slope` |
+| `tropicalnights-tr25` | 45,445 | 0.525 | 0.475 | `ols_slope` |
+| `icedays-id` | 40,439 | 0.182 | 0.817 | `ols_slope` |
+| `frostdays-fd` | 49,267 | 0.209 | 0.790 | `ols_slope` |
+| `frostdays-fdm10` | 40,632 | 0.182 | 0.818 | `ols_slope` |
 
 Measured 2026-08-12; `cropfailure-3b` added 2026-08-13; `heatwave-3b` and `permafrost-3b`
-added 2026-08-14; `csoil` added 2026-08-15.
+added 2026-08-14; `csoil` added 2026-08-15; the nine threshold rungs added 2026-08-16.
+
+**The threshold ladder is the first family where the choice was made from the FAILURE MODES
+rather than from the `sen==0` share**, and it is worth reading before applying a share
+threshold to any new layer. Four of these rungs (`ID`, `FDm10`, `FD`, `hd30`) sit at
+0.18–0.29 — lower than `permafrost-3b` and far below every other `ols_slope` entry — so a
+mechanical "Sen has collapsed" rule would have read `sen_slope` on them. It is still wrong,
+for the reason that decides it:
+
+- `ols_slope`'s documented failure mode **requires uneven member coverage**. Measured across
+  all nine rungs and all three scenarios, `n_members` is **exactly 12 in every cell**. The
+  bias has no mechanism here. (Contrast `csoil`, where CLASSIC contributes 2 GCMs against 5
+  and ols is genuinely biased — that is what the `sen_slope` column exists for.)
+- `sen_slope`'s failure mode **is** present on every rung, because a threshold count is tied
+  at zero wherever the threshold is rarely crossed.
+
+One estimator that cannot fail here beats a mixed family where the reader must remember which
+rung takes which. **Mind the denominator**: these shares are over ACTIVE cells (either slope
+non-zero), the convention this table uses. Over all FINITE cells they run far higher — `ID`
+reads 0.542 rather than 0.182 — because every never-crossing cell has both slopes correctly
+at 0 and is not a Sen failure. Measuring on the wrong denominator initially flipped four of
+these nine recommendations.
 
 **`csoil` is the layer the other column of the two-slope table was written for.** Every other
 entry above reads `ols_slope` *because Sen collapsed*; `conifer-npp` and `csoil` read
@@ -530,6 +588,88 @@ TCFD contract applies: no trends, no percentile scoring, no kernel smoothing.
 | `potevap` | **sum** | kg m-2 s-1 | Flux; 4 models, h08 selectively normalized to the reference ensemble (cwatm/miroc/watergap2-2e) |
 | `precip` | **sum** | TBD | TODO — climate forcing InputData, not model output |
 
+
+### The threshold ladder: nine rungs, one ingest, and the absolute counterpart to `heatwave-3b`
+
+Built 2026-08-16 from ISIMIP3b bias-adjusted daily `tasmax`/`tasmin`, 12 GCMs × 3 SSPs.
+~1.34 TB was streamed, sha512-verified against publisher sidecars, reduced to annual counts
+and **deleted** — provenance is `data/interim/tasthresh/download_provenance.csv`, a declared
+deviation from the `data/raw/` retention convention. The whole ladder came from **one** pass:
+once a day is read, testing it against nine thresholds costs nothing, so a rung we do not
+ship today needs no second 1.34 TB.
+
+**Every rung is ABSOLUTE, which is the entire point.** `heatwave-3b` scores departure from
+each cell's own preindustrial distribution and ranks Chicago above Delhi; these count
+crossings of a fixed physical threshold. Measured over the 65,797 shared land cells on the
+2020s panel, the two are **not** redundant and **not** interchangeable:
+
+| | value |
+|---|---|
+| Spearman(`hd35`, `heatwave-3b`) | **+0.554** |
+| Spearman(`hd30`, `heatwave-3b`) | +0.631 |
+| Spearman(`FD`, `heatwave-3b`) | −0.662 |
+| **top-decile agreement, `hd35`** | **47.2%** (3,105 of 6,580 cells) |
+
+Screening on one gives a materially different site list than screening on the other. Delhi
+has 130.6 hot days a year and sits at the 53rd percentile of `heatwave-3b`; Chicago has 10.0
+and sits at the 75th. **Singapore is the trap in the other direction**: 4.8 hot days in the
+2020s rising to 268.8 by ssp585 2090s — a 56× rise, because its temperature distribution is
+narrow and sits just below 35 °C. A threshold count reads near zero right up until the
+distribution crosses it, so **a low value here is not evidence of a safe margin.**
+
+Per-rung, from the built files (ssp585; `zero%` is the share of land cells whose 2020s value
+is exactly 0, the same quantity as `percentile_zero_fraction`):
+
+| rung | slope to read | zero% | 2020s | 2090s | saturates? | sparse? |
+|---|---|---|---|---|---|---|
+| `hd30` | **`sen_slope`** | 11.9% | 107.4 | 152.7 | **yes, 11.8%** | no |
+| `hd35` | `ols_slope` | 19.3% | 39.9 | 102.9 | no | no |
+| `hd40` | `ols_slope` | 36.3% | 10.5 | 44.0 | no | no |
+| `hd45` | `ols_slope` | 70.8% | 1.0 | 13.6 | no | **yes** |
+| `TR20` | `ols_slope` | 19.2% | 83.5 | 129.5 | **yes, 11.4%** | no |
+| `TR25` | `ols_slope` | 38.9% | 19.7 | 81.8 | no | no |
+| `ID` | `ols_slope` | 39.0% | 78.3 | 54.4 | no | no |
+| `FD` | **`sen_slope`** | 25.6% | 118.8 | 85.0 | no | no |
+| `FDm10` | `ols_slope` | 38.7% | 70.6 | 41.4 | no | no |
+
+**Only `hd30` and `FD` take `sen_slope`** — the two rungs most of the land actually crosses.
+Everywhere else a majority of year-pairs are 0→0 and Theil-Sen collapses (`hd45`: 94.7%
+exactly zero). The split is *within one family, from one processor, on one unit*, which is
+why OUTPUT-SPEC says the slope is **measured, not inferred from `field_nature`**.
+
+**Antarctica is excluded from the mask, and that decision is load-bearing.** The full
+ISIMIP3b mask has 92,889 cells, `landseamask_no-ant.nc` has 65,797, and the 27,092-cell
+difference carried almost all of the cold rungs' censoring:
+
+| | full mask | no-ant | Antarctica alone |
+|---|---|---|---|
+| `FD` 2020s at the 364-day ceiling | 30.25% | **2.01%** | 98.85% |
+| `ID` 2020s | 28.19% | **1.08%** | 94.04% |
+| `FDm10` 2020s | 21.25% | **0.00%** | 72.83% |
+
+Keeping it would censor ~30% of the `FD` pool — the regime where both estimators go to zero
+and **agree**, so the disagreement rule stops warning — and fill the top of the frost ranking
+with a continent holding no assets. The rungs that genuinely saturate are the **hot** ones.
+
+**All nine take `pooled_mean_zero_inflated`, measured against what the median would publish.**
+The median branch erases cells that do cross the threshold: 29,058 cells (44.2% of land) on
+`hd45` 2090s, 20,014 (30.4%) on `hd35` 2020s, each with a strictly positive expected count.
+Going the other way costs 1.6% where the median works (`FD` 2020s: median 106.0, mean 104.3).
+One statistic for the whole ladder, because a customer reads `hd35` beside `FD`.
+
+**Containment was verified as a dimensional check**, not a plausibility one: `hd30 ≥ hd35 ≥
+hd40 ≥ hd45`, `TR20 ≥ TR25`, `FD ≥ FDm10`, and `FD ≥ ID` (if the day's maximum is below
+freezing, its minimum is too) — **0 violations** across all three scenarios. A flipped
+comparison operator or a swapped threshold could not survive that.
+
+Two further facts that travel with every file: there is **no impact model in the chain**, so
+the CI carries GCM spread and interannual variability only; and the **12 GCMs are not 12
+independent models** — CNRM-CM6-1/CNRM-ESM2-1 share ARPEGE/NEMO/ISBA and KACE-1-0-G runs
+UKESM1-0-LL's HadGEM3 atmosphere. Family pooling was tested by correlating each member's
+residual from the ensemble mean and **rejected**: on `FD` the CNRM pair ranks 1 of 66 pairs
+(+0.764) but on `hd35` it ranks 14 (+0.228), behind KACE × UKESM (+0.546). The duplication is
+real, rung-dependent, and does not partition, so `n_models` counts GCMs and the
+non-independence is declared instead of silently resolved.
 
 ### The two heatwave layers are different indices, and they fail in opposite directions
 

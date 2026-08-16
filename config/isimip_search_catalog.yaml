@@ -1498,7 +1498,38 @@ search_results:
         hourly quantity -- but it means an hourly index must be built on `tas`.
       * ssp534-over CANNOT carry the shared 2020s baseline. verified_absent_on:
         "2026-08-14 -- all 5 GCMs start at 2040 (7 chunks, 2040-2100)."
+    resolved_2026_08_16: |
+      ALL NINE LAYERS BUILT AND CONTRACT-PASSING. The open_decisions below are kept as the
+      record of what was undecided at search time; each is answered here. Do not read them
+      as still open.
+      1. THRESHOLD FAMILY -> dry-bulb `tasmax`/`tasmin` only. No humidity term; the
+         humidity-aware read stays with `heatwave-3b`, and every file says so.
+      2. ABSOLUTE vs LOCAL-PERCENTILE -> ABSOLUTE, deliberately, as the complement to the
+         relative `heatwave-3b`. MEASURED consequence: over the 65,797 shared land cells the
+         2020s rank correlation is only +0.554 and the two layers agree on just 47.2% of
+         their worst-decile cells. They are not substitutes; deliver both.
+      3. LADDER vs ONE THRESHOLD -> a nine-rung ladder from ONE ingest, headline rungs
+         `hd35` (preferred) and `FD` (preferred); the other seven `status: alternate`.
+      4. GCM POOL -> 12, the union across both roots. Bias adjustment is w5e5 in both and all
+         32 members measured `proleptic_gregorian` + Kelvin, so the union is homogeneous on
+         every property that could have biased a day count.
+      5. SCENARIO SET -> ssp126/370/585. ssp245 declined (it would add a scenario axis no
+         other layer has).
+      6. VOLUME -> streamed and reduced per chunk, raw NOT retained. Peak disk ~10 GB against
+         the ~600 GB limit, so storage never became the binding constraint and the GCM pool
+         did not have to be cut. The API's server-side land mask was unreachable (502).
+      7. GUARDRAILS 9 VALUE CHECK -> done. Kelvin detected from VALUES not the declared unit;
+         all 32 members `proleptic_gregorian`, 86 years; counts are FINITE OVER THE WHOLE
+         GLOBE INCLUDING OCEAN, so `isfinite` is not a mask and the landseamask does all the
+         work; per-member spread 1.31x (hd35) / 1.09x (FD), ordered by climate sensitivity.
+      8. SPARCCLE2025 -> still NOT ingested. An intensity measure (TXx), complementary rather
+         than duplicative. Remains a live option.
+      NEW DECISION NOT ON THE ORIGINAL LIST: the LAND MASK. `landseamask_no-ant.nc` (65,797
+      cells), not the full 92,889-cell mask. Antarctica carried 98.85% of FD's calendar-ceiling
+      censoring; including it took FD from 2.01% to 30.25% censored and would have broken the
+      dual-slope diagnostic on every cold rung.
     open_decisions: |
+      HISTORICAL -- all resolved, see resolved_2026_08_16 above. Kept as the search-time record.
       NOT pre-answered. Every one is a user decision or an unmade measurement.
       1. WHICH THRESHOLD FAMILY -- this decides which variables to download, so it is
          upstream of everything else. Dry-bulb Tmax needs `tasmax` alone; a heat index or

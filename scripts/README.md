@@ -276,6 +276,36 @@ python scripts/process_csoil_soilcarbon.py --members-only   # rebuild the Member
 **Input**: `data/raw/soilcarbon_csoil_annual/*_csoil-total_global_annual_2015_2100.nc`
 **Output**: `data/processed/soilcarbon_csoil_annual/csoil_{ssp126,ssp370,ssp585}_processed.nc`
 
+### download_reduce_tasthresh_isimip3b.py + process_tasthresh.py — **the threshold ladder (9 layers)**
+
+Two stages, built 2026-08-16. Stage 1 streams ISIMIP3b bias-adjusted daily `tasmax`/`tasmin` and reduces it to annual threshold-exceedance counts; stage 2 turns those counts into nine OUTPUT-SPEC layers. **12 GCMs × ssp126/370/585 = 36 members, uniform across scenarios.**
+
+**THE RAW DATA IS NEVER RETAINED, and that is not an optimisation.** The ingest moves **~1.34 TB** against ~600 GB of usable disk, so each chunk is downloaded, verified against the publisher sidecar's sha512, reduced, and **deleted** — peak disk ~10 GB. Provenance (url, size, sha512, UTC) is written to `data/interim/tasthresh/download_provenance.csv` **before** deletion, so the ingest stays auditable against files we no longer hold. A declared deviation from the `data/raw/{layer_id}/` retention convention, recorded in the interim file's attributes. Because storage never became binding, the GCM pool did **not** have to be cut.
+
+**The whole ladder comes from ONE pass.** Once a day is read, testing it against nine thresholds costs nothing, so a rung we do not ship today needs no second 1.34 TB. `hd30/hd35/hd40/hd45` (tasmax >30/35/40/45 °C), `TR20/TR25` (tasmin >20/25 °C, ETCCDI tropical nights), `ID` (tasmax <0 °C, ETCCDI ice days), `FD` (tasmin <0 °C, ETCCDI frost days), `FDm10` (tasmin <−10 °C, **not** a standard index).
+
+- **HDF5 IS NOT THREAD-SAFE.** Four workers in a `ThreadPoolExecutor` crashed the interpreter twice with SIGBUS inside `H5S_select_iter_init`; the single-worker smoke test passed, which is why it survived to the full run. Parallelism comes from `ProcessPoolExecutor`. Do not "simplify" it back to threads.
+- **Chunk-level `.npz` checkpoints**, not member-level: a member dying on its ninth chunk would otherwise re-download ~30 GB. Three members timed out on the first pass and resumed for the cost of the ~38 chunks they were missing.
+- **`landseamask_no-ant.nc` (65,797 cells), Antarctica EXCLUDED** — measured, not conventional. See GUARDRAILS §14: Antarctica is 29% of the full mask and carries 98.85% of `FD`'s ceiling censoring.
+- **The counts are finite over the whole globe including ocean**, so `isfinite` is **not** a mask here — the landseamask does all the work.
+- **All nine take `pooled_mean_zero_inflated`** (the median branch would publish exactly 0 for 44% of land on `hd45`) and **all nine read `ols_slope`** — chosen from the failure modes, since `n_members` is exactly 12 in every cell so ols's bias has no mechanism. See DATASET-ATTRIBUTES.md.
+- **The calendar risk did not materialise**: all 32 members measured `proleptic_gregorian`, so no days-per-year correction is applied. Stage 1's `*_days_per_year_HETEROGENEOUS` attribute is an artifact of per-chunk arithmetic (a 6-year chunk gives 365.33, a 10-year one 365.30) and is **not** evidence of a mixed calendar — read `*_calendar`.
+- **Containment is the check that matters** and no per-layer verifier can do it: `hd30 ≥ hd35 ≥ hd40 ≥ hd45`, `TR20 ≥ TR25`, `FD ≥ FDm10`, `FD ≥ ID`. **0 violations** across all three scenarios.
+
+```bash
+.venv/bin/python3 scripts/check_tas_thresholds_nature.py            # GUARDRAILS §9 + §12, before anything
+.venv/bin/python3 scripts/download_reduce_tasthresh_isimip3b.py --plan
+.venv/bin/python3 scripts/download_reduce_tasthresh_isimip3b.py --run --workers 4
+.venv/bin/python3 scripts/process_tasthresh.py --plan --rung hd35   # reference sites, no slope stage
+.venv/bin/python3 scripts/process_tasthresh.py --run --jobs 8       # all nine rungs, ~1.2 h
+.venv/bin/python3 scripts/emit_tasthresh_registry.py                # PRINTS the registry block
+```
+
+**Input**: `data/interim/tasthresh/{GCM}_{scenario}_counts.nc` (36 files, ~1.6 GB total)
+**Output**: `data/processed/{heatdays|tropicalnights|icedays|frostdays}-isimip3b_{rung}_annual/{rung}_{scenario}_processed.nc`
+
+`emit_tasthresh_registry.py` **prints** the `layer_registry.yaml` block read from the built files and does **not** write the registry — that file carries human decisions (`status`, `delivery_note`) alongside measured ones, and a script that rewrote it in place would be one bad run from clobbering the other fourteen layers. It also asserts that a rung's three scenario files agree on `recommended_slope`, which is the defect that forced a rebuild.
+
 ### generate_qa_report.py
 
 Generates QA reports for processed data.
