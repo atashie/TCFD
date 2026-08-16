@@ -34,6 +34,68 @@
 # VARIABLE DEFINITIONS
 # -----------------------------------------------------------------------------
 variable_definitions:
+
+  # ---------------------------------------------------------------------------------------
+  # CONSTRUCTED variables -- NOT published by ISIMIP. Built here from bias-adjusted daily
+  # forcing (GUARDRAILS 1-2: a constructed index is a modelling decision, not an aggregation).
+  # Searching the repository for any of these codes returns nothing, correctly. Built and
+  # signed off 2026-08-16; see search_results.chronic_heat and search_results.cold_frost.
+  # ---------------------------------------------------------------------------------------
+  hd30:
+    long_name: "Hot days above 30 C"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily tasmax > 30 C"
+    description: "Annual count of days whose daily MAXIMUM temperature exceeds 30 C. Naming follows World Bank CCKP (hd30/35/40/45)."
+    use_case: "Broad chronic-heat screen. Saturates in the humid tropics -- 11.8% of observations at the calendar ceiling by ssp585 2090s."
+  hd35:
+    long_name: "Hot days above 35 C"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily tasmax > 35 C"
+    description: "Annual count of days whose daily MAXIMUM temperature exceeds 35 C. THE HEADLINE HOT RUNG. 35 C is defensible on CONVERGENCE across providers (CCKP hd35, Climate Impact Lab 95F, IIED, ILO onset, rail/pavement literature), NOT on physiology -- never write 'physiological limit', and never conflate it with the WET-BULB 35 C survivability figure, itself revised to ~30.6 C by Vecellio et al. 2022."
+    use_case: "Chronic heat exposure for workforce, equipment derating and cooling demand -- but it carries NO humidity term, so it is not a heat-stress index."
+  hd40:
+    long_name: "Hot days above 40 C"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily tasmax > 40 C"
+    description: "Annual count of days whose daily MAXIMUM temperature exceeds 40 C."
+    use_case: "Severe heat. Near-silent outside subtropical deserts on the 2020s baseline."
+  hd45:
+    long_name: "Hot days above 45 C"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily tasmax > 45 C"
+    description: "Annual count of days whose daily MAXIMUM temperature exceeds 45 C. SPARSE -- 70.8% of land is exactly 0 on the 2020s baseline, and the layer carries a sparsity_caveat."
+    use_case: "Extreme heat tail. A portfolio reading all zeros is the layer working, not an extraction failure."
+  TR20:
+    long_name: "Tropical nights above 20 C"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily tasmin > 20 C"
+    description: "Annual count of nights whose daily MINIMUM temperature stays above 20 C. ETCCDI 'TR'. A HEAT metric despite reading on tasmin -- a 'tropical night' is one that fails to cool."
+    use_case: "Overnight recovery. Consecutive hot nights predict heat mortality better than daytime peaks; Singapore is already at 365.2 in the 2020s."
+  TR25:
+    long_name: "Tropical nights above 25 C"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily tasmin > 25 C"
+    description: "Annual count of nights whose daily MINIMUM temperature stays above 25 C. An extension of ETCCDI TR, not the standard 20 C form."
+    use_case: "Severe overnight heat load."
+  ID:
+    long_name: "Ice days"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily tasmax < 0 C"
+    description: "Annual count of days whose daily MAXIMUM temperature stays below 0 C -- days that never thaw. ETCCDI 'ID'. STRICT SUBSET of FD."
+    use_case: "Persistent freezing: frozen ground, ice roads, winter shutdown conditions."
+  FD:
+    long_name: "Frost days"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily tasmin < 0 C"
+    description: "Annual count of nights whose daily MINIMUM temperature falls below 0 C. ETCCDI 'FD'. THE HEADLINE COLD RUNG. Distinct from ID: FD asks whether it froze at some point, ID whether it never thawed -- Chicago is 95.8 FD against 23.5 ID."
+    use_case: "Frost damage, which happens at dawn. Scored higher_is_worse, so the layer reports this hazard FALLING -- see search_results.cold_frost.direction_decision before delivering it."
+  FDm10:
+    long_name: "Hard frost days below -10 C"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily tasmin < -10 C"
+    description: "Annual count of nights below -10 C. NOT a standard ETCCDI index -- an extension chosen here, so do not cite it as one."
+    use_case: "Deep-cold exposure: pipe freezing, equipment cold limits, permafrost-adjacent operations."
+
   cwood:
     long_name: "Carbon Mass in Wood"
     units: "kg m-2"
@@ -1303,6 +1365,18 @@ search_results:
   # -------------------------
   chronic_heat:
     last_searched: "2026-08-14"
+    # BUILT AND SIGNED OFF -- read this before re-searching. Nine layers ship from this
+    # entry, and they are CONSTRUCTED (ISIMIP publishes no threshold-count variable in any
+    # round, which is the headline finding below and still true).
+    built_2026_08_16: >-
+      SHIPPED: heatdays-hd30 / hd35 / hd40 / hd45, tropicalnights-tr20 / tr25 (this family),
+      and icedays-id, frostdays-fd, frostdays-fdm10 (see search_results.cold_frost -- ONE
+      ingest served both). 12 GCMs x ssp126/370/585, uniform. Headline rungs hd35 and FD are
+      status:preferred, the other seven status:alternate; ALL NINE qa_reviewed_on 2026-08-16.
+      Processors scripts/download_reduce_tasthresh_isimip3b.py (stage 1, streams ~1.34 TB and
+      retains none of it) + scripts/process_tasthresh.py (stage 2). Framing, measurements and
+      the QA sign-off record are in DATASET-ATTRIBUTES.md; incidents in WORKFLOW-ISSUES.md
+      2026-08-16. Do NOT re-derive the availability matrix -- it is below and unchanged.
     description: >
       DISTINCT FROM `heatwave` above. That hazard asks "was this year's heat extreme for
       this cell"; this one asks "how many days does an asset sit above a fixed, externally
@@ -1561,6 +1635,44 @@ search_results:
       8. Whether SPARCCLE2025 temp-annual-max / temp-variability is wanted ALONGSIDE (or
          instead of) a constructed count -- ~580 MB and contract-shaped, but an intensity.
          temp-variability is also the only candidate for an ESRS hazard we do not declare.
+
+  # -------------------------
+  # cold wave / frost searches
+  # -------------------------
+  cold_frost:
+    last_searched: "2026-08-14"
+    description: >
+      Cold waves, frost and ice days. SEARCHED AND BUILT AS A CONSTRUCTED INDEX. ISIMIP
+      publishes NO cold or frost IMPACT variable in any round -- the Lange 2020 exposure
+      family has six codes (drought, river flood, wildfire, crop failure, heatwave, tropical
+      cyclone) and none is cold, and no DerivedOutputData publication in 2a/2b/3a/3b carries
+      one. That negative is scoped to what was listed on 2026-08-14 and is the REASON this
+      family is served by counting days against a threshold in the bias-adjusted daily
+      forcing, exactly as chronic_heat is. It is NOT a claim that no cold data exists.
+    built_2026_08_16: >-
+      SHIPPED: frostdays-fd (ETCCDI FD, tasmin < 0 C), frostdays-fdm10 (tasmin < -10 C, NOT a
+      standard index), icedays-id (ETCCDI ID, tasmax < 0 C). 12 GCMs x ssp126/370/585.
+      frostdays-fd is status:preferred; all three qa_reviewed_on 2026-08-16.
+      ONE INGEST SERVED THIS FAMILY AND chronic_heat -- see search_results.chronic_heat for
+      the full availability matrix, the enumeration receipts, the data-nature measurements and
+      the ingest design. Do not re-enumerate; nothing here is specific to the cold rungs
+      except the thresholds and the direction below.
+    direction_decision: >-
+      higher_is_worse ON THE FROST-DAY COUNT (user decision 2026-08-14), matching the ESRS
+      hazard as written. CONSEQUENCE, ACCEPTED AND DECLARED: these layers report a hazard
+      FALLING almost everywhere -- FD declines ~1.9 d/decade at ssp126 early and ~0.95 by the
+      2080s. THE OPPOSITE READING IS ALSO LEGITIMATE and these layers DO NOT CARRY IT: assets
+      harmed by LOSING reliable frost -- crops needing vernalisation chill hours, winter and
+      ice roads needing frozen ground, pest overwintering kill -- face rising risk as these
+      counts fall. Recorded in hazard_taxonomy.yaml families.cold-frost.materiality_note.
+      Revisit before any agricultural or northern-logistics delivery.
+    reference_sites_measured: >-
+      2020s baseline, days per year (2026-08-16, 12-member ensemble): Yakutsk FD 228.5 /
+      FDm10 180.9 / ID 177.6; Winnipeg FD 172.8 / FDm10 92.5 / ID 100.2; Chicago FD 95.8 /
+      ID 23.5; Stockholm FD 97.8 / ID 31.1. Tropics (Singapore, Delhi, Manaus, Nairobi,
+      Kuwait) are 0.0 on every cold rung. FD >= ID holds everywhere by construction -- if the
+      day's MAXIMUM is below freezing its minimum is too -- and was verified as a containment
+      check with 0 violations.
 
   # -------------------------
   # crop failure searches

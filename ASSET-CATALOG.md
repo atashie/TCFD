@@ -387,6 +387,34 @@ looked at and a reviewed one must not produce indistinguishable deliverables.
 
 ---
 
+## Registered but unrouted — layers no asset type reaches yet
+
+A layer in `config/layer_registry.yaml` is **not** thereby in any delivery. It reaches a
+customer only when an asset type in `config/asset_catalog.yaml` names it, and that mapping is
+a user decision. Layers can sit registered, contract-passing and QA-signed-off while
+delivering nothing — deliberately, because declaring hazard coverage before the mapping exists
+produces a report that lists a hazard as assessed and carries no data for it.
+
+As of 2026-08-16 that applies to **eleven** layers: the nine threshold rungs
+(`heatdays-hd30/hd35/hd40/hd45`, `tropicalnights-tr20/tr25`, `icedays-id`,
+`frostdays-fd/fdm10` — chronic heat and cold/frost), plus `heatwave-3b` and `permafrost-3b`.
+`hazard_taxonomy.yaml` keeps `covered_by: []` for all three families to match.
+
+**When routing any of them, three things need deciding with the user, not inferred:**
+
+1. **Which rung.** The ladder ships `hd35` and `FD` as `status: preferred` and the other seven
+   as `alternate`. A data centre may want `TR20` (overnight heat drives cooling load and is
+   the better mortality predictor) rather than the daytime headline; a desert asset may want
+   `hd45`, which is 70.8% zeros globally and *should* be, and reads all-zero for most
+   portfolios by design.
+2. **Whether the absolute or the relative heat layer, or both.** `heatdays-*` and `heatwave-3b`
+   answer different questions and agree on only **47.2%** of their worst-decile cells. Routing
+   one is a choice about the question, not a choice of source.
+3. **The direction of the cold rungs.** They are scored `higher_is_worse` on the frost COUNT,
+   so they report risk *falling*. For assets harmed by losing frost — vernalisation chill
+   hours, ice roads, pest overwintering kill — the risk runs the other way and these layers do
+   not carry it. See `hazard_taxonomy.yaml` `families.cold-frost.materiality_note`.
+
 ## Maintaining the layer registry
 
 The registry deliberately holds **only what a processed NetCDF cannot say about itself**:
