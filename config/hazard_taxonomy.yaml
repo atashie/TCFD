@@ -234,14 +234,45 @@ families:
     cdp_label: "Changing temperature (air, freshwater, marine water)"   # UNVERIFIED
     covered_by: []
     customer_note: >-
-      Not assessed. Gradual warming of mean temperatures is reported here only indirectly, through its effect on the hazards that were assessed.
+      Assessed as the number of days per year crossing fixed air-temperature thresholds (30/35/40/45 C by day, 20/25 C by night). This counts how often a fixed physical threshold is crossed; it carries no humidity term, so it is not a heat-stress or wet-bulb measure.
     isimip_candidate:
-      - "ISIMIP InputData/climate bias-adjusted `tas` -- climate forcing rather than impact-model output."
+      # BUILT 2026-08-16. One ingest served this family AND cold-frost -- once the day is
+      # read, testing it against nine thresholds instead of one costs nothing.
+      - "ISIMIP3b InputData + SecondaryInputData bias-adjusted daily `tasmax`/`tasmin` -> `heatdays-hd30/hd35/hd40/hd45`, `tropicalnights-tr20/tr25`. 12 GCMs x ssp126/370/585. ~1.34 TB streamed, sha512-verified against publisher sidecars, reduced to annual counts and DELETED; provenance in data/interim/tasthresh/download_provenance.csv."
+      - "ISIMIP3b DerivedInputData/SPARCCLE2025 `temp-annual-max` (TXx) and `temp-variability` (TV) -- 4 scenarios x 5 GCMs, annual 0.5 deg, ~580 MB. NOT ingested. An INTENSITY measure (how hot the hottest day gets) rather than a FREQUENCY one, so it would complement rather than duplicate the count layers. Enumerated 2026-08-14."
+    candidates_enumerated_on: >-
+      2026-08-14 -- listed ISIMIP3b/InputData/climate/atmosphere/bias-adjusted/global/{daily,hourly}/
+      for all 4 scenarios x 5 group-I GCMs; the same tree under SecondaryInputData/ for 9
+      extended GCMs; and ISIMIP3b/DerivedInputData/ in full, which had never been listed by this
+      repo and yielded SPARCCLE2025. tasmax coverage is 7 of 9 in the extended root, NOT 9 of 9.
+      NO tasmax exists at hourly cadence in any root (vocabulary there is exactly
+      [hurs, pr, ps, rlds, rsds, sfcwind, tas]), so an hourly index must be built on `tas`.
+      Full matrices in config/isimip_search_catalog.yaml search_results.chronic_heat.
     blocker: >-
-      This is a forcing variable, not an impact. Processing it would put a raw climate
-      variable in a product whose every other layer is an impact-model output, and its
-      percentile would not mean what the others' means. A deliberate design question, not a
-      backlog item.
+      RESOLVED 2026-08-16 by user decision (2026-08-14): build a dry-bulb
+      threshold-exceedance ladder as the ABSOLUTE complement to the relative `heatwave-3b`.
+      THE ORIGINAL OBJECTION IS ANSWERED, NOT DISMISSED, AND ONE THIRD OF IT STILL STANDS.
+      It read: "this is a forcing variable, not an impact... its percentile would not mean
+      what the others' means."
+      (a) It is no longer a raw forcing variable -- a threshold count is a CONSTRUCTED INDEX
+      (GUARDRAILS 1-2), an exposure-frequency measure of the same class as the Lange 2020
+      family, not `tas` republished.
+      (b) The percentile DOES mean what the others' means: percentile-of-score against the
+      2020s ensemble land distribution, two-tier, higher_is_worse -- the identical construction.
+      (c) STILL TRUE: there is NO IMPACT MODEL IN THE CHAIN, so the confidence band carries
+      GCM spread and interannual variability ONLY, with no impact-model structural uncertainty.
+      Declared in every file's `impact_models` and `interpretation_caveat` rather than left to
+      be inferred. The 12 GCMs are also not 12 independent models (two shared-lineage pairs),
+      which is declared in the same place.
+      COVERAGE IS EMPTY ON PURPOSE: `covered_by` stays [] until an asset type in
+      config/asset_catalog.yaml routes to a rung, which needs user sign-off. Declaring
+      coverage first would produce a report listing chronic heat as assessed while delivering
+      nothing for it.
+      HEADLINE RUNG `heatdays-hd35` (status preferred); the rest are built, contract-passing
+      and `status: alternate`. 35 C is defensible on CONVERGENCE (World Bank CCKP hd35,
+      Climate Impact Lab 95F, IIED, ILO onset, rail/pavement literature), NOT on physiology --
+      do not write "physiological limit", and never conflate it with the WET-BULB 35 C
+      survivability number, itself revised to ~30.6 C by Vecellio et al. 2022.
 
   crop-failure:
     name: "Crop failure"
@@ -302,6 +333,22 @@ families:
       SEPARATE PRODUCT, different output contract (20 value types, monthly, no percentile,
       no trends) -- see CLAUDE.md. It cannot be joined to a TCFD delivery without a
       deliberate bridge. Do not silently substitute it.
+      THE ALTERNATIVE ROUTE IS DESIGNED BUT NOT BUILT: docs/water-stress-formulations.md
+      (2026-08-15) works out three candidate layers on the TCFD contract -- W1 soil-moisture
+      deficit, W2 streamflow stress, W3 water stress -- with the formulations, thresholds and
+      sources for each. READ IT BEFORE PROPOSING ANY OF THEM. Three things in it bear on this
+      family directly. (1) ONLY W3 MAY POPULATE covered_by: ESRS E3 defines water stress as
+      withdrawal against availability, so filing W1 or W2 here would assert that the
+      demand-versus-supply question had been assessed when it had not -- the precise overclaim
+      this file exists to prevent. W1 belongs beside drought and W2 (hydrological drought /
+      low flow) has no family yet. (2) Total soil matrix storage potential is NOT available,
+      which removes SWDI, REW and the FAO-56 stress coefficient outright and forces W1 to be a
+      departure-from-local-baseline layer -- i.e. relative_baseline: true and a must-disclose
+      caveat -- while W3 is absolute. (3) Nothing is codeable until the seven pre-flight
+      measurements in its section 5 are taken; every property of our own data in that document
+      is marked UNVERIFIED, including the pivotal one -- whether the demand files are
+      time-varying, since fixed socioeconomic forcing would make every trend in the ratio
+      supply-side. This blocker text needs rewriting when one of the three ships.
 
   soil-degradation:
     name: "Soil degradation"
@@ -515,12 +562,37 @@ families:
     cdp_label: "Cold wave / frost"                   # UNVERIFIED
     covered_by: []
     customer_note: >-
-      Not assessed. Cold waves and frost events are not covered by any layer in this assessment.
-    isimip_candidate: []
+      Assessed as the number of days per year below freezing (frost days, by night temperature) and below -10 C, plus days when the temperature stays below freezing all day (ice days). Scored so that MORE frost is worse, which means this hazard is reported as declining under every scenario.
+    materiality_note: >-
+      DIRECTION IS A LIVE PRODUCT ISSUE, NOT A SETTLED ONE. `higher_is_worse` on the
+      frost-day COUNT is the user's decision of 2026-08-14 and matches the ESRS hazard as
+      written, so these layers report a hazard FALLING almost everywhere (FD declines
+      ~1.9 d/decade at ssp126, ~-0.95 by the 2080s). For assets harmed by LOSING reliable
+      frost -- crops needing vernalisation chill hours, winter roads and ice roads needing
+      frozen ground, pest overwintering kill -- the risk runs the OTHER WAY and THESE LAYERS
+      DO NOT REPRESENT IT. Do not deliver them to an agricultural or northern-logistics
+      customer without saying so explicitly.
+    isimip_candidate:
+      # Same ingest as heat-stress-chronic: one pass over daily tasmin/tasmax served both.
+      - "ISIMIP3b InputData + SecondaryInputData bias-adjusted daily `tasmin`/`tasmax` -> `frostdays-fd` (ETCCDI FD, tasmin<0), `frostdays-fdm10` (tasmin<-10, NOT a standard index), `icedays-id` (ETCCDI ID, tasmax<0). 12 GCMs x ssp126/370/585, built 2026-08-16."
+    candidates_enumerated_on: >-
+      2026-08-14 -- the same enumeration as heat-stress-chronic (one ingest served both
+      families); see that entry for the directories listed. NO published cold/frost IMPACT
+      variable was found in any round: the Lange 2020 exposure family has six codes and none
+      is cold, and no `DerivedOutputData/` publication in 2a/2b/3a/3b carries one. That
+      negative is scoped to what was listed and is the reason this family is served by a
+      CONSTRUCTED index rather than a published product.
     blocker: >-
-      Not in the Lange 2020 family (its six codes are drought, river flood, wildfire, crop
-      failure, heatwave, tropical cyclone -- enumerated 2026-07-24). Not otherwise
-      enumerated. UNVERIFIED as absent.
+      RESOLVED 2026-08-16. The previous text ("Not in the Lange 2020 family... Not otherwise
+      enumerated. UNVERIFIED as absent.") was an honest record of an unmade search, and the
+      search when made found the hazard reachable -- not as a published impact variable, but
+      as a constructed count from the same bias-adjusted daily forcing the heat ladder uses.
+      The negative was always about the Lange 2020 CODE SET, never about the hazard, which is
+      exactly the distinction GUARDRAILS 11 requires and the reason the entry carried the word
+      UNVERIFIED rather than a claim of absence.
+      COVERAGE IS EMPTY ON PURPOSE pending an asset-catalog mapping with user sign-off. See
+      materiality_note before any delivery: the sign of this hazard is asset-dependent and the
+      layers only carry one direction.
 
   precipitation-pattern-change:
     name: "Changing precipitation patterns"

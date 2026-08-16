@@ -89,6 +89,53 @@ the extraction parameters.
 
 ## Layer processing
 
+### Every processor, and where its facts live
+
+**This index is the complete list; the long-form sections below it are not.** They cover 8
+of the 27 `process_*.py` scripts, for historical reasons rather than by design, and a reader
+who treats them as the inventory will conclude that layers shipped since 2026-08-12 do not
+exist. **Nothing per-layer is restated here on purpose** — per
+[CLAUDE.md](../CLAUDE.md) *Where a fact belongs*, a fact about one dataset lives in
+[DATASET-ATTRIBUTES.md](../DATASET-ATTRIBUTES.md), its full detail in the processor's own
+module docstring plus a dated [WORKFLOW-ISSUES.md](../WORKFLOW-ISSUES.md) entry, and the
+processed file's global attributes outrank both. Restating any of it in this file would
+create a source of truth that drifts the moment a layer is reprocessed.
+
+Shipped layers — every one is registered in `config/layer_registry.yaml`:
+
+| Processor | Registry layer(s) |
+|---|---|
+| `process_led_drought.py` | `drought-2b` |
+| `process_driedarea_isimip3b.py` | `drought-3b` |
+| `process_let_cyclone.py` | `cyclone` |
+| `process_burntarea_isimip3b.py` | `wildfire` |
+| `process_cropfailure_isimip3b.py` | `cropfailure-3b` |
+| `process_heatwave_isimip3b.py` | `heatwave-3b` |
+| `process_leh_isimip2b.py` | `heatwave-2b` (`status: blocked`) |
+| `process_thawdepth_permafrost.py` | `permafrost-3b` |
+| `process_coastal_inundation.py` | `sealevel-2b` |
+| `process_fldfrcmax_isimip3b.py` | `flood-3b-flopros`, `flood-3b-40yr`, `flood-3b-none` |
+| `process_tempnle_npp.py` | `conifer-npp` (asset condition, **not** a hazard) |
+| `process_csoil_soilcarbon.py` | `csoil` |
+| `process_tasthresh.py` | `heatdays-hd30/hd35/hd40/hd45`, `tropicalnights-tr20/tr25`, `icedays-id`, `frostdays-fd/fdm10` — nine rungs from one ladder |
+
+Not registered — earlier or withdrawn work. **These are not shipped layers**, and passing the
+output contract never made one of them meaningful:
+
+| Processor | State |
+|---|---|
+| `process_burntarea_fire.py` | **superseded 2026-08-10** by `process_burntarea_isimip3b.py` |
+| `process_sug_sugarcane.py` | **withdrawn** — LPJmL does not simulate cane in the cane belt; both layers passed every check and were meaningless |
+| `process_qg.py`, `process_evgndltr.py`, `process_tebrsu.py`, `process_timber.py`, `process_loblolly.py`, `process_loblolly_cveg.py`, `process_loblolly_npp.py`, `process_fish_tcb.py`, `process_fish_b30cm.py`, `process_health_mortality.py` | exploratory layers predating the current contract; none is in the registry, so none can reach a delivery |
+
+Water Risk Index — **a different product**; none of the TCFD contract applies (see
+[CLAUDE.md](../CLAUDE.md)):
+
+| Processor | Scope |
+|---|---|
+| `process_water_tws.py` | total water storage |
+| `process_water_variable.py` | the generic monthly water variable processor |
+
 ### generate_maps.py
 
 Generates interactive Plotly maps from processed climate data.
