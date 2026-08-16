@@ -456,6 +456,87 @@ search_results:
         gsprcp: "Growing-season precipitation."
 
   # -------------------------
+  # pluvial (surface-water) flood searches -- intense daily precipitation
+  # -------------------------
+  pluvial_flood:
+    last_searched: "2026-08-16"
+    status: "ENUMERATED AND VALUE-CHECKED. NOT INGESTED -- two design decisions are open, see open_decisions."
+    description: >
+      DISTINCT FROM river_flood below. That hazard is channel overflow simulated by a
+      hydrological model; this one is rainfall intensity overwhelming local drainage, which
+      NO ISIMIP model simulates. There is no pluvial-flood impact variable in any round, so
+      the hazard can only be approached as a CONSTRUCTED INDEX over bias-adjusted daily `pr`
+      -- the same shape as the chronic_heat/cold_frost ladder, and subject to GUARDRAILS 1-2.
+    enumerated: >-
+      2026-08-16 -- listed
+      ISIMIP3b/{InputData,SecondaryInputData}/climate/atmosphere/bias-adjusted/global/daily/
+      for ssp126, ssp370, ssp585 and every GCM directory in both roots.
+      DAILY `pr` HAS 14 GCMs, TWO MORE THAN tasmax/tasmin: 5 group-I (GFDL-ESM4,
+      IPSL-CM6A-LR, MPI-ESM1-2-HR, MRI-ESM2-0, UKESM1-0-LL) + 9 extended (CESM2-WACCM,
+      CNRM-CM6-1, CNRM-ESM2-1, CanESM5, EC-Earth3, IITM-ESM, KACE-1-0-G, MIROC6, TaiESM1).
+      CESM2-WACCM and IITM-ESM publish `pr` but NOT `tasmax` -- so a 14-GCM precipitation
+      layer would NOT share a member set with the heat ladder.
+      9 chunks per (GCM, scenario), 2015-2100; IITM-ESM ends 2099, which is immaterial because
+      2100 is dropped anyway. ~2.10 GB/chunk -> ~0.79 TB at 14 GCMs, ~0.68 TB at 12.
+    data_nature_measured: >-
+      2026-08-16 via scripts/check_pr_nature.py, on 4 members spanning both roots INCLUDING
+      the two GCMs unique to `pr` (one chunk each, downloaded, measured, deleted).
+      UNIFORM ACROSS ALL FOUR: units 'kg m-2 s-1' (a FLUX -- x86400 for mm/day),
+      long_name 'Precipitation', calendar proleptic_gregorian, ZERO negative values.
+      Scale confirmed FROM VALUES, not from the declared unit: land mean 2.08 / 2.14 / 2.11 /
+      2.09 mm/day after x86400, which is physically right. group-I sidecars again carry NO
+      netcdf_header, so their unit is unreadable without opening the file.
+      THE FIELD IS FINITE OVER 100% OF THE GRID INCLUDING OCEAN -- `isfinite` is NOT a mask,
+      the landseamask is (same as the temperature counts).
+      Daily maxima 379.8-600.0 mm/day. Wet days (>=1 mm) median 84-87 per cell-year.
+      CELLS WITH ZERO WET DAYS IN ONE YEAR: 196-738 of 65,797 -- a 3.8x spread across
+      members, i.e. modelled desert extent is itself uncertain; measure it on the full
+      ensemble, not on a probe.
+    the_finding_that_shapes_the_design: >-
+      PRECIPITATION IS NOT A SECOND TEMPERATURE LADDER. Each cell's 95th percentile of WET
+      days spans 3.0-161.5 mm/day across the land surface -- a 35x to 44x range depending on
+      member, median ~17-18 mm/day. Daily temperature varies about two-fold globally, so a
+      fixed threshold means roughly the same thing everywhere; a fixed mm/day threshold does
+      NOT. 20 mm/day sits near the p95 of the MEDIAN cell (a 1-in-20-wet-day event) while
+      being unreachable in the driest cells and an ordinary wet day in the wettest. So the
+      absolute-vs-local-percentile choice is not stylistic here the way it was for heat --
+      it changes which places the layer is even capable of ranking.
+    reference_sites_measured: >-
+      2026-08-16, one ssp585 year per member, 0.5 deg cell totals (mm/yr), across the 4
+      probed members: Cherrapunji 6301-7688 (wettest, correct -- the cell mean is far below
+      the station's ~11,800 because the orographic maximum is sub-grid), Mumbai 2365-3130,
+      Singapore 2090-2826, Manaus 1710-2450, Seattle 1166-1292, London 646-720,
+      Phoenix 122-447, Cairo 13-43. The ORDERING is physically correct in every member.
+      NOTE Phoenix's 3.7x spread and Seattle reading above its station normal: a 55 km cell
+      around a desert or coastal city includes higher terrain, and one year is not a
+      climatology. Re-express these as multi-year cell ranges before using them as a gate.
+    open_decisions: |
+      NOT pre-answered. Both change the work materially.
+      1. GCM POOL -- 14 or 12. 14 is the deeper ensemble and matches the standing preference,
+         but CESM2-WACCM and IITM-ESM have no tasmax, so a site's heat and rainfall numbers
+         would come from different model sets and cross-layer statements need a caveat.
+         12 keeps the ensembles identical at the cost of two members.
+      2. THRESHOLD FRAMING -- absolute, local-percentile, or both.
+         * ABSOLUTE (ETCCDI R10mm/R20mm/Rnnmm, plus Rx1day/Rx5day intensity): comparable
+           across sites, needs no baseline, but concentrates all signal in the wet tropics
+           and is near-silent across the arid belt.
+         * LOCAL-PERCENTILE (ETCCDI R95p/R99p): arguably the better PLUVIAL proxy, because
+           drainage is designed to local historical rainfall rather than to an absolute
+           depth. But it is a relative_baseline layer -- the Iowa-outranks-the-Sahel class,
+           MUST-DISCLOSE -- and it is not single-pass: per-cell thresholds are unknown until
+           the baseline has been read, so the baseline decade must be streamed twice
+           (~+22% volume).
+         * BOTH, as one ladder, is consistent with the heat decision and the marginal cost of
+           a rung is still near zero once the two-pass structure exists.
+      3. HEADLINE RUNG. Rx1day (annual maximum 1-day rainfall) needs no threshold choice at
+         all and is the classic pluvial driver, so it is the natural headline whichever
+         framing is adopted.
+      4. WHAT THIS PROXY CANNOT DO, and it must be said in any delivery: pluvial flooding is
+         rainfall intensity against DRAINAGE CAPACITY, and drainage is not in this data at
+         all. The layer ranks rainfall hazard, never flood outcome, and an urban cell with
+         good drainage and a rural one with none read identically.
+
+  # -------------------------
   # river (fluvial) flood searches
   # -------------------------
   river_flood:
