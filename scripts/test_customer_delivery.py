@@ -23,6 +23,7 @@ Checks:
   5. slopes_agree matches the active-cell rule.
   6. Baseline-decade slopes are NaN.
   7. data_status agrees with whether `value` is finite.
+  8. Taxonomy -> registry linkage: every `covered_by` entry names a real layer.
 """
 
 import hashlib
@@ -35,6 +36,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import xarray as xr
+import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -354,6 +356,52 @@ def check_reports(delivery: Path, manifest: dict, values, assets, layers) -> Non
               "bespoke report reference numbering is not contiguous from 1")
 
 
+def check_taxonomy_registry_link() -> None:
+    """Every `covered_by` entry names a layer the registry actually has.
+
+    This is a property of the repo config rather than of THIS delivery, and it belongs in the
+    verifier anyway because its failure mode is invisible everywhere else and ends up in a
+    customer document. `report_common.coverage_summary()` intersects a family's `covered_by`
+    with the layers a delivery actually carries, so an entry naming a layer the registry does
+    not have can never match anything: the family reports as NOT ASSESSED in every report
+    while `hazard_taxonomy.yaml` asserts it is covered. Both files look correct read on their
+    own, which is why this needs a machine.
+
+    It is not hypothetical. `permafrost-3b` shipped 2026-08-14 -- processed, documented, and
+    named in `families.permafrost-thaw.covered_by` -- and was not added to the registry until
+    2026-08-16. For two days the taxonomy claimed a hazard the registry had never heard of,
+    and every report built in that window would have filed permafrost thaw under "hazards not
+    assessed" while the taxonomy said otherwise.
+
+    Read from the YAML rather than through `load_registry()` / `load_hazard_taxonomy()`, for
+    the reason spelled out at TIER above: asking the writer's own loader what the writer wrote
+    proves that the loader is deterministic, not that the two files agree.
+
+    NOT CHECKED HERE, DELIBERATELY: the reverse direction. A registered layer that no family
+    lists is legitimate -- `csoil` is deliberately uncovered pending a hazard-vs-asset-condition
+    decision, and only one rung of a threshold ladder is ever the `preferred` one. Asserting
+    the reverse would fail on layers that are correct. It is worth auditing by hand when a
+    layer ships; it is not a contract.
+    """
+    registry = yaml.safe_load((PROJECT_ROOT / "config" / "layer_registry.yaml").read_text())
+    taxonomy = yaml.safe_load((PROJECT_ROOT / "config" / "hazard_taxonomy.yaml").read_text())
+    known = set(registry.get("layers") or {})
+    check(bool(known), "config/layer_registry.yaml declares no layers")
+
+    for family, spec in (taxonomy.get("families") or {}).items():
+        for layer_id in spec.get("covered_by") or []:
+            check(layer_id in known,
+                  f"hazard_taxonomy family {family!r} is covered_by {layer_id!r}, which is "
+                  f"not in config/layer_registry.yaml -- the family will report as NOT "
+                  f"ASSESSED in every report while the taxonomy claims it is covered")
+
+    for layer_id in taxonomy.get("non_hazard_layers") or {}:
+        check(layer_id in known,
+              f"hazard_taxonomy non_hazard_layers names {layer_id!r}, which is not in "
+              f"config/layer_registry.yaml -- it cannot be excluded from a hazard count "
+              f"it can never appear in")
+
+
 def main(delivery: Path) -> int:
     global checks_run
     for name in ("locations.csv", "assets.csv", "layers.csv", "values.csv", "manifest.json"):
@@ -377,6 +425,9 @@ def main(delivery: Path) -> int:
     print(f"Delivery: {delivery}")
     print(f"  {len(locations)} locations, {len(assets)} assets, "
           f"{len(layers)} layers, {len(values)} value rows")
+
+    # 0. config linkage -- checked before the delivery, because it is upstream of it -------
+    check_taxonomy_registry_link()
 
     # 1. referential integrity ----------------------------------------------------------
     check(assets["location_id"].isin(locations["location_id"]).all(),

@@ -74,6 +74,12 @@ with a Gaussian weighting written independently of `spatial_extract`, then check
 integrity, source hashes, percentile orientation, the Climate Score, the dashboard payload,
 the caveat coverage of both reports, and narrative citations. Exits non-zero on any violation.
 
+It also checks one thing **upstream** of the delivery: that every `covered_by` entry in
+`config/hazard_taxonomy.yaml` names a layer `config/layer_registry.yaml` actually has. A
+dangling entry can never match the layers a delivery carries, so the family reports as NOT
+ASSESSED in every report while the taxonomy claims it is covered — and both files read
+correctly on their own. `permafrost-3b` sat in exactly that state for two days.
+
 ```bash
 python scripts/test_customer_delivery.py deliveries/acme/20260813
 ```
