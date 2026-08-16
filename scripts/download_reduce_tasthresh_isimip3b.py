@@ -15,6 +15,15 @@ appended to download_provenance.csv BEFORE the file is deleted, so the ingest re
 auditable against a file we no longer hold. That is a deliberate deviation from the
 data/raw/{layer_id}/ retention convention and is declared in the interim file's attributes.
 
+WHY PROCESSES AND NOT THREADS. HDF5 -- which netCDF4 sits on -- is NOT thread-safe unless
+built with its threadsafe option, and the wheel installed here is not. Four workers in a
+ThreadPoolExecutor issuing concurrent nc_get_vara calls crashed the interpreter twice with
+SIGBUS inside H5S_select_iter_init (crash reports Python-2026-08-14-134609.ips and
+-143132.ips), while the single-worker smoke test and the single-threaded value check both
+completed. Parallelism is still wanted -- 4 streams measured 9.0 MB/s against 5.0 for one --
+so it is provided by PROCESSES, each with its own HDF5 state. Do not "simplify" this back
+to threads.
+
 WHY A DAY COUNT NEEDS THE CALENDAR MEASURED (GUARDRAILS 9). A 360_day member gets 360
 chances a year to cross a threshold and a proleptic_gregorian one gets 365.25. That is a
 ~1.5% low bias which is CONSTANT PER MEMBER, so it does not average out -- it moves with
@@ -40,7 +49,7 @@ import re
 import sys
 import time
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -340,7 +349,7 @@ def main():
         return 0
 
     done, failed = [], []
-    with ThreadPoolExecutor(max_workers=a.workers) as ex:
+    with ProcessPoolExecutor(max_workers=a.workers) as ex:
         futs = {ex.submit(reduce_member, g, s, a.force, a.max_chunks): (g, s)
                 for g, s in jobs}
         for f in as_completed(futs):
