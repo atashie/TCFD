@@ -463,3 +463,49 @@ revert, then confirm what you discarded was only yours.
 
 **Related**: §11 (do not hand over a claim you have not verified — including "nothing was
 lost").
+
+---
+
+## 16. Long-Running Background Ingests: Kill the GROUP, and Never Trust a Long Socket Timeout
+
+Two defects cost ~6 hours on the precipitation ingest (2026-08-17). Both are invisible while
+they happen — the job looks like it is running.
+
+**`pkill -f <script>` does NOT kill a ProcessPoolExecutor's children on macOS.** The pool uses
+**spawn**, so each worker's command line is `python -c from multiprocessing.spawn import
+spawn_main; ...` and matches nothing you would grep for. Four workers from a killed run stayed
+alive for six hours with `ppid 1`, downloading into and deleting from the **same staging
+directory** as the replacement run. The visible symptoms pointed everywhere but here:
+
+* `FileNotFoundError` on a staging path, because an orphan's `finally: unlink` removed a file
+  the live worker was about to checksum;
+* throughput apparently collapsing, because 12 streams were competing for one link — which
+  also **invalidated a concurrency measurement**: "8 workers is slower than 4" was really
+  "12 streams is slower than 4".
+
+Launch detached work with `start_new_session=True` (so the process is a group leader) and stop
+it with `kill -TERM -<pgid>` / `kill -KILL -<pgid>`. **Then verify**:
+
+```bash
+ps -eo pid,ppid,command | grep '[s]pawn_main' | awk '$2==1'   # orphans have ppid 1
+```
+
+Any shared staging directory should also fail loudly rather than mysteriously: check the file
+still exists immediately before hashing it, and say "another process is writing here".
+
+**`urlopen(timeout=N)` is PER SOCKET OPERATION, not a download budget.** `timeout=3600` was
+chosen so a 2 GB file would have time to arrive; what it actually means is "block for up to an
+hour on a single `read()`". When the server left connections half-open, eight workers sat at
+**0.0% CPU with byte counts frozen**, each due to wait the full hour before erroring — a stall
+indistinguishable from slow progress unless you compare file sizes over time.
+
+Use a short read timeout (~120 s) and retry the **whole chunk** on failure. Do not resume with
+a `Range` header: a resume at the wrong offset yields a file that passes a size check and
+fails sha512, which costs more to diagnose than a re-fetch. Check the publisher sidecar's size
+immediately after the transfer so a truncated body is caught there rather than at the checksum.
+
+**Diagnosing a stall**: `ps -o stat,%cpu` showing `S` and `0.0`, plus staging file sizes
+identical across a 60 s interval, is a hung socket — not a slow server.
+
+**Related**: §15 (do not destroy the working tree), §11 (a measurement taken under unknown
+conditions is not evidence).
