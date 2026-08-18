@@ -541,3 +541,58 @@ here.
 
 Then hand off to the `isimip-process-visualize` skill. The output contract it must satisfy
 is [OUTPUT-SPEC.md](../../../OUTPUT-SPEC.md).
+
+---
+
+## ISIMIP publishes its own river network — check before reaching for HydroSHEDS
+
+`ISIMIP3b/InputData/geo_conditions/river_routing/` holds DDM30: basin IDs (11,558 basins),
+D8 flow direction, and channel slopes. ~1.7 MB total, **native on the 0.5° grid**. Found
+2026-08-17, three weeks after basin aggregation was first written off as needing an external
+ingest. Two habits would have found it sooner:
+
+- **`InputData/` is not just climate forcing.** `geo_conditions/` and `socioeconomic/` carry
+  routing, land masks, soil, reservoirs, inter-basin transfers and water abstraction.
+- **List the directory rather than reasoning about what a repository "would" publish.**
+
+**Grid trap:** DDM30 latitude *ascends* across 280 rows (−55.75 → 83.75); model output
+*descends* across 360 (89.75 → −89.75). Align by exact coordinate match. Never assume.
+
+**Direction codes are `1=E 2=SE 3=S 4=SW 5=W 6=NW 7=N 8=NE`** for ascending latitude — ESRI
+ordering renumbered 1–8. Determined by searching all 16 candidate mappings for the one
+yielding an acyclic network; a plausible first guess trapped 59% of cells in cycles. **If you
+use a flow-direction grid, verify acyclicity before trusting it**, and sanity-check the
+largest accumulation against a known basin (the Amazon mouth: 1,946 cells ≈ 6.0 M km²).
+
+## Input forcing may not cover what its name implies
+
+`socioeconomic/water_abstraction/` publishes domestic and industrial withdrawal in m³/yr —
+and **no irrigation at all**, in any of its six soc directories. Irrigation is computed
+inside each impact model. So the transient SSP demand forcing spans ~30% of global withdrawal
+and omits the dominant sector. **Enumerate the variable list before designing around a
+directory's name.**
+
+## Read provenance attributes before comparing two products
+
+`water_abstraction/2015soc/domww` carries `comment = "prepared from ISIMIP2a data (H08,
+PCR-GLOBWB, WaterGAP) for ISIMIP2b"`. It is a three-model average from a *previous round*.
+A comparison against an ISIMIP3b model output is not "the same quantity published twice", and
+treating it as one produced a confidently wrong conclusion (GUARDRAILS §14.1). Its `history`
+also records the `cdo setmisstoc,0` that zero-fills the globe — 138,264 of 201,600 cells are
+exact zeros, all finite, so `isfinite` is not a mask.
+
+## Sidecars can disagree with the data they describe
+
+CWatM's 3b `water_global` directory holds 153 `.nc` all carrying `2015soc-from-histsoc`,
+while 123 of 156 `.json` sidecars carry `2015soc`. **A download list built from sidecar names
+404s.** Verify by Content-Length where the checksum path does not resolve — and verify
+checksums for files already on disk, not only ones fetched this run.
+
+## Per-model metadata heterogeneity to expect
+
+- **Calendar differs by model**: WaterGAP2-2e `365_day`, H08 `proleptic_gregorian`, same
+  variable and period. Read it per file.
+- **`cellarea` / `contfrac` are published by only some models** (3 of 10 in 3b water), and
+  the two published `cellarea` grids differ by up to 0.9%.
+- **`contfrac` carries `units = "1"` and holds percent (0–100).** A 100× error waiting.
+- **`soilmoist` depth ranges 1–20 layers across models** — not one variable.

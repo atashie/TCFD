@@ -467,7 +467,7 @@ search_results:
         models_with_rootmoist: ["lpjml5-7-10-fire", "miroc-integ-land", "web-dhm-sg"]
         scenarios: ["ssp126", "ssp370", "ssp585"]
         cadence: "soilmoist is MONTHLY for all 9 (h08/watergap2-2e/miroc-integ-land also publish daily)"
-        soc_variants: "SIX per scenario -- 1850soc, 2015soc, ssp{N}soc-{adapt,noadapt}+{image,magpie}. A soc choice is REQUIRED here; contrast driedarea, which is uniform 2015soc."
+        soc_variants: "CORRECTED 2026-08-16 -- the SIX-variant claim was probed on H08 and is H08-ONLY. Across all 25,375 projected 3b water_global future rows the twelve ssp{N}soc-{adapt,noadapt}+{image,magpie} tokens carry 370 files each, all H08. Everyone else publishes at most 1850soc/2015soc/2015soc-from-histsoc, and CWatM publishes ONLY 2015soc-from-histsoc -- so CWatM and H08 SHARE NO SOC VARIANT AT ALL. H08 is the only 3b water model with transient SSP demand."
         volume: "~250 MB per monthly soilmoist file -> ~34 GB for 9 models x 5 GCMs x 3 scenarios at ONE soc variant (GCM completeness per model NOT verified)"
         caveat: "A drought layer from these is a CONSTRUCTED INDEX (SPI/SPEI/soil-moisture percentile threshold), i.e. a modelling decision to make with the user, NOT an aggregation -- GUARDRAILS 1-2. driedarea by contrast ships the index already computed."
       variables:
@@ -3957,3 +3957,90 @@ repository_structure_cache:
     small_models: "ELM-ECA ~123 files, VISIT ~168, MC2-USFS ~216 -- seconds"
     full_3b_vegetation_sweep: "59 listings across biomes+fire+permafrost; budget ~2 h serial"
     agriculture_sweep: "150 listings across all four rounds; ~25 min serial"
+
+  # =========================================================================
+  # water sector -- FULL ENUMERATION 2026-08-16
+  # 109 {MODEL}/{gcm}/future/ dirs walked serially (47 in 3b, 62 in 2b),
+  # 35,977 files projected from the END of the filename. Zero EMPTY/FAILED.
+  # =========================================================================
+  water_sector_enumeration:
+    receipt: "2026-08-16, serial listings, 3 retries, empty listing treated as failure."
+    total_withdrawal_publishers_3b:
+      ptotww_ptotuse: ["CWatM", "H08", "LPJmL5-7-10-fire", "WaterGAP2-2e"]     # 4
+      atotww: ["CWatM", "H08", "LPJmL5-7-10-fire"]                             # 3, a DIFFERENT three
+      atotuse: ["H08", "LPJmL5-7-10-fire", "WaterGAP2-2e"]                     # 3, another
+      sectoral_only: ["MIROC-INTEG-LAND"]
+      none_at_all: ["CLASSIC", "JULES-ES-VN6P3", "JULES-W2", "VISIT", "WEB-DHM-SG"]
+    no_nosoc_in_3b: >-
+      VERIFIED 2026-08-16 over the complete soc token set. `1850soc` is the closest
+      naturalised run and exists for H08, LPJmL5-7-10-fire, WaterGAP2-2e and
+      MIROC-INTEG-LAND -- NOT CWatM. 2b DOES have `nosoc` (JULES-W1, ORCHIDEE,
+      ORCHIDEE-DGVM, VIC) but NONE of those publishes any demand variable, so the
+      naturalised and demand model sets are disjoint in 2b.
+    no_rcp85soc_in_2b: >-
+      VERIFIED 2026-08-16. Transient soc exists only as matched rcp26/rcp26soc and
+      rcp60/rcp60soc, for CWatM, H08, LPJmL and MATSIRO, and SECTORAL ONLY -- never totals.
+    watergap2_2b_empty: >-
+      ISIMIP2b `WaterGAP2` (the non-2c version) has `future/` AND `future_extended/` and
+      BOTH ARE EMPTY at all four GCMs -- verified 2026-08-16 by direct listing. Superseded
+      by WaterGAP2-2c. Matters because `watergap2` appears in the 2b `led` ensemble list.
+
+  # ---- THE FIND THAT UNBLOCKED THE ROUTED CONSTRUCTION
+  river_routing_3b:
+    path: "ISIMIP3b/InputData/geo_conditions/river_routing/"
+    files: ["ddm30_basins_cru_neva.nc", "ddm30_flowdir_cru_neva.nc", "ddm30_slopes_cru_neva.nc"]
+    size: "~1.7 MB total"
+    why_it_matters: >-
+      ISIMIP PUBLISHES ITS OWN RIVER NETWORK. No HydroBASINS/HydroSHEDS dependency is
+      needed for basin aggregation or upstream accumulation. DDM30 is the 30-arcminute
+      drainage map, NATIVE on the 0.5 deg grid -- no regridding.
+    grid: >-
+      280 lat rows ASCENDING -55.75..83.75 (trims Antarctica and the polar ocean) x 720 lon.
+      Model output is 360 rows DESCENDING 89.75..-89.75 -- align by EXACT coordinate match,
+      never by assuming orientation. Land mask 67,424 cells vs the water models' 67,420.
+    d8_convention: >-
+      MEASURED 2026-08-17, not read from documentation: 1=E 2=SE 3=S 4=SW 5=W 6=NW 7=N 8=NE
+      for ascending latitude; 0 and -1 are sinks/outlets. This is the ESRI ordering
+      renumbered 1-8 instead of powers of two. A systematic search of all 16 candidate
+      mappings found EXACTLY ONE with zero cycles; the runner-up leaves 2,893. A first
+      guess (1=N, clockwise) trapped 39,773 of 67,424 cells in cycles.
+    validation: >-
+      Acyclic, topological pass reaches all 67,424 cells. Largest accumulation at 0.25N
+      50.25W -- the Amazon mouth -- 1,946 upstream cells ~= 6.0 M km2 against an actual
+      6.1 M. 11,474 of 11,558 basins drain to a single terminus; 14,095 termini for 11,558
+      basins, so some reach the sea through multiple mouths (the likely 84 exceptions).
+    per_model_agreement: >-
+      Each model routes on its OWN network. Accumulating qtot along DDM30 and comparing
+      cell-wise to that model's published dis: H08 0.13% deficit cells, LPJmL5 0.10%,
+      WaterGAP2-2e 3.45%. LPJmL5's apparent disagreement is CHANNEL LOSS, not topology --
+      its ratio climbs monotonically with catchment size. Only the DEFICIT tail
+      (acc < dis) is a one-sided network signal, because evaporation can only ever make
+      accumulated runoff EXCEED discharge.
+
+  water_abstraction_input_3b:
+    path: "ISIMIP3b/InputData/socioeconomic/water_abstraction/"
+    soc_dirs: ["1850soc", "2015soc", "histsoc", "ssp126soc-noadapt", "ssp370soc-noadapt", "ssp585soc-noadapt"]
+    variables: ["domww", "domwc", "indww", "indwc"]      # and the SSP dirs add -modelavg/-modelstd
+    units: "m3/yr (already volumetric, unlike the model outputs)"
+    THE_CATCH: >-
+      NO IRRIGATION FIELD, in any of the six directories (verified 2026-08-16). Irrigation
+      is computed INSIDE each hydrological model from the land-use forcing, which is why
+      `pirrww` is a model output. So the transient SSP demand forcing covers only the two
+      sectors that are ~30% of global withdrawal and omits the dominant, most
+      climate-sensitive one. A hybrid of "transient demand forcing x deep supply ensemble"
+      is NOT available.
+    provenance_trap: >-
+      The 2015soc file's own `comment` reads "prepared from ISIMIP2a data (H08,
+      PCR-GLOBWB, WaterGAP) for ISIMIP2b" -- it is a THREE-MODEL AVERAGE FROM A PREVIOUS
+      ROUND, not an ISIMIP3b per-model forcing. Comparing a 3b model output against it is
+      NOT "the same quantity published twice". Its `history` records the `cdo setmisstoc,0`
+      that zero-fills the globe: 138,264 of 201,600 cells are exact zeros, all finite, so
+      `isfinite` is NOT a mask. See GUARDRAILS 14.1.
+
+  cwatm_3b_sidecar_defect:
+    measured: "2026-08-16"
+    detail: >-
+      CWatM's 3b water_global directory holds 153 `.nc` files ALL carrying
+      `2015soc-from-histsoc`, while 123 of its 156 `.json` sidecars carry `2015soc`. A URL
+      list built from sidecar names 404s against the data. Verify CWatM downloads by
+      Content-Length, not by fetching the sha512 at the matching path.

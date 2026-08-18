@@ -450,3 +450,63 @@ agreement and dilutes the Sen zero-share. On `let` the two views read 3.0%/97.0%
 `utils/layer_publish.py` exist only on `origin/main` and are S3-coupled. The *lessons*
 above apply now; the *tooling* is pending port. Do not reference these modules until they
 land locally. (`trend_significance.py` is superseded by the dual-slope contract.)
+
+---
+
+## Fill values, masks, and the `isfinite` trap (measured 2026-08-18)
+
+`netCDF4`'s `set_auto_mask(True)` masks correctly — but **`np.asarray()` discards the mask**,
+and the restored `_FillValue` of `1e20` is *finite*, so it passes `isfinite` and enters every
+sum, mean and percentile. An unguarded global total returned `3.6e41`.
+
+```python
+a = np.asarray(v[:], np.float64)
+a = np.where(np.abs(a) >= 1e19, np.nan, a)   # mask by MAGNITUDE, before any arithmetic
+```
+
+Some publishers zero-fill instead: the ISIMIP `water_abstraction` input has 138,264 exact
+zeros of 201,600 cells, all finite. **`isfinite` is not a land mask** — this is the same trap
+already on file for `cropfailure-3b`.
+
+## Building a ratio layer
+
+A ratio has an unbounded denominator, which behaves unlike every aggregate-style layer here.
+
+**Write a precedence table, in two phases, and follow it exactly.** Monthly rules and annual
+rules are different rules; conflating them changes which cells survive. Order that survived
+review: metric-specific domain → fill normalisation → **negatives counted** → **mask** →
+zero numerator → positive-numerator/zero-denominator counted *and mapped* → ratio → then,
+per year, a 12-valid-month requirement → reduction → a **no-`inf` postcondition**.
+
+Two orderings that look right and are not: returning zero before checking negatives lets a
+defect through as a valid value; and putting the mask *after* the zero rules means an
+off-mask cell returns 0 rather than NaN.
+
+**`denominator == 0` is not an overflow defence.** A denominator of `1e-30` is finite and
+passes every rule. Either a mask or a declared cap is required.
+
+**A mask built from an ensemble mean is wrong for a per-member operation.** It lets one
+member's data license another's value — measured: 686 cells passed a pooled river mask while
+their own member baseline was three orders of magnitude below the threshold, returning `6e9`.
+
+**A cap makes a CENSORED field.** Declare the share at the bound per metric, and remember
+OUTPUT-SPEC's warning that both slope estimators collapse to ~0 and *agree* there — so slope
+agreement is not evidence of a robust trend. Measure censoring before choosing which metrics
+ship: on water stress the annual routed metric came out at 0.084% and the worst-month at
+2.47%, which is what held the latter back.
+
+## Diagnosing an extreme value
+
+**Print the single worst cell — its location, inputs, and own time series — before reasoning
+about the population.** Three successive masks were proposed on hypotheses about the
+population and all three were wrong; the actual cause was visible immediately in one cell.
+A maximum tells you nothing about how many cells produce it: there, the entire pathology was
+0.016% of cell-years in 174 cells.
+
+## Reference sites for a ROUTED layer
+
+A single named coordinate is not a valid test. The Indus reads **1.75** upstream and **0.24**
+downstream and both are correct — upstream concentrates withdrawal, downstream divides the
+same accumulated demand by the full natural flow. **Use basin-scale aggregates**, or name the
+specific reach and its expected direction. Do the check *before* generating QA maps: a layer
+can pass `test_shared_baseline.py` and still put the stress in the wrong place.

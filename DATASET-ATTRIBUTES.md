@@ -808,3 +808,55 @@ index measures".
 
 Any future layer with a physical or definitional bound should set one of these attributes
 rather than describing the problem in prose that nothing reads.
+
+---
+
+## waterstress-3b — ISIMIP3b WaterGAP2-2e (development, 2026-08-18)
+
+**Four layers, one processor.** `scripts/process_waterstress_isimip3b.py` →
+`data/processed/waterstress-isimip3b/{R_ann,R_max,L_ann,L_max}_{scenario}_processed.nc`.
+QA maps at `reports/maps/waterstress-isimip3b/{metric}/index.html`.
+Full design and review trail: [docs/water-stress-status-2026-08-17.md](docs/water-stress-status-2026-08-17.md).
+
+| | |
+|---|---|
+| Ensemble | **1 impact model** × 5 GCMs × 3 SSPs = 5 members/scenario |
+| Numerator | `ptotww` @ `2015soc` — potential total withdrawal, all sectors |
+| Denominator | `dis` (routed) or `qtot` (local) @ **`1850soc`** — naturalised |
+| Routing | DDM30 D8, `InputData/geo_conditions/river_routing/`, native 0.5° |
+| Conversion | `flux × cellarea[km²] × (contfrac/100) × 1000` |
+| Calendar | `365_day` |
+| Cap | ratio capped at **100**, declared arbitrary |
+| Status | **not routed in asset_catalog, not counted in hazard_taxonomy** |
+
+**Why one model.** Four ISIMIP3b models publish an all-sector total withdrawal; three also
+publish the `1850soc` naturalised supply. Measured across all three: they do **not** differ
+by a scale factor — the driest-to-wettest ordering **reverses in 68.4% of cells**, and 62.9%
+of that is already present in the land-surface runoff before any routing. The spread is
+regime-structured: WaterGAP driest in arid basins (Colorado **29.7×**, Nile 5.3×), LPJmL in
+the Arctic, H08 in the wet tropics. WaterGAP2-2e was selected as the only one simulating
+lake/wetland evaporation and the only one whose naturalised Nile (3,053 m³/s vs ~2,700–2,800
+observed) and Murray (232 vs ~380) are near reality — H08 and LPJmL overshoot the Nile 3×
+and 6×. **This is a selection on the outcome and the reports must say so.** Provisional;
+revisit when a second model gains an `1850soc` run with total withdrawal.
+
+**Censoring, measured per metric.** `R_ann` 0.084% · `L_ann` 0.280% · `R_max` 2.472% ·
+`L_max` 2.687% of member-years at the cap. The annual routed metric is barely censored; both
+worst-month metrics are ~30× more so, which is one of two reasons they are held back.
+
+**Known defect (open).** A reference-site check found the **Nile in Egypt reading
+`n_members = 0`** despite 3,024 m³/s of natural discharge and being 97% of its local maximum,
+while Aswan 300 km upstream reads 5/5. Rule 8 (12-valid-month) or the per-member mask is
+dropping cells it should not. Fix before any delivery.
+
+**Reference-site status.** Low-stress 5/5 (Amazon, Congo, Lena, boreal Canada, New Guinea all
+0.000–0.002). High-stress 5/8 — Colorado 4.99, Central Valley 3.56, North China Plain 1.98,
+Tigris–Euphrates 1.15, Ganges 0.82 all pass; Nile fails on the defect above; Indus and Murray
+"fail" a **mis-specified test** (see GUARDRAILS §14.7 — a routed variable has no single
+per-basin value).
+
+**Point extraction.** `scripts/utils/hydro_extract.py` — snap to the nearest river cell
+**within the asset's own basin**, no interpolation, refusing rather than reaching. Validated:
+walking east from Aswan, points either stay in the Nile basin and return `SNAP_TOO_FAR` or
+cross the divide and return `NO_RIVER_IN_BASIN`; none receives Nile water. **Not yet wired
+into `delivery.py`**, whose four-cell Gaussian blend remains unsafe for river variables.

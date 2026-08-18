@@ -1,0 +1,686 @@
+<title>Water Stress Layer</title>
+<style>
+  :root{
+    --ground:#F1F5F5; --surface:#FFFFFF; --sunk:#E7EEEE;
+    --ink:#11222A; --ink-2:#42585F; --ink-3:#6C848C;
+    --rule:#D2DEDF; --rule-soft:#E4EDED;
+    --accent:#0B6E75; --accent-soft:#D9EBEA; --accent-ink:#08585E;
+    --sev-block:#A63A24; --sev-block-bg:#F6E4DF;
+    --sev-high:#8E6210; --sev-high-bg:#F6EBD9;
+    --sev-med:#4F6C77; --sev-med-bg:#E5EDF0;
+    --ok:#2C6E58;
+    --serif:"Iowan Old Style","Charter","Bitstream Charter","Palatino Linotype",Palatino,Georgia,serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --col:70ch;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0D1618; --surface:#141F23; --sunk:#0A1113;
+      --ink:#E2ECED; --ink-2:#9EB3B8; --ink-3:#6F888E;
+      --rule:#223438; --rule-soft:#1A2A2E;
+      --accent:#4CBEC3; --accent-soft:#123033; --accent-ink:#7BD4D7;
+      --sev-block:#E27A60; --sev-block-bg:#301813;
+      --sev-high:#D6A549; --sev-high-bg:#2C2413;
+      --sev-med:#8CACB6; --sev-med-bg:#16262B;
+      --ok:#5FBE9C;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1618; --surface:#141F23; --sunk:#0A1113;
+    --ink:#E2ECED; --ink-2:#9EB3B8; --ink-3:#6F888E;
+    --rule:#223438; --rule-soft:#1A2A2E;
+    --accent:#4CBEC3; --accent-soft:#123033; --accent-ink:#7BD4D7;
+    --sev-block:#E27A60; --sev-block-bg:#301813;
+    --sev-high:#D6A549; --sev-high-bg:#2C2413;
+    --sev-med:#8CACB6; --sev-med-bg:#16262B;
+    --ok:#5FBE9C;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:var(--serif); font-size:17px; line-height:1.68;
+    margin:0; padding:0 1.5rem 6rem;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--col); margin:0 auto;}
+  .wide{max-width:96ch; margin:0 auto;}
+
+  /* ---- masthead ---- */
+  header.mast{
+    max-width:96ch; margin:0 auto; padding:4rem 0 2rem;
+    border-bottom:2px solid var(--ink);
+  }
+  .eyebrow{
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent-ink); margin:0 0 1rem;
+  }
+  h1{
+    font-size:clamp(2.1rem,5.5vw,3rem); line-height:1.08; margin:0 0 .9rem;
+    font-weight:600; letter-spacing:-.015em; text-wrap:balance;
+  }
+  .standfirst{
+    font-size:1.12rem; color:var(--ink-2); margin:0; max-width:60ch; text-wrap:pretty;
+  }
+
+  /* ---- state strip ---- */
+  .state{
+    max-width:96ch; margin:0 auto; padding:1.6rem 0 2.6rem;
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+    background:var(--rule-soft); border-bottom:1px solid var(--rule);
+  }
+  .state div{background:var(--ground); padding:1rem 1.1rem 1.1rem;}
+  .state dt{
+    font-family:var(--mono); font-size:.68rem; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 .4rem;
+  }
+  .state dd{
+    margin:0; font-size:1.5rem; font-weight:600; line-height:1.1;
+    font-variant-numeric:tabular-nums;
+  }
+  .state dd span{font-size:.8rem; font-weight:400; color:var(--ink-3); display:block; margin-top:.2rem;}
+
+  /* ---- sections ---- */
+  section{padding:3.2rem 0 0;}
+  h2{
+    font-size:1.62rem; line-height:1.2; margin:0 0 .3rem; font-weight:600;
+    letter-spacing:-.01em; text-wrap:balance;
+  }
+  h2 .num{
+    font-family:var(--mono); font-size:.72rem; color:var(--accent);
+    display:block; letter-spacing:.14em; margin-bottom:.55rem; font-weight:400;
+  }
+  h3{
+    font-size:1.06rem; margin:2.2rem 0 .2rem; font-weight:600; letter-spacing:-.005em;
+  }
+  h4{
+    font-family:var(--mono); font-size:.75rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-3); margin:2rem 0 .6rem; font-weight:500;
+  }
+  p{margin:.85rem 0;}
+  .lede{color:var(--ink-2);}
+  ul,ol{margin:.85rem 0; padding-left:1.3rem;}
+  li{margin:.42rem 0;}
+  strong{font-weight:600;}
+  em{font-style:italic;}
+  a{color:var(--accent-ink); text-underline-offset:2px;}
+  code{
+    font-family:var(--mono); font-size:.855em; background:var(--sunk);
+    padding:.1em .35em; border-radius:3px; color:var(--ink);
+  }
+  hr{border:0; border-top:1px solid var(--rule); margin:3rem 0 0;}
+
+  /* ---- callout ---- */
+  .note{
+    border-left:3px solid var(--accent); background:var(--accent-soft);
+    padding:.9rem 1.1rem; margin:1.4rem 0; font-size:.96rem;
+  }
+  .note p:first-child{margin-top:0;} .note p:last-child{margin-bottom:0;}
+
+  /* ---- tables ---- */
+  .scroll{overflow-x:auto; margin:1.5rem 0; border-top:1px solid var(--ink); border-bottom:1px solid var(--rule);}
+  table{border-collapse:collapse; width:100%; font-size:.9rem; font-variant-numeric:tabular-nums;}
+  th,td{text-align:left; padding:.6rem .85rem; vertical-align:top; border-bottom:1px solid var(--rule-soft);}
+  th{
+    font-family:var(--mono); font-size:.7rem; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-3); font-weight:500; white-space:nowrap;
+  }
+  tbody tr:last-child td{border-bottom:0;}
+  td code{background:transparent; padding:0;}
+  .yes{color:var(--ok); font-weight:600;}
+  .no{color:var(--ink-3);}
+
+  /* ---- findings ---- */
+  .finding{
+    border-left:3px solid var(--sev); background:var(--sev-bg);
+    padding:.95rem 1.15rem; margin:1rem 0; font-size:.96rem;
+  }
+  .finding.block{--sev:var(--sev-block); --sev-bg:var(--sev-block-bg);}
+  .finding.high{--sev:var(--sev-high);  --sev-bg:var(--sev-high-bg);}
+  .finding.med{--sev:var(--sev-med);   --sev-bg:var(--sev-med-bg);}
+  .finding .tag{
+    font-family:var(--mono); font-size:.66rem; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--sev); display:block; margin-bottom:.4rem; font-weight:600;
+  }
+  .finding p:first-of-type{margin-top:0;} .finding p:last-child{margin-bottom:0;}
+  .finding .hd{font-weight:600;}
+
+  /* ---- formula ---- */
+  pre{
+    font-family:var(--mono); font-size:.82rem; line-height:1.6; background:var(--sunk);
+    padding:1rem 1.1rem; overflow-x:auto; margin:1.3rem 0; border-radius:4px;
+    color:var(--ink);
+  }
+
+  /* ---- compass ---- */
+  .compass{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--rule);
+    max-width:270px; margin:1.5rem 0; border:1px solid var(--rule);
+  }
+  .compass span{
+    background:var(--surface); aspect-ratio:1; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; font-family:var(--mono); font-size:.72rem;
+    color:var(--ink-3); gap:.15rem;
+  }
+  .compass span b{font-size:1.15rem; color:var(--accent-ink); font-weight:600;}
+  .compass span.mid{background:var(--sunk); color:var(--ink-3); font-size:.66rem;}
+  figcaption{font-size:.83rem; color:var(--ink-3); margin-top:.5rem; max-width:46ch;}
+
+  /* ---- checklist ---- */
+  ol.checks{list-style:none; padding:0; counter-reset:c;}
+  ol.checks li{
+    counter-increment:c; padding-left:2.4rem; position:relative; margin:.65rem 0; font-size:.96rem;
+  }
+  ol.checks li::before{
+    content:counter(c,decimal-leading-zero); position:absolute; left:0; top:.15rem;
+    font-family:var(--mono); font-size:.72rem; color:var(--accent); letter-spacing:.06em;
+  }
+  footer{
+    max-width:96ch; margin:4rem auto 0; padding-top:1.5rem; border-top:1px solid var(--rule);
+    font-size:.85rem; color:var(--ink-3);
+  }
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+</style>
+
+<header class="mast">
+  <p class="eyebrow">Working record &middot; 17 August 2026</p>
+  <h1>Water stress on the TCFD contract</h1>
+  <p class="standfirst">The ISIMIP water-sector enumeration, the metric design and the decisions taken, an external review that found three blockers, and the river-routing dataset that dissolved the worst of them.</p>
+</header>
+
+<div class="wide">
+<div class="note" style="border-left-color:var(--sev-high);background:var(--sev-high-bg);margin:2rem auto 0;">
+<p><strong>Revised 17 August 2026, after this record was first written.</strong> Two scope decisions supersede parts of what follows, and the superseded passages are marked rather than deleted so the reasoning stays on file.</p>
+<p><strong>Environmental flows are out of scope for this pass</strong> &mdash; the requirement is defined by regional and legal context, not by hydrology alone. Formula B is dropped, taking blockers 2 and 3 with it. Six metrics become four.</p>
+<p><strong>One impact model, provisionally.</strong> All three candidates were measured against each other; they do not differ by a scale factor and the ranking reverses in 68.4% of cells. WaterGAP2-2e was selected as best-in-class and the other two set aside &mdash; explicitly temporary, see section 6.</p>
+<p><strong>Routing is used for upstream accumulation only.</strong> A cell's demand is the sum over every cell draining through it. Basin-uniform aggregation is rejected: it would charge a headwater cell with withdrawals that happen downstream of it, which is not a claim on that cell's water.</p>
+</div>
+</div>
+
+<dl class="state">
+  <div><dt>Impact model</dt><dd>1<span>WaterGAP2-2e, provisional</span></dd></div>
+  <div><dt>Members / scenario</dt><dd>5<span>1 LSM &times; 5 GCM</span></dd></div>
+  <div><dt>Metrics</dt><dd>4<span>2 forms &times; 2 reductions</span></dd></div>
+  <div><dt>Ingest</dt><dd>11.5 GB<span>47 files, running</span></dd></div>
+  <div><dt>Status</dt><dd>Ingest<span>models measured</span></dd></div>
+</dl>
+
+<div class="wide">
+
+<section>
+<h2><span class="num">01</span>Enumerating the ISIMIP water sector</h2>
+<div class="wrap">
+<p class="lede"><strong>Receipt.</strong> 16 August 2026, serial listings with three retries, an empty listing treated as failure rather than as a negative. All 109 <code>{MODEL}/{gcm}/future/</code> directories walked &mdash; 47 in ISIMIP3b, 62 in ISIMIP2b &mdash; and 35,977 files projected from the end of the filename. Zero empty, failed or missing-future results.</p>
+<p>The sub-directory level was enumerated separately per model. Only 2b <code>DBH</code> and 2b <code>WaterGAP2</code> carry a <code>future_extended/</code>; DBH's holds picontrol runoff past 2100, WaterGAP2's is empty.</p>
+
+<h3>Who publishes water use in ISIMIP3b</h3>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>Model</th><th>GCMs</th><th>ptotww</th><th>ptotuse</th><th>atotww</th><th>atotuse</th><th>Groundwater split</th></tr></thead>
+<tbody>
+<tr><td><strong>H08</strong></td><td>5</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td><td class="no">&mdash;</td></tr>
+<tr><td><strong>LPJmL5-7-10-fire</strong></td><td>5</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td><td class="no">&mdash;</td></tr>
+<tr><td><strong>WaterGAP2-2e</strong></td><td>5</td><td class="yes">yes</td><td class="yes">yes</td><td class="no">absent</td><td class="yes">yes</td><td>every sector</td></tr>
+<tr><td><strong>CWatM</strong></td><td>5</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td><td class="no">absent</td><td>partial</td></tr>
+<tr><td>MIROC-INTEG-LAND</td><td>5</td><td class="no">absent</td><td class="no">absent</td><td class="no">absent</td><td class="no">absent</td><td>sectoral only</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<p>CLASSIC, JULES-ES-VN6P3, JULES-W2, VISIT and WEB-DHM-SG publish no water-use variable at all. A four-model total-demand ensemble is therefore available on <code>ptotww</code> and <code>ptotuse</code> only. <code>atotww</code> gives three models and <code>atotuse</code> gives three &mdash; and they are <em>different</em> threes.</p>
+
+<h3>Units, from the published sidecars</h3>
+<p>Every <code>.nc</code> file has a sibling <code>.json</code> carrying the full NetCDF header, so units were read rather than assumed.</p>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>Variable</th><th>Units</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td><code>ptotww ptotuse atotww atotuse</code></td><td><code>kg m-2 s-1</code></td><td>per-area flux, <strong>not</strong> a volume</td></tr>
+<tr><td><code>qtot qr qs qsb qg</code></td><td><code>kg m-2 s-1</code></td><td></td></tr>
+<tr><td><code>dis</code></td><td><code>m3 s-1</code></td><td>already volumetric</td></tr>
+<tr><td><code>cellarea</code></td><td><strong><code>km2</code></strong></td><td>CWatM, LPJmL5, WaterGAP2-2e only</td></tr>
+<tr><td><code>contfrac</code></td><td><code>1</code></td><td>continental fraction of grid cell</td></tr>
+<tr><td><code>soilmoist</code></td><td><code>kg m-2</code></td><td>carries a depth dimension of differing length</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<p><code>qr</code> is <em>total groundwater recharge</em>; <code>qg</code> is <em>groundwater runoff</em> &mdash; distinct variables, both present. <code>scripts/config_water_variables.py</code> labels <code>qr</code> as &ldquo;Groundwater Runoff (Recharge)&rdquo;, conflating the two; the file's own <code>long_name</code> is authoritative.</p>
+<p>Soil-moisture depth by model, at gfdl-esm4: H08 1, WaterGAP2-2e 1, CWatM 3, JULES-ES-VN6P3 4, JULES-W2 4, LPJmL5 5, MIROC-INTEG-LAND 13, CLASSIC 20; WEB-DHM-SG has no depth dimension and VISIT no soil moisture. It is not one variable across models.</p>
+
+<h3>The socioeconomic dimension, and a catalog correction</h3>
+<p><code>config/isimip_search_catalog.yaml:366</code> records six soc variants per scenario for the 3b water sector. That was probed on H08 and it is <strong>H08-only</strong>. Across all 25,375 projected 3b rows the twelve transient tokens carry 370 files each, all H08.</p>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>Model</th><th>Soc variants under SSP</th><th>Demand time-varying</th></tr></thead>
+<tbody>
+<tr><td><strong>H08</strong></td><td>1850soc, 2015soc, <code>{ssp}soc-{adapt,noadapt}+{image,magpie}</code></td><td class="yes">yes &mdash; 4 transient</td></tr>
+<tr><td>LPJmL5, WaterGAP2-2e, MIROC</td><td>1850soc, 2015soc, 2015soc-from-histsoc</td><td class="no">no</td></tr>
+<tr><td>CWatM</td><td>2015soc-from-histsoc <strong>only</strong></td><td class="no">no</td></tr>
+<tr><td>CLASSIC, JULES-W2</td><td>2015soc, 2015soc-from-histsoc</td><td class="no">n/a</td></tr>
+<tr><td>JULES-ES-VN6P3</td><td>2015soc-from-histsoc</td><td class="no">n/a</td></tr>
+<tr><td>VISIT, WEB-DHM-SG</td><td>2015soc</td><td class="no">n/a</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<p>Three consequences follow. Transient demand under SSPs exists in exactly one 3b model. <strong>CWatM and H08 share no soc variant at all</strong>, so any ensemble containing both necessarily mixes <code>2015soc</code> with <code>2015soc-from-histsoc</code> &mdash; the same fixed-2015 forward socioeconomics with a different historical spin-up, which is the precedent set by the flood family. And there is <strong>no <code>nosoc</code> in 3b</strong>: <code>1850soc</code> is the closest naturalised run, present for H08, LPJmL5, WaterGAP2-2e and MIROC, but not CWatM.</p>
+
+<h3>The demand forcing is published separately &mdash; and omits irrigation</h3>
+<p><code>InputData/socioeconomic/water_abstraction/</code> holds six soc directories of annual 0.5&deg; demand already in m&sup3;/year, with a model-spread companion field. But across all six the variables are domestic and industrial withdrawal and consumption only. <strong>There is no irrigation field.</strong> Irrigation is computed inside each hydrological model from the land-use forcing.</p>
+<div class="note"><p>This kills the tempting hybrid of pairing transient demand forcing with a deep supply ensemble: the transient forcing covers only the two sectors that are roughly 30% of global withdrawal, and omits the dominant, most climate-sensitive one.</p></div>
+
+<h3>A publishing defect worth remembering</h3>
+<p>CWatM's 3b sidecars are misnamed. The directory holds 153 <code>.nc</code> files all carrying <code>2015soc-from-histsoc</code>, while 123 of the 156 <code>.json</code> sidecars carry <code>2015soc</code>. A URL list built from sidecar names 404s against the data. Verify CWatM downloads by Content-Length, not by fetching the checksum at the matching path.</p>
+</div>
+</section>
+
+<hr>
+
+<section>
+<h2><span class="num">02</span>Choosing a single metric</h2>
+<div class="wrap">
+<p class="lede">Four candidates were on the table. Three are variants of the demand-versus-supply ratio; the fourth abandons demand entirely.</p>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th></th><th>A &middot; WTA</th><th>B &middot; SDG 6.4.2</th><th>C &middot; Depletion</th></tr></thead>
+<tbody>
+<tr><th>Formula</th><td><code>W / A</code></td><td><code>W / (A &minus; EFR)</code></td><td><code>C / A</code></td></tr>
+<tr><th>Numerator</th><td><code>ptotww</code></td><td>same</td><td><code>ptotuse</code></td></tr>
+<tr><th>Models</th><td>4</td><td>4</td><td>4 / 3</td></tr>
+<tr><th>Bands transfer</th><td>yes &mdash; Aqueduct and ESRS E3 verbatim</td><td>yes &mdash; SDG classes</td><td class="no">no &mdash; bands are withdrawal-calibrated</td></tr>
+<tr><th>Extra machinery</th><td>none</td><td>VMF from the same discharge</td><td>none</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<p>A fourth option, a standardized streamflow index using no demand at all, offers the deepest ensemble available &mdash; six models, 30 members &mdash; and returns a meaningful number in every cell on Earth. But it is hydrological drought, not water stress: it carries a relative-baseline caveat, cannot take the ESRS or CDP bands, and cannot populate <code>families.water-stress.covered_by</code> without asserting that a question had been assessed when it had not.</p>
+<p>A blended 0&ndash;100 score was rejected outright: the weights are unagreed and unmeasurable, it averages an absolute field with a relative one, and it is the single construction a reviewer cannot reproduce.</p>
+
+<h3>Why potential rather than actual withdrawal</h3>
+<p>The actual-withdrawal variables record what the model let each sector take <em>given supply</em>. A ratio built on them is self-limiting by construction &mdash; it cannot exceed 1 &mdash; and would report a drying basin as unstressed because everyone politely took less. Potential withdrawal is unconstrained demand, and it is also the version all four models publish.</p>
+
+<h3>The four decisions</h3>
+<ol>
+<li><strong>Numerator is <code>ptotww</code></strong> &mdash; potential total withdrawal, all sectors.</li>
+<li><strong>Denominator comes from the <code>1850soc</code> runs</strong>, paired member-wise with 2015soc demand.</li>
+<li><s><strong>The environmental-flow deduction applies only to river flow</strong>, not to local runoff.</s> <strong>Superseded:</strong> environmental flows are dropped entirely for this pass. Dropping them aligns the metric with Aqueduct 4.0 baseline water stress and therefore with ESRS E3, which adopts Aqueduct's thresholds verbatim; it moves away from SDG 6.4.2, which is defined <em>with</em> the deduction.</li>
+<li><strong>The seasonal reduction is the highest-stress month</strong> &mdash; the ratio computed in each of the twelve months, maximum taken. Not the lowest-supply month.</li>
+</ol>
+
+<h3>What decision two buys, and what it costs</h3>
+<p>River discharge under <code>2015soc</code> is flow <em>after</em> people have taken water out: reservoirs, canals and intakes are all simulated. Dividing demand by it puts demand on top and also subtracts it from the bottom, so heavy withdrawal shrinks the denominator and inflates the ratio through a feedback rather than a measurement.</p>
+<div class="note"><p>Taking supply from <code>1850soc</code> also made formula B <em>correct</em> rather than approximate. The VMF method derives its environmental requirement from naturalised flow regimes. Computed on managed discharge, reservoir operation would have flattened the seasonality &mdash; dams raise dry-season flow &mdash; classifying fewer months as low-flow and reserving less water, biasing the requirement downward exactly where it matters most.</p></div>
+<p>Three costs, all of which belong in the file attributes. CWatM drops out for lack of an <code>1850soc</code> run, leaving three models. The denominator no longer responds to storage infrastructure, so a well-dammed basin and an undammed one with the same natural flow read identically &mdash; this metric cannot show the benefit of reservoirs. And <code>1850soc</code> is preindustrial <em>conditions</em>, not zero-human: negligible withdrawal and no modern dams, but some land clearing, and preindustrial land use changes evapotranspiration and therefore runoff.</p>
+
+<h3>The ensemble</h3>
+<p>Verified: H08, LPJmL5-7-10-fire and WaterGAP2-2e all carry <code>ptotww</code> monthly at 2015soc, and <code>qtot</code> and <code>dis</code> monthly at 1850soc, across ssp126, ssp370 and ssp585, five GCMs each &mdash; gfdl-esm4, ipsl-cm6a-lr, mpi-esm1-2-hr, mri-esm2-0, ukesm1-0-ll. Fifteen members per scenario.</p>
+<p>MIROC-INTEG-LAND can restore a fourth model by summing its domestic, industrial and irrigation withdrawal; it has both the 1850soc supply and the 2015soc sectoral demand at five GCMs. The originally proposed acceptance test for including it was wrong &mdash; see finding 10.</p>
+</div>
+</section>
+
+<hr>
+
+<section>
+<h2><span class="num">03</span>The formulae</h2>
+<div class="wrap">
+<p class="lede">Cell <em>c</em>, member <em>m</em> = impact model &times; GCM, calendar month <em>k</em>, year <em>y</em>. Month duration is the real number of seconds &mdash; the ISIMIP time axis is <code>days since 1601-1-1</code> on a proleptic Gregorian calendar, so leap years are genuine. Baseline is 2020&ndash;2029.</p>
+
+<h3>Unit conversion</h3>
+<pre>V [m&sup3; s&#8315;&sup1;] = flux [kg m&#8315;&sup2; s&#8315;&sup1;] &middot; Acell [km&sup2;] &middot; 10&#8310; [m&sup2; km&#8315;&sup2;] / 1000 [kg m&#8315;&sup3;]
+             = flux &middot; Acell &middot; 1000</pre>
+<p>The multiplier is <strong>1000 &times; cell area in km&sup2;</strong>, and water density is the only physical constant. Discharge needs no area conversion. Cell area and continental fraction are published by CWatM, LPJmL5 and WaterGAP2-2e only; H08 and MIROC publish neither, but all ten models sit on the identical half-degree grid, so one model's grid serves the others once the three published grids are confirmed identical.</p>
+<div class="note"><p><strong>Open and load-bearing:</strong> whether the flux denominator is grid-cell area or continental area &mdash; that is, whether <code>contfrac</code> multiplies in. A decisive check exists: convert a model's published domestic withdrawal to m&sup3;/yr and compare cell-by-cell against the input-data domestic withdrawal, which is already in m&sup3;/year. It is decisive for that model and that variable; area normalisation must be verified per model, not generalised from one.</p></div>
+
+<h3>Demand and availability</h3>
+<pre>W(c,y,k,m)        = ptotww &middot; 1000 &middot; Acell(c) &middot; dt(y,k)     [m&sup3;]
+Q_runoff(c,y,k,m) = qtot   &middot; 1000 &middot; Acell(c) &middot; dt(y,k)     [m&sup3;]
+Q_river(c,y,k,m)  = dis    &middot; dt(y,k)                        [m&sup3;]</pre>
+<p>Both availability terms come from <code>1850soc</code>. Groundwater recharge must <em>not</em> be added to availability without measuring first &mdash; routed discharge already carries the baseflow that recharge feeds, so adding it double-counts. Four of the models publish surface runoff, subsurface runoff, groundwater runoff and total runoff together, so the water-balance check is directly available.</p>
+
+<h3>Environmental flow requirement <span style="font-family:var(--mono);font-size:.62em;letter-spacing:.1em;text-transform:uppercase;color:var(--sev-high);vertical-align:middle;">&nbsp;dropped</span></h3>
+<div class="note" style="border-left-color:var(--sev-high);background:var(--sev-high-bg);"><p>Out of scope for this pass: the requirement is set by regional and legal context, not derivable from hydrology alone. Retained below as a record of what was specified, and as the starting point if a later pass adds it. Dropping it also removes blockers 2 and 3 outright.</p></div>
+<p>The variable monthly flow method of Pastor et al. 2014, computed on the 2020s baseline and then frozen &mdash; a requirement recomputed each decade drifts with the climate and makes the index structurally unable to detect drying.</p>
+<pre>MAF(c,m)   = baseline mean annual flow, duration-weighted   [m&sup3; s&#8315;&sup1;]
+MMF(c,k,m) = baseline mean flow of calendar month k         [m&sup3; s&#8315;&sup1;]
+
+           MMF &lt; 0.40 &middot; MAF           &#8594;  f = 0.60   low-flow month
+f(c,k,m) = 0.40&middot;MAF &#8804; MMF &#8804; 0.80&middot;MAF  &#8594;  f = 0.45   intermediate
+           MMF &gt; 0.80 &middot; MAF           &#8594;  f = 0.30   high-flow month
+
+EFR(c,k,m) = f &middot; MMF                                       [m&sup3; s&#8315;&sup1;]</pre>
+<p>Five constants: 0.40 and 0.80 classify the month as fractions of mean annual flow; 0.60, 0.45 and 0.30 allocate as fractions of that month's own mean flow. Sanity check: annual requirement volume should land near 37% of annual flow volume, with 25&ndash;46% spanning the wider method family. <strong>The requirement is per member</strong> &mdash; see finding 2.</p>
+
+<h3>Reference bands</h3>
+<p>Applied in the report, never baked into the values, and ratios are never capped at 1 &mdash; capping would manufacture a censored field with the pathology already seen on the heatwave layer.</p>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>Scheme</th><th>Thresholds</th></tr></thead>
+<tbody>
+<tr><td>Aqueduct 4.0 / ESRS E3 verbatim</td><td>0.40 high &middot; 0.80 extremely high</td></tr>
+<tr><td>SDG 6.4.2</td><td>0.25 &middot; 0.50 &middot; 0.75 &middot; 1.00</td></tr>
+<tr><td>Criticality ratio (Alcamo, V&ouml;r&ouml;smarty)</td><td>0.40 high &middot; 0.80 extreme</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<hr>
+
+<section>
+<h2><span class="num">04</span>External review</h2>
+<div class="wrap">
+<p class="lede">Codex, 17 August 2026, run against the plan plus the output contract, the guardrails, the shared decadal-statistics module and the layer registry. The two findings that cite our own code and spec were checked against the files: <strong>both citations are accurate</strong>.</p>
+
+<h4>Blockers</h4>
+
+<div class="finding block">
+<span class="tag">Blocker 1 &middot; resolved in &sect;05</span>
+<p class="hd">Support mismatch between numerator and denominator.</p>
+<p>Demand was cell-local while discharge is routed from the whole upstream catchment. Downstream cells receive basin-scale supply against only local demand, systematically understating stress along large rivers. Two further consequences: the Aqueduct, ESRS and SDG bands were not merely &ldquo;indicative&rdquo; but unsupported; and the claim that ratios above 1 indicate groundwater mining is <strong>false</strong> for a cell-local construction &mdash; above 1 there simply means the cell imports water from upstream, the normal condition for most riverside cells. Our own design doc already called this mismatched support and not WTA in the literature's sense, and the plan proposed it anyway.</p>
+</div>
+
+<div class="finding med">
+<span class="tag">Blocker 2 &middot; moot &mdash; formula B dropped</span>
+<p class="hd">The pooled environmental-flow requirement is invalid.</p>
+<p>The plan computed one classification and one absolute requirement after pooling all models and GCMs, destroying member identity before a discontinuous classification and an absolute subtraction. Worked example: two members with comparable seasonality but baseline monthly flows of 10 and 100 m&sup3;/s give a pooled low-flow requirement of 33; subtracting that from the 10 m&sup3;/s member makes it environmentally bankrupt when its own requirement would be 6. That is an ensemble artifact, not scarcity. The requirement must be computed per impact-model &times; GCM member, from that member's own scenario-averaged baseline climatology.</p>
+</div>
+
+<div class="finding med">
+<span class="tag">Blocker 3 &middot; moot &mdash; formula B dropped</span>
+<p class="hd">Availability minus requirement has a pole, and every treatment biases the statistics.</p>
+<p><strong>The verified code asymmetry survives the drop and still matters</strong> &mdash; any infinity from a zero denominator behaves the same way, so finding 7's precedence table is now the sole defence against it.</p>
+<p>Just above zero the ratio becomes arbitrarily large, ordinary least squares is dominated by the near-pole year, and the worst-month reduction almost guarantees selecting that month. Below zero, retaining the ratio makes a more severe state look less risky. Masking removes precisely the most-stressed observations and makes missingness state-dependent. Capping creates a censored field where both slope estimators flatten together and agree.</p>
+<p><strong>Verified against our code:</strong> <code>decadal_stats.py:211</code> screens for all-non-finite cells, but the central statistic then runs through <code>nanmedian</code>/<code>nanmean</code>, which ignore NaN and <em>propagate</em> infinities; the slope routine at line 392 filters with <code>np.isfinite</code> and drops them. A single infinite ratio would corrupt the median and the confidence interval <strong>while vanishing from both slopes</strong>.</p>
+</div>
+
+<h4>High severity</h4>
+
+<div class="finding high">
+<span class="tag">Finding 4</span>
+<p class="hd">&ldquo;Demand is fixed at 2015 levels&rdquo; was inferred from a filename and is probably false.</p>
+<p><code>2015soc</code> fixes socioeconomic <em>inputs</em> &mdash; population, GDP, irrigated area. Irrigation withdrawal is computed inside each model and responds to precipitation, evapotranspiration and growing-season conditions, and irrigation is the majority of withdrawal. The assertion that every trend is supply-driven does not follow from the soc token. This is a guardrail violation. Until measured, describe <em>socioeconomic conditions</em> as fixed, not demand.</p>
+</div>
+
+<div class="finding high">
+<span class="tag">Finding 5</span>
+<p class="hd">The max-over-months reduction is not a stable seasonal metric.</p>
+<p>After pooling it is the median of 150 member-year maxima per decade &mdash; not the maximum month of the decadal climatology, not one consistent calendar month, not a trend in a particular season. The selected month can switch between years and members; a change in monthly variance or one unusually small denominator can create a trend even where typical monthly stress is unchanged. It also biases low if any month is missing unless complete years are required.</p>
+</div>
+
+<div class="finding high">
+<span class="tag">Finding 6</span>
+<p class="hd">The shared-baseline ordering was underspecified.</p>
+<p><code>OUTPUT-SPEC.md:226</code> requires each member's 2020s window to be averaged across scenarios <em>first</em>, then pooled. The required order is: construct the shared scenario-averaged baseline per member; derive that member's flow statistics and requirement; compute each scenario's annual ratios using that member's requirement; then build the shared 2020s panel with the contract's cross-scenario averaging.</p>
+</div>
+
+<div class="finding high">
+<span class="tag">Finding 7</span>
+<p class="hd">Zero denominators are unhandled.</p>
+<p>The plan covered only the river mask and the requirement exceeding flow. It omitted zero runoff; zero discharge; zero demand with zero supply, which gives NaN rather than the zero the Sahara reference check demands; positive demand with zero supply, which gives infinity; future monthly zeros inside a cell that passed a <em>baseline</em> river mask; and negative or fill-value leakage. A precedence table is needed, with zero demand mapping explicitly to zero <em>before</em> any denominator handling.</p>
+</div>
+
+<h4>Medium severity</h4>
+
+<div class="finding med">
+<span class="tag">Finding 8</span>
+<p class="hd">Arithmetic tightening.</p>
+<p>For the monthly ratios the month duration cancels exactly, and for the runoff ratio the cell area cancels too &mdash; so continental fraction cannot affect that metric provided demand and runoff share an area basis. Using a mean month length for the requirement while using actual month lengths for discharge introduces a needless leap-year inconsistency; store the requirement as a rate and multiply both terms by the same actual duration. Mean annual flow must be duration-weighted, since a plain mean of twelve monthly rates is not an annual mean. The 37% sanity check must compare annual volume to annual volume. And unit attributes alone do not establish that monthly values are monthly means &mdash; verify cell methods and time bounds.</p>
+</div>
+
+<div class="finding med">
+<span class="tag">Finding 9</span>
+<p class="hd">The zero-inflated mean branch is dangerous for a ratio.</p>
+<p>That branch was justified for bounded expected-exposure fractions. A water-stress ratio has a heavy right tail and a potential pole; mean and standard deviation can make the central estimate hostage to a few near-zero denominators and can produce a negative lower confidence bound. Zero share alone is not sufficient evidence.</p>
+</div>
+
+<div class="finding med">
+<span class="tag">Finding 10</span>
+<p class="hd">The MIROC acceptance test was wrong.</p>
+<p>Showing that summed sectors match the published total in CWatM establishes CWatM's accounting identity and nothing about MIROC's sector coverage, definitions, source-water treatment or omissions. Inclusion must be justified from MIROC's own metadata and values; the cross-model comparison is a plausibility check, not the test.</p>
+</div>
+
+<h4>Redundancy</h4>
+<p>The monthly maximum is mechanically at least the annual ratio whenever denominators are positive, so those two are not independent information until the gap is measured. The requirement-adjusted river metric is an amplified transform of the plain river metric, and the annual pair may be nearly rank-identical. Before retaining six layers: measure spatial rank correlation, threshold reclassification, trend-sign agreement, reference-site ranking, and the fraction of maxima caused by near-zero denominators.</p>
+</div>
+</section>
+
+<hr>
+
+<section>
+<h2><span class="num">05</span>River routing &mdash; ISIMIP publishes it</h2>
+<div class="wrap">
+<p class="lede">No HydroBASINS dependency. <code>InputData/geo_conditions/river_routing/</code> holds three files totalling about 1.7 MB: a basin identifier per cell covering <strong>11,558 basins</strong>, a D8 flow-direction grid, and channel slopes.</p>
+<p>DDM30 is the 30-arcminute drainage direction map, <strong>natively on our 0.5&deg; grid</strong> with no regridding. Longitude spans the full 720 cells; latitude ascends south to north across 280 rows from 55.75&deg;S to 83.75&deg;N, trimming only Antarctica and the polar ocean. Its land mask is <strong>67,424 cells</strong> against the 67,420 that H08, LPJmL and WaterGAP2 use in the drought layers.</p>
+
+<h3>The direction convention was determined, not assumed</h3>
+<p>A first guess &mdash; north as 1, clockwise &mdash; left 39,773 of 67,424 cells trapped in cycles. A systematic search over all sixteen candidate mappings, being eight rotations by two handednesses by two row orders, found <strong>exactly one</strong> with zero cycles. The runner-up leaves 2,893.</p>
+
+<figure>
+<div class="compass">
+  <span>NW<b>6</b></span><span>N<b>7</b></span><span>NE<b>8</b></span>
+  <span>W<b>5</b></span><span class="mid">cell</span><span>E<b>1</b></span>
+  <span>SW<b>4</b></span><span>S<b>3</b></span><span>SE<b>2</b></span>
+</div>
+<figcaption>The ESRI ordering renumbered 1&ndash;8 instead of powers of two, starting at east and running clockwise. Codes 0 and &minus;1 mark sinks and outlets.</figcaption>
+</figure>
+
+<h3>Validation</h3>
+<ul>
+<li><strong>Acyclic and complete.</strong> A topological pass reached all 67,424 land cells.</li>
+<li><strong>Largest accumulation at 0.25&deg;N, 50.25&deg;W</strong> &mdash; the mouth of the Amazon, with 1,946 upstream cells. At roughly 3,090 km&sup2; per cell at the equator that is <strong>6.0 million km&sup2;</strong>, against the Amazon's actual 6.1 million.</li>
+<li><strong>11,474 of 11,558 basins</strong>, or 99.3%, have every cell draining to a single terminus. There are 14,095 terminal cells for 11,558 basins, so some basins reach the sea through more than one mouth &mdash; the likely explanation for the 84 exceptions, to be characterised before use rather than assumed.</li>
+</ul>
+
+<h3>What it changes</h3>
+<p>Blocker 1 becomes a bug fix rather than a choice. Both denominators survive; what changes is the <em>numerator</em> on the river-flow versions.</p>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>Metric</th><th>Before</th><th>After</th></tr></thead>
+<tbody>
+<tr><td><strong>A1</strong></td><td>local demand &divide; local runoff</td><td>unchanged &mdash; genuinely local self-sufficiency</td></tr>
+<tr><td><strong>A2</strong></td><td class="no">local demand &divide; routed flow</td><td class="yes"><strong>upstream-accumulated demand</strong> &divide; routed flow</td></tr>
+<tr><td><s>B2</s></td><td colspan="2" class="no">dropped &mdash; environmental flows out of scope</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<p>Four metrics, annual and worst-month, same three models and five GCMs. The bands become defensible rather than indicative: the 0.4 and 0.8 criticality thresholds originate with Alcamo and V&ouml;r&ouml;smarty, whose work is grid-scale with upstream-accumulated demand, so the routed construction sits closer to their origin than basin aggregation does.</p>
+
+<h3>Upstream accumulation, not basin aggregation</h3>
+<p>For each cell, demand is summed over every cell that drains through it, itself included. A headwater cell therefore sees only its own small demand against its own small flow; a river-mouth cell sees the whole catchment's demand against the whole catchment's flow. Numerator and denominator cover the same ground at every point.</p>
+<p>The basin-uniform alternative is rejected. It assigns every cell in a basin the basin's total demand, which would charge a Rocky Mountain headwater with Las Vegas's withdrawals &mdash; a claim on water that has already passed the headwater by. Downstream abstraction cannot reduce upstream supply, and the metric must not imply that it does.</p>
+<div class="note"><p>The constraint is doubly satisfied here. Upstream accumulation is one-directional by construction, and the denominator comes from the <code>1850soc</code> runs, where no withdrawal affects any flow anywhere. The basin identifier is retained only as a grouping key for diagnostics, never as the support of a published value.</p></div>
+
+<h3>A risk this creates: each model has its own routing</h3>
+<p>DDM30 was developed for WaterGAP. H08 and LPJmL5 route on their own networks, and their published discharge reflects <em>their</em> network, not this one. Accumulating demand on DDM30 while taking discharge from a model that routes differently would put the numerator and denominator back on different catchments &mdash; the very defect the routing was brought in to fix.</p>
+<p>It is measurable before anything is built: accumulate each model's own total runoff along DDM30 and compare cell-wise against that model's published discharge. Close agreement means the networks concur and the pairing is sound. Divergence localises exactly where that model's drainage differs, and a model that disagrees badly cannot use the routed metric. This alone justifies downloading total runoff even for models where the local metric is not wanted.</p>
+<p>It is computationally cheap. The topological order is computed once, then all 86 years by 12 months accumulate in a single pass with the time series carried as a vector payload.</p>
+<div class="note"><p><strong>Two properties to keep visible.</strong> The network is static &mdash; one flow-direction grid, no time or scenario dimension, so no channel migration and no new reservoir reroutes anything. And DDM30 spans 280 of our 360 latitude rows; its land mask is within four cells of the water models', but &ldquo;within four&rdquo; is not &ldquo;identical&rdquo;, and any water-model land cell with no routing entry would silently receive no upstream demand.</p></div>
+</div>
+</section>
+
+
+<hr>
+
+<section>
+<h2><span class="num">06</span>Comparing the models, and narrowing to one</h2>
+<div class="wrap">
+<p class="lede">Measured 17 August 2026 on <code>gfdl-esm4</code> / <code>ssp370</code> / <code>1850soc</code>, 2015&ndash;2100 time means, for all three models that publish both an all-sector total withdrawal and a naturalised supply. 1.43 GB, six files.</p>
+
+<h3>Routing agreement with DDM30</h3>
+<p>Evaporation can only ever make accumulated runoff <em>exceed</em> discharge. So the fraction of cells where accumulated runoff is <strong>less</strong> than published discharge is a one-sided network-mismatch signal &mdash; a cell holding water the DDM30 catchment cannot supply &mdash; uncontaminated by losses.</p>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>Model</th><th>acc/dis &lt; 0.9</th><th>median acc/dis by catchment size (1&ndash;2 cells &rarr; &gt;1000)</th></tr></thead>
+<tbody>
+<tr><td>H08</td><td class="yes">0.13%</td><td>1.003 &middot; 1.002 &middot; 1.002 &middot; 1.002 &middot; 1.002</td></tr>
+<tr><td>LPJmL5-7-10-fire</td><td class="yes">0.10%</td><td>1.005 &middot; 1.005 &middot; 1.007 &middot; 1.014 &middot; 1.023</td></tr>
+<tr><td>WaterGAP2-2e</td><td>3.45%</td><td>1.004 &middot; 1.003 &middot; 1.009 &middot; 1.055 &middot; 0.988</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<p>All three networks are compatible with DDM30. LPJmL5's apparent disagreement is <em>not</em> a network problem &mdash; its deficit tail is the smallest of the three and its ratio climbs monotonically with catchment size, the signature of water lost in transit. WaterGAP2-2e's deficit tail is 26&times; H08's and roughly flat across scales, a genuine partial topology difference, recorded as a known limitation.</p>
+<div class="note"><p>None of this requires accumulated runoff in the metric itself. The denominator is the model's own published discharge, carrying its own channel physics; DDM30 is used only to accumulate demand, where no such physics applies.</p></div>
+
+<h3>The ranking inverted on inspection</h3>
+<p>WaterGAP2-2e scored worst on naive agreement <strong>because it is the only one of the three that simulates lake, wetland and floodplain evaporation</strong> &mdash; and correspondingly the only one whose loss-dominated rivers are near reality.</p>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>River</th><th>WaterGAP2-2e</th><th>H08</th><th>LPJmL5</th><th>Observed natural</th></tr></thead>
+<tbody>
+<tr><td>Nile</td><td class="yes"><strong>3,053</strong></td><td>8,215</td><td>16,303</td><td>~2,700&ndash;2,800 m&sup3;/s</td></tr>
+<tr><td>Murray</td><td class="yes"><strong>232</strong></td><td>795</td><td>2,136</td><td>~380 m&sup3;/s</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<p>H08 and LPJmL5 essentially route runoff to the ocean, which is why they agree beautifully with a naive accumulation and overshoot the Nile by three- and sixfold. The first agreement score was measuring model <em>physics</em>, not model <em>plumbing</em>, and using it to exclude a model would have removed the most realistic one.</p>
+
+<h3>The spread is not a scale offset &mdash; the ranking reverses</h3>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>Ordering, driest &rarr; wettest</th><th>% of cells</th><th>% weighted by flow</th></tr></thead>
+<tbody>
+<tr><td>H08 &lt; WGAP &lt; LPJmL</td><td>31.6</td><td>30.3</td></tr>
+<tr><td>H08 &lt; LPJmL &lt; WGAP</td><td>23.7</td><td>28.1</td></tr>
+<tr><td>WGAP &lt; H08 &lt; LPJmL</td><td>17.5</td><td>22.8</td></tr>
+<tr><td>WGAP &lt; LPJmL &lt; H08</td><td>13.4</td><td>5.2</td></tr>
+<tr><td>LPJmL &lt; WGAP &lt; H08</td><td>7.5</td><td>6.9</td></tr>
+<tr><td>LPJmL &lt; H08 &lt; WGAP</td><td>6.3</td><td>6.6</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<p><strong>No ordering holds in even a third of cells; the ranking reverses in 68.4%.</strong> Pairwise sign flips run 27&ndash;38%, and pairwise ratios span 0.11 to 2.22 between the 10th and 90th percentiles &mdash; a twentyfold range across space. There is a systematic tendency &mdash; H08 driest in 55% of cells, LPJmL wettest in 49% &mdash; but it is a majority habit, not a rule.</p>
+<p><strong>The disagreement is in the land surface, not the routing.</strong> Reversal rate on accumulated runoff, before any channel physics: <strong>62.9%</strong>. After routing: 68.4%. Routing adds five and a half points; the other sixty-three were already there in how much water each model generates and where.</p>
+</div>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>Basin type</th><th>Driest model</th><th>max/min spread</th></tr></thead>
+<tbody>
+<tr><td>arid / loss-dominated</td><td>WaterGAP2-2e, by a wide margin</td><td>Colorado <strong>29.7&times;</strong> &middot; Orange 14.9&times; &middot; Murray 9.2&times; &middot; Nile 5.3&times;</td></tr>
+<tr><td>Arctic</td><td>LPJmL5</td><td>Lena 1.3&times; &middot; Mackenzie 1.9&times; &middot; Yenisei 1.2&times;</td></tr>
+<tr><td>wet tropical / temperate</td><td>H08</td><td>Amazon 1.1&times; &middot; Ganges 1.1&times; &middot; Congo 1.3&times;</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<div class="note" style="border-left-color:var(--sev-block);background:var(--sev-block-bg);"><p><strong>The spread is concentrated precisely in the basins that will score as stressed.</strong> Wet basins agree within 10&ndash;30%; arid basins disagree by factors of 5 to 30. Because the 40% and 80% bands are <em>absolute</em> thresholds, a denominator uncertain by 30&times; makes the band assignment in arid basins closer to a model choice than a measurement. The relative <em>ranking</em> of basins survives this spread. The absolute class assignment does not.</p></div>
+
+<h3>Decision &mdash; WaterGAP2-2e only, and provisional</h3>
+<p><strong>User decision, 17 August 2026.</strong> The initial layer uses WaterGAP2-2e alone: five GCMs across three scenarios, <strong>five members per scenario and one impact model</strong>.</p>
+<p>It is the only one of the three that simulates open-water evaporation &mdash; the dominant term in exactly the arid basins this layer exists to identify &mdash; and the only one whose naturalised Nile and Murray are near observed. It also publishes its own cell-area grid, so the 0.9% borrowing bias does not arise.</p>
+<p><strong>This is explicitly temporary and is to be revisited.</strong> What it costs:</p>
+<ul>
+<li><strong>The confidence interval carries no structural uncertainty at all</strong>, only climate-model spread. The delivery caveat generator already emits a single-model warning automatically, so no new machinery is needed &mdash; but its standing text says the interval is narrower than the truth &ldquo;by an unknown amount, there is no second model to measure the gap against&rdquo;, and <strong>that clause is now false here</strong>. The gap has been measured. The caveat must carry these numbers, and whether it is promoted from <em>should</em> to <em>must</em> is a separate decision, since changing the severity globally would touch every other single-model layer.</li>
+<li>Choosing the model that best reproduces observed loss-dominated flow is defensible, but it is a <strong>selection on the outcome</strong>, and the layer should say so rather than present the choice as arbitrary.</li>
+<li>The 3.45% deficit-tail cells are now the only routing check available, with no second model to cross-read against.</li>
+</ul>
+<p><strong>Revisit when:</strong> a second model gains an <code>1850soc</code> naturalised run with total withdrawal; or we accept a mixed-soc denominator and recover the three-to-four model ensemble; or a customer requires structural uncertainty in the interval.</p>
+</div>
+</section>
+
+<hr>
+
+<section>
+<h2><span class="num">07</span>Ingest</h2>
+</section>
+
+<div class="scroll wide">
+<table>
+<thead><tr><th>Variable</th><th>Soc</th><th>Files</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>ptotww</code></td><td>2015soc</td><td>45</td><td>numerator &mdash; 3 models &times; 5 GCM &times; 3 SSP</td></tr>
+<tr><td><code>qtot</code></td><td>1850soc</td><td>15</td><td>local runoff denominator</td></tr>
+<tr><td><code>dis</code></td><td>1850soc</td><td>15</td><td>river denominator and flow requirement</td></tr>
+<tr><td><code>cellarea</code>, <code>contfrac</code></td><td>&mdash;</td><td>3</td><td>unit conversion, 32 KB each</td></tr>
+<tr><td>DDM30 routing</td><td>&mdash;</td><td>3</td><td>1.7 MB total</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="wrap">
+<p><strong>47 files, about 11.5 GB</strong>, for WaterGAP2-2e alone &mdash; running as of 17 August. The 2020s baseline sits inside the 2015&ndash;2100 files, so no historical download is needed. Script: <code>scripts/download_waterstress_isimip3b.py</code>, which carries the model-scope decision and its measurements in the module docstring.</p>
+</div>
+
+<hr>
+
+<section>
+<h2><span class="num">08</span>Open before any layer is written</h2>
+<div class="wrap">
+<ol class="checks">
+<li>Continental fraction in or out, verified per model and per variable rather than generalised from one.</li>
+<li>Confirm the three published cell-area grids are identical, so one can serve H08 and MIROC.</li>
+<li>Whether total runoff already contains the groundwater term &mdash; decides whether recharge may enter availability at all.</li>
+<li>Whether potential withdrawal actually is flat in time. Measured, not inferred from the soc token.</li>
+<li>Published total versus summed sectors per model, and MIROC justified from its own metadata.</li>
+<li>River mask threshold, proposed from the measured baseline flow distribution.</li>
+<li>Precedence table for every zero, zero-over-zero and divide-by-zero case &mdash; now the sole defence against an infinity reaching the pooled statistics.</li>
+<li><strong>Routing agreement per model:</strong> total runoff accumulated along DDM30 versus that model's own published discharge. A model whose network disagrees cannot use the routed metric.</li>
+<li>Exact-zero share of demand, plus tail diagnostics, before choosing a decadal branch.</li>
+<li>Argmax-month stability diagnostics for the worst-month reduction.</li>
+<li>Redundancy measurements across the six metrics.</li>
+<li>Which slope to recommend per metric &mdash; measured after the run, never inferred.</li>
+<li>Reference sites before and after processing. Indus, Nile, Colorado, Murray&ndash;Darling, North China Plain and Central Valley should read high; Amazon, Congo and boreal Siberia low; a Sahara cell with no demand must read <strong>zero</strong>, not high.</li>
+<li>Characterise the 84 basins with multiple termini.</li>
+<li>Verify the DDM30 land mask against each water model's land mask.</li>
+</ol>
+</div>
+</section>
+
+<hr>
+
+<section>
+<h2><span class="num">09</span>Taxonomy consequences</h2>
+<div class="wrap">
+<p>Only the demand-based routed metric may populate <code>families.water-stress.covered_by</code>, and only in the same change that routes it in the asset catalog, per that file's own rule. A supply-only standardized index would not qualify &mdash; filing it there would assert that the demand-versus-supply question had been assessed when it had not.</p>
+<p>The existing water-stress blocker text describes the Water Risk Index and warns against silent substitution. These layers are the alternative route it anticipated, on the TCFD contract, and the blocker needs rewriting when one ships.</p>
+</div>
+</section>
+
+<hr>
+
+<section>
+<h2><span class="num">10</span>Next step</h2>
+<div class="wrap">
+<p>Rewrite the formulations document as the settled specification, with the routed construction and all of the review fixes folded in, then send that revised version back through Codex before any download starts. The first review paid for itself; the second one gets a document that has already absorbed it.</p>
+</div>
+</section>
+
+</div>
+
+<footer>
+  <div class="wrap" style="margin:0;">
+    <p>Working record, 17 August 2026. Source markdown at <code>docs/water-stress-status-2026-08-17.md</code>. Companion to <code>docs/water-stress-formulations.md</code>, which is the design doc and will be rewritten to match. Nothing has been downloaded and no layer has been written.</p>
+  </div>
+</footer>

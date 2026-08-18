@@ -921,3 +921,97 @@ blocked:
     the output contract and means nothing.
   sugarcane_yield-sug-noirr_annual: >-
     WITHDRAWN 2026-08-11, same upstream data defect as the irrigated variant.
+
+  # ---------------------------------------------------------------------------
+  # Water stress -- ISIMIP3b WaterGAP2-2e. Added 2026-08-18.
+  #
+  # NOT ROUTED IN config/asset_catalog.yaml AND NOT COUNTED IN
+  # config/hazard_taxonomy.yaml families.water-stress.covered_by. That is deliberate,
+  # not an oversight: (a) a reference-site check found the Nile in Egypt reading
+  # n_members = 0 despite 3,024 m3/s of natural flow, so the layer has a live defect;
+  # (b) the routed metrics have NO SAFE POINT-EXTRACTION PATH yet -- delivery.py
+  # Gaussian-blends four neighbours, which for a river-network variable can average
+  # across unrelated catchments (scripts/utils/hydro_extract.py is the replacement and
+  # is not wired in). Populating covered_by now would assert to a reader that the
+  # demand-versus-supply question had been assessed and deliverable. It has not.
+  # ---------------------------------------------------------------------------
+  waterstress-3b-routed-annual:
+    folder: waterstress-isimip3b
+    file_prefix: R_ann
+    hazard: Water stress
+    hazard_measure: >-
+      Upstream-accumulated potential withdrawal divided by naturalised river discharge,
+      annual totals. Aqueduct-style baseline water stress; NOT SDG 6.4.2, which deducts
+      an environmental flow requirement (out of scope this pass -- it is set by regional
+      and legal context, not derivable from hydrology).
+    status: development
+    qa_reviewed_on: null
+    recommended_slope: null
+    recommended_slope_rationale: >-
+      NOT YET MEASURED. Do not read either slope until it is. The field is CENSORED at
+      the declared cap of 100 (0.084% of member-years for this metric), and OUTPUT-SPEC
+      is explicit that where cells sit at a bound both estimators go to ~0 and AGREE --
+      so the usual "disagreement means fragile" rule gives no warning here.
+    relative_baseline: false
+    delivery_note: >-
+      NOT DELIVERABLE TO POINTS. Numerator and denominator are both upstream-accumulated,
+      so the value describes the river at that node, not the site. Two consequences a
+      reader will otherwise get wrong. First, THE ANSWER LEGITIMATELY VARIES ALONG A
+      RIVER: the Indus reads 1.75 in its upper reach where irrigation withdrawal
+      concentrates and 0.24 downstream where that same demand meets the full 5,117 m3/s
+      of natural flow. Neither is the basin's number. Second, INTERBASIN TRANSFERS ARE
+      INVISIBLE -- Las Vegas returns NO_RIVER_IN_BASIN because its water arrives from the
+      Colorado through infrastructure this method cannot see, and refusing is correct.
+      Supply is 1850soc, so the layer CANNOT SHOW THE BENEFIT OF RESERVOIR STORAGE: a
+      well-dammed basin and an undammed one with the same natural flow read identically.
+      ONE IMPACT MODEL -- the interval carries no structural uncertainty, and the omitted
+      component was measured as large (68.4% inter-model ordering reversal; 29.7x spread
+      on the Colorado). The model was chosen for best reproduction of observed
+      loss-dominated flow, which is a SELECTION ON THE OUTCOME and must be stated as such.
+
+  waterstress-3b-routed-month:
+    folder: waterstress-isimip3b
+    file_prefix: R_max
+    hazard: Water stress
+    hazard_measure: As waterstress-3b-routed-annual, reduced to the highest-stress month.
+    status: development
+    qa_reviewed_on: null
+    recommended_slope: null
+    recommended_slope_rationale: >-
+      NOT YET MEASURED, and this metric has TWO reasons to be held back. It is censored
+      at the cap on 2.47% of member-years -- thirty times the annual metric -- and the
+      max-over-months reduction is a median of member-year maxima whose argmax month can
+      switch between years and members, so a trend can appear where typical monthly
+      stress is unchanged. Both need measuring before it ships.
+    relative_baseline: false
+    delivery_note: Inherits every caveat of waterstress-3b-routed-annual.
+
+  waterstress-3b-local-annual:
+    folder: waterstress-isimip3b
+    file_prefix: L_ann
+    hazard: Water stress (local self-sufficiency)
+    hazard_measure: >-
+      Cell-local potential withdrawal over locally generated runoff. A DIAGNOSTIC, not a
+      water-stress layer.
+    status: diagnostic
+    qa_reviewed_on: null
+    recommended_slope: null
+    relative_baseline: false
+    delivery_note: >-
+      DO NOT DELIVER. This is the textbook grid-cell-WTA failure mode, retained only as a
+      diagnostic: a site on a large river that generates no local runoff reads as
+      infinitely stressed because its water arrives from upstream. Its blow-ups are ~3x
+      more common than the routed metric's (0.28% vs 0.084% at the cap). It answers
+      "could this cell supply itself?", which is a real question and not the one ESRS E3
+      or CDP ask.
+
+  waterstress-3b-local-month:
+    folder: waterstress-isimip3b
+    file_prefix: L_max
+    hazard: Water stress (local self-sufficiency)
+    hazard_measure: As waterstress-3b-local-annual, highest-stress month.
+    status: diagnostic
+    qa_reviewed_on: null
+    recommended_slope: null
+    relative_baseline: false
+    delivery_note: DO NOT DELIVER. See waterstress-3b-local-annual, plus 2.69% censoring.
