@@ -833,6 +833,87 @@ layers:
 
 # Layers refused by the loader. A folder carrying INVALID-DO-NOT-USE.md is ALSO refused
 # automatically, so this list is belt-and-braces rather than the only guard.
+  # ---------------------------------------------------------------------------------
+  # CONUS observational tornado ladder -- added 2026-08-18.
+  #
+  # THESE ARE NOT OUTPUT-SPEC LAYERS. They answer `observational-historical-v1`: no
+  # decade axis, no slopes, no ensemble, one observed window (1950-2025). They are
+  # lifted onto a single-period axis at read time by spatial_extract.as_period_dataset,
+  # and their rows carry scenario `observed`, which no projected layer uses. Do not
+  # compute a decadal change from them -- there is only one period.
+  #
+  # CONUS ONLY, AND THAT IS ENFORCED BY THE DATA, NOT BY PROSE. Every cell outside the
+  # United States is NaN in the file, so a non-US site resolves to OFF_LAYER_MASK or
+  # OUTSIDE_DOMAIN rather than to a low score. That distinction matters: no global
+  # tornado record with comparable detection exists, so a zero outside CONUS would mean
+  # "unobserved", never "safe".
+  #
+  # WHY f2plus IS PREFERRED AND `all` IS NOT. Report density tracks population, roads
+  # and radar, which is the same thing the exposure term measures. Measured at Phoenix
+  # AZ: 64.4th percentile on `all` -> 45.0 on f1plus -> 1st on f2plus, while Moore OK
+  # holds 99.9-100 on every rung. The weak-tornado record is contaminated in exactly the
+  # way that would flatter a dense metro and under-score a remote industrial site. f2plus
+  # is the reporting-stable subset; it costs 82% of the records and is still the honest
+  # rung. Reversible here by moving `status` -- all four are built and contract-passing.
+
+  tornado-f2plus:
+    folder: tornado-spc_f2plus_full
+    file_prefix: tornado-f2plus
+    hazard: Tornado
+    hazard_measure: Tornado track crossing rate, (E)F2 and stronger
+    status: preferred
+    recommended_slope: none
+    recommended_slope_rationale: >-
+      Not applicable. This layer publishes no slope: 76 years would support one, but the
+      fitted trend would measure the observing system, not the climate (reports rose 2.8x
+      since the 1950s while F2+ reports fell 19%).
+    delivery_note: >-
+      SCREENING ONLY, CONUS ONLY. A damage path is ~100 m wide against a ~28 km cell, so
+      this ranks which sites merit investigation and cannot support a design wind load or
+      an asset-level strike probability. The value is a track-intersection frequency per
+      unit area and does not survive resampling to another resolution.
+    qa_reviewed_on: null
+
+  tornado-all:
+    folder: tornado-spc_all_full
+    file_prefix: tornado-all
+    hazard: Tornado
+    hazard_measure: Tornado track crossing rate, all reported tornadoes
+    status: alternate
+    recommended_slope: none
+    recommended_slope_rationale: "Not applicable -- see tornado-f2plus."
+    delivery_note: >-
+      CONTAMINATED BY REPORTING DENSITY -- retained for comparison, not for delivery.
+      Includes (E)F0 reports, which rose 7.7x since the 1950s on detection improvements
+      alone, and unrated reports. Scores dense metros above remote sites of equal hazard.
+    qa_reviewed_on: null
+
+  tornado-f1plus:
+    folder: tornado-spc_f1plus_full
+    file_prefix: tornado-f1plus
+    hazard: Tornado
+    hazard_measure: Tornado track crossing rate, (E)F1 and stronger
+    status: alternate
+    recommended_slope: none
+    recommended_slope_rationale: "Not applicable -- see tornado-f2plus."
+    delivery_note: >-
+      Middle rung. Broader sample than f2plus, partially reporting-contaminated.
+    qa_reviewed_on: null
+
+  tornado-f3plus:
+    folder: tornado-spc_f3plus_full
+    file_prefix: tornado-f3plus
+    hazard: Tornado
+    hazard_measure: Tornado track crossing rate, (E)F3 and stronger (violent)
+    status: alternate
+    recommended_slope: none
+    recommended_slope_rationale: "Not applicable -- see tornado-f2plus."
+    delivery_note: >-
+      Violent tornadoes only. Cleanest reporting, thinnest sample -- 69.6% of CONUS sits
+      in the zero tier and many occupied cells rest on a single event.
+    qa_reviewed_on: null
+
+
 blocked:
   sugarcane_yield-sug-firr_annual: >-
     WITHDRAWN 2026-08-11, upstream data defect. ISIMIP2b LPJmL simulates no sugarcane in the

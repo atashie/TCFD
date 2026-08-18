@@ -36,36 +36,74 @@ assets:
       conifer-npp covers TEMPERATE NEEDLELEAF EVERGREEN stands only (Douglas-fir, loblolly
       and ponderosa pine, Norway spruce, radiata pine). A broadleaf or boreal holding will
       return OFF_LAYER_MASK and needs a different productivity layer that is not yet shipped.
+    tornado_caveat: >-
+      TORNADO IS DELIBERATELY NOT IN THIS BUNDLE (decided 2026-08-18) -- recorded so the
+      omission reads as a decision rather than an oversight. Tornado blowdown is real for
+      standing timber but affects a path ~100 m wide, which against a holding measured in
+      thousands of hectares is immaterial beside wildfire and drought, the two loss
+      mechanisms already carried. Add tornado-f2plus if a customer's holding is small,
+      concentrated and inside the CONUS tornado maximum.
     confirmed_on: null
 
   data center:
     aliases: [datacenter, data centre, colocation facility, server farm]
-    layers: [drought-3b, cyclone, wildfire]
+    layers: [drought-3b, cyclone, wildfire, tornado-f2plus]
     rationale: >-
       Drought is a genuine process input here rather than a generic hazard -- evaporative
-      cooling and the local grid both depend on water availability. Cyclone and wildfire are
-      direct physical-damage and outage risks.
+      cooling and the local grid both depend on water availability. Cyclone, wildfire and
+      tornado are direct physical-damage and outage risks; for tornado the transmission
+      channel is usually the grid connection and rooftop plant rather than the hall itself.
+    tornado_caveat: >-
+      ADDED 2026-08-18. tornado-f2plus is CONUS-ONLY and SCREENING-ONLY. It is built from
+      the NOAA SPC observational record, not from a climate model, so it carries no scenario
+      and no trend: it describes 1950-2025 as observed and says nothing about how tornado
+      risk changes with warming. A site outside the United States returns OFF_LAYER_MASK or
+      OUTSIDE_DOMAIN, NEVER a low score -- no global tornado record with comparable
+      detection exists, so outside CONUS "no data" must not be read as "no hazard". At
+      ~28 km cells against a ~100 m damage path it ranks which sites merit investigation
+      and cannot support a design wind load or a strike probability.
     confirmed_on: null
 
   warehouse:
     aliases: [distribution center, distribution centre, logistics facility, depot]
-    layers: [cyclone, wildfire]
+    layers: [cyclone, wildfire, tornado-f2plus]
     rationale: >-
       Built asset whose exposure is physical damage and access interruption. Drought is
       deliberately EXCLUDED -- water is not a process input and including it would report a
-      hazard with no transmission channel to the asset.
+      hazard with no transmission channel to the asset. Tornado is the archetypal severe
+      convective loss for this class: large low-rise envelopes, long roof spans and
+      cladding are what tornadic and downburst winds take first.
+    tornado_caveat: >-
+      ADDED 2026-08-18. tornado-f2plus is CONUS-ONLY and SCREENING-ONLY. It is built from
+      the NOAA SPC observational record, not from a climate model, so it carries no scenario
+      and no trend: it describes 1950-2025 as observed and says nothing about how tornado
+      risk changes with warming. A site outside the United States returns OFF_LAYER_MASK or
+      OUTSIDE_DOMAIN, NEVER a low score -- no global tornado record with comparable
+      detection exists, so outside CONUS "no data" must not be read as "no hazard". At
+      ~28 km cells against a ~100 m damage path it ranks which sites merit investigation
+      and cannot support a design wind load or a strike probability.
     confirmed_on: null
 
   office:
     aliases: [commercial building, office building, corporate campus, retail]
-    layers: [cyclone, wildfire]
+    layers: [cyclone, wildfire, tornado-f2plus]
     rationale: >-
-      Same reasoning as warehouse -- physical damage and business interruption.
+      Same reasoning as warehouse -- physical damage and business interruption, tornado
+      included for the same wind-damage channel.
+    tornado_caveat: >-
+      ADDED 2026-08-18. tornado-f2plus is CONUS-ONLY and SCREENING-ONLY. It is built from
+      the NOAA SPC observational record, not from a climate model, so it carries no scenario
+      and no trend: it describes 1950-2025 as observed and says nothing about how tornado
+      risk changes with warming. A site outside the United States returns OFF_LAYER_MASK or
+      OUTSIDE_DOMAIN, NEVER a low score -- no global tornado record with comparable
+      detection exists, so outside CONUS "no data" must not be read as "no hazard". At
+      ~28 km cells against a ~100 m damage path it ranks which sites merit investigation
+      and cannot support a design wind load or a strike probability.
     confirmed_on: null
 
   agricultural land:
     aliases: [farmland, cropland, agriculture, farm]
-    layers: [cropfailure-3b, drought-3b, wildfire]
+    layers: [cropfailure-3b, drought-3b, wildfire, tornado-f2plus]
     rationale: >-
       Crop failure is the crop-specific exposure and is listed first; drought is the primary
       underlying yield driver and is retained because it covers the site whether or not it
@@ -81,4 +119,13 @@ assets:
       aggregates is undocumented by the publisher, so for a specific crop treat it as a
       regional signal. The sugarcane layers were withdrawn 2026-08-11 for an upstream data
       defect and must not be substituted.
+    tornado_caveat: >-
+      ADDED 2026-08-18. tornado-f2plus is CONUS-ONLY and SCREENING-ONLY. It is built from
+      the NOAA SPC observational record, not from a climate model, so it carries no scenario
+      and no trend: it describes 1950-2025 as observed and says nothing about how tornado
+      risk changes with warming. A site outside the United States returns OFF_LAYER_MASK or
+      OUTSIDE_DOMAIN, NEVER a low score -- no global tornado record with comparable
+      detection exists, so outside CONUS "no data" must not be read as "no hazard". At
+      ~28 km cells against a ~100 m damage path it ranks which sites merit investigation
+      and cannot support a design wind load or a strike probability.
     confirmed_on: null

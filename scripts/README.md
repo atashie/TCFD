@@ -142,6 +142,62 @@ Water Risk Index — **a different product**; none of the TCFD contract applies 
 | `process_water_tws.py` | total water storage |
 | `process_water_variable.py` | the generic monthly water variable processor |
 
+### process_tornado_spc.py — **the shipped CONUS tornado ladder** (NOT ISIMIP)
+
+Builds four rungs (`all`, `f1plus`, `f2plus`, `f3plus`) from the NOAA SPC tornado database.
+The only non-ISIMIP layer in the product, because ISIMIP forcing publishes 11 SURFACE
+variables and nothing aloft, so the shear term every tornado index needs cannot be formed.
+
+Answers `observational-historical-v1`, not the OUTPUT-SPEC decadal contract: no decade axis,
+no slopes, scenario `observed`. **Global 0.25° grid, CONUS data, everything else NaN** — a
+regional grid is not deliverable (GUARDRAILS §17). Value is a Gamma(k+½, T) posterior median
+of the track-crossing rate; the pooled-median branch was measured first and is degenerate
+here. `--estimator mle` reproduces the superseded hybrid; `--geometry touchdown` and
+`--start-year` are the sensitivity switches.
+
+Ingest is `download_tornado_spc.py`. Verify with `test_observational_baseline.py`, review with
+`generate_tornado_qa.py`, and read
+[docs/tornado-data-options-2026-08-18.md](../docs/tornado-data-options-2026-08-18.md) for the
+options review, the adversarial review and every correction it forced.
+
+### download_tornado_spc.py
+
+Fetches the SPC database and the Natural Earth boundary used for the CONUS mask, each with a
+`.json` sidecar carrying `source_url`, `sha256`, size and retrieval date — `data/` is
+gitignored and ephemeral, so the sidecar is the only record of what was ingested. Resumable.
+(`scripts/utils/natural_earth.py` is unusable here: it imports geopandas at module level and
+geopandas is not installed in this venv.)
+
+### test_observational_baseline.py
+
+Contract check for `observational-historical-v1`. Separate from `test_shared_baseline.py` on
+purpose — that one guards 23 projected layers and its strictness is the product, so an
+observational layer failing it is correct behaviour, not something to relax.
+
+Beyond shape, it enforces three rules this repo learned the hard way: decadal-contract
+variables must be **absent, not faked to 1**; two-tier consistency is checked in **both**
+directions and keyed on the observed count (keying on `median <= 0` would pass vacuously
+under the posterior estimator); and a caveat attribute may not open with a negation, because
+a non-empty caveat is published verbatim and `resolution_caveat: "none"` would print "none"
+into a filing.
+
+### measure_tornado_smoothing.py
+
+Whether to smooth, and at what decay length — measured, never assumed. Splits the record
+**odd vs even years** (early-vs-late would measure the reporting trend instead of sampling
+noise). Primary criterion is a floor-free negative-binomial predictive; the plug-in Poisson
+column is kept for comparison and systematically over-smooths. The naive "smooth both halves
+and correlate" criterion is documented in the docstring as **degenerate** — it rises
+monotonically with σ and always returns the largest value offered. Writes nothing.
+
+### generate_tornado_qa.py
+
+QA maps for the observational contract, so `qa_reviewed_on` can stop being null. Separate
+from `generate_maps.py`, which selects on `ds.decade` and builds Trend and Members tabs from
+variables this contract does not have. Colourbars are asserted clear of the map panels — the
+first version drew them on top of the first row, which is invisible in code and obvious only
+once a human opens the file.
+
 ### generate_maps.py
 
 Generates interactive Plotly maps from processed climate data.

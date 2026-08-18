@@ -48,6 +48,7 @@ from scripts.utils.delivery import (  # noqa: E402
     run_delivery,
     scenario_path,
 )
+from scripts.utils.spatial_extract import as_period_dataset  # noqa: E402
 
 
 def cmd_list_layers(registry, catalog) -> int:
@@ -89,6 +90,12 @@ def cmd_measure_slopes(registry) -> int:
         try:
             scenario = discover_scenarios(registry, spec)[0]
             with xr.open_dataset(scenario_path(registry, spec, scenario)) as ds:
+                # An observational layer publishes no slopes and has no decade axis. It is
+                # not a layer whose slope choice is "unmeasured" -- it is one where the
+                # question does not arise, so say that rather than crashing on a KeyError.
+                if "ols_slope" not in ds or "sen_slope" not in ds:
+                    print(f"{layer_id:<16}  no slopes -- observational layer, not applicable")
+                    continue
                 decade = int(ds.decade.values[-1])
                 ols = ds["ols_slope"].sel(decade=decade).values
                 sen = ds["sen_slope"].sel(decade=decade).values
@@ -135,7 +142,9 @@ def print_plan(customer, input_path, locations_df, assets_df, work, registry) ->
     for item in work:
         spec = registry.get(item["layer_id"])
         scenarios = discover_scenarios(registry, spec)
-        with xr.open_dataset(scenario_path(registry, spec, scenarios[0])) as ds:
+        with xr.open_dataset(scenario_path(registry, spec, scenarios[0])) as raw:
+            # Observational layers carry one observed period rather than a decade axis.
+            ds = as_period_dataset(raw)
             n_decades = len(ds.decade)
             units = ds.attrs.get("units", "?")
         rows = item["n_assets"] * len(scenarios) * n_decades

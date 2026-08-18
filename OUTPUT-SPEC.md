@@ -243,6 +243,29 @@ implies, so nobody rediscovers it as a bug:
 - On `csoil-total` the between-member level offset measured **68.7×** the interannual SD,
   so this is a live regime, not a hypothetical.
 
+## A SECOND contract exists for observational layers
+
+This document specifies the **decadal projection** contract, and every ISIMIP-derived layer
+answers it. It is not the only one.
+
+`observational-historical-v1` covers layers built from an observed record rather than a model
+ensemble: **no `decade` dimension, no `ols_slope`/`sen_slope`, and no `n_members`/`n_models`**
+— those are ABSENT, never set to 1, because a 1 reads as a thin ensemble rather than as a
+different kind of product. Such a layer carries `median`, `lower_ci`, `upper_ci`, `percentile`
+on `(lat, lon)`, declares `output_contract` in its own global attributes, and uses the
+scenario code `observed`, which no projected layer uses.
+
+`scripts/test_shared_baseline.py` **rejects** those files, correctly. Their verifier is
+`scripts/test_observational_baseline.py`. Do not relax this contract to accommodate them —
+its strictness is what it is for.
+
+Two integration points follow from the missing forcing axis, both enforced in code:
+`spatial_extract.as_period_dataset()` lifts such a layer onto a single-period axis at read
+time (the file stays 2-D on disk), and `observed` is excluded from the Climate Score, which
+is a cross-*forcing* comparison it cannot participate in.
+
+The first instance is the CONUS tornado ladder — see [DATASET-ATTRIBUTES.md](DATASET-ATTRIBUTES.md).
+
 ## This contract is about FORM, not meaning
 
 `test_shared_baseline.py` passing means the file is *shaped* right — schema, shared

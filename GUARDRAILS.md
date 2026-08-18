@@ -509,3 +509,32 @@ identical across a 60 s interval, is a hung socket — not a slow server.
 
 **Related**: §15 (do not destroy the working tree), §11 (a measurement taken under unknown
 conditions is not evidence).
+
+---
+
+## 17. Publish on the PRODUCT's Grid — a Regional Grid Is Not Deliverable
+
+A layer whose data covers one region must still be published on the **global grid the product
+uses**, with everything outside the region masked to NaN. Restricting the *grid* to the
+region, rather than restricting the *data*, breaks delivery for every site outside it.
+
+**Measured 2026-08-18.** The first CONUS tornado build was published on a regional
+24–50 °N / 66–125 °W grid. `spatial_extract.extract_by_point` **raises**
+`ValueError: No grid cells found within …` when a point falls outside the grid extent, so a
+delivery containing a Honolulu warehouse aborted the entire run — not that one row, the run.
+Republished on the global 0.25° grid with 13,377 CONUS cells populated, the same site
+resolves to `OFF_LAYER_MASK` and the delivery completes.
+
+Do **not** soften the off-grid guard to fix this. On a global layer an off-grid point means
+bad input coordinates, and that must fail loudly. The guard is right; a regional grid is
+wrong.
+
+The cost of a global grid is close to zero: an almost-all-NaN array compresses away — the
+global 0.25° tornado layers are **192 KB each**, against 1,036,800 cells.
+
+**And the mask must carry the meaning, not the extent.** Outside the data region every
+published field is NaN, *never* 0 — the delivery then reports `OFF_LAYER_MASK` ("this layer
+does not model your site") instead of a low score. For a hazard with a regional observing
+system this is the difference between "unobserved" and "safe", and they are not the same
+claim. `test_observational_baseline.py` asserts it on every published field, not just on
+`median`.

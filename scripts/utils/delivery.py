@@ -58,6 +58,7 @@ import xarray as xr
 import yaml
 
 from .spatial_extract import (
+    as_period_dataset,
     extract_by_point,
     grid_cell_size,
     normalize_longitude,
@@ -425,7 +426,10 @@ def _domain_mask(registry: Registry) -> Domain:
             scenario = discover_scenarios(registry, spec)[0]
         except DeliveryError:
             continue  # not on disk / withdrawn -- it just does not widen the domain
-        with xr.open_dataset(scenario_path(registry, spec, scenario)) as ds:
+        with xr.open_dataset(scenario_path(registry, spec, scenario)) as raw:
+            # Observational layers are (lat, lon); lift them onto the single-period axis
+            # so `.any(dim="decade")` is valid for every layer without a special case.
+            ds = as_period_dataset(raw)
             finite = np.isfinite(ds["median"]).any(dim="decade").compute()
         masks.append((layer_id, finite))
         consulted.append(layer_id)
@@ -548,7 +552,10 @@ def extract_layer_for_points(
 
     for scenario in scenarios:
         path = scenario_path(registry, spec, scenario)
-        with xr.open_dataset(path) as ds:
+        with xr.open_dataset(path) as raw_ds:
+            # An observational layer has no decade axis; lift it onto a single-period one
+            # so the (decade x scenario) extraction below is unchanged for every layer.
+            ds = as_period_dataset(raw_ds)
             per_scenario_attrs[scenario] = dict(ds.attrs)
             if not layer_meta:
                 layer_meta = _layer_metadata(spec, ds, scenarios)
@@ -939,7 +946,7 @@ def compute_climate_score(
     dilute the score just as much as the one that matters. The catalog is what keeps
     irrelevant hazards out of an asset's set.
     """
-    from .viz_common import TIER_ORDER, tier_of
+    from .viz_common import TIER_ORDER, is_forcing_scenario, tier_of
 
     # `layer_ids` is a list in the in-memory frame and a ";"-joined string once written to
     # assets.csv. Accept both so this works on a live run and on a re-read delivery.
@@ -957,6 +964,13 @@ def compute_climate_score(
     # future caller could pass a wider frame.
     df = df[df.apply(lambda r: r["layer_id"] in asset_layers.get(r["asset_id"], set()), axis=1)]
     df = df[df["percentile"].notna()]
+    # OBSERVATIONAL LAYERS ARE EXCLUDED FROM THE CLIMATE SCORE, DELIBERATELY. The score is
+    # a cross-FORCING comparison -- how an asset's risk differs between low, medium and high
+    # pathways. A layer with no forcing pathway cannot answer that question, and letting it
+    # default into one tier would raise that tier alone and read as a forcing effect. The
+    # hazard is still delivered in values.csv and still appears in the reports; it just does
+    # not enter an aggregate whose axis it does not have.
+    df = df[df["scenario"].map(is_forcing_scenario)]
     if df.empty:
         return pd.DataFrame(columns=list(CLIMATE_SCORE_COLUMNS))
 

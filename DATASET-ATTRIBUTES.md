@@ -117,6 +117,7 @@ straight.
 | Chronic heat (night threshold) | `tropicalnights-tr20/tr25` | `TR20`/`TR25` | 3b bias-adjusted daily `tasmin`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
 | Cold / frost | `frostdays-fd`, `frostdays-fdm10` | `FD`/`FDm10` | 3b bias-adjusted daily `tasmin`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
 | Cold / ice days | `icedays-id` | `ID` | 3b bias-adjusted daily `tasmax`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
+| Tornado (CONUS, observed) | `tornado-f2plus` / `tornado-all` / `tornado-f1plus` / `tornado-f3plus` | `median` (crossing rate) | **NOT ISIMIP** — NOAA SPC 1950–2025, scenario `observed` | `process_tornado_spc.py` (2026-08-18) |
 
 `conifer-npp` is **not a hazard** — it is an asset-condition layer and is excluded from every
 hazard count. `config/hazard_taxonomy.yaml` records that under `non_hazard_layers`.
@@ -129,6 +130,53 @@ family's `covered_by` deliberately left empty, so nothing counts it as a hazard 
 also **not** a soil-degradation layer: soil organic carbon is one of the ten degradation
 processes in recital 4 of Directive (EU) 2025/2360, and land use is held fixed in every
 member, so the layer cannot see management-driven loss at all.
+
+### The tornado ladder — the first non-ISIMIP layer, and the first on a second contract
+
+Added 2026-08-18. Two things about it are unlike every layer above, and both are structural
+rather than incidental.
+
+**It is not ISIMIP, because ISIMIP cannot carry this hazard.** Not a gap awaiting a
+publication: every tornado-environment index needs CAPE, deep-layer shear and storm-relative
+helicity, all of which require the atmosphere *in the vertical*, and ISIMIP3b bias-adjusted
+forcing publishes 11 SURFACE variables and nothing aloft. The enumeration receipt is
+`negative_results.tornado` in `config/isimip_search_catalog.yaml`; the full options review,
+including the non-ISIMIP alternatives and why each was or was not taken, is
+[docs/tornado-data-options-2026-08-18.md](docs/tornado-data-options-2026-08-18.md).
+
+**It answers `observational-historical-v1`, not the OUTPUT-SPEC decadal contract.** No decade
+axis, no slopes, no ensemble — one observed window (1950–2025), scenario `observed`. Its
+verifier is `scripts/test_observational_baseline.py`; `test_shared_baseline.py` rejects it by
+design. `n_members`/`n_models` are ABSENT rather than set to 1, because a 1 reads as a thin
+ensemble instead of as a different kind of product.
+
+What the value is, precisely: **tornado damage paths crossing the cell, per 10⁴ km² per
+year**, as the median of a Gamma(k+½, T) posterior whose 25th/75th percentiles are
+`lower_ci`/`upper_ci`. The pooled-median branch was measured first and is degenerate here —
+within-cell annual-count quartiles are (0, 0, 0) at every resolution tested, because 91.6% of
+(cell, year) pairs are zero at 0.25°.
+
+Four properties to know before using it:
+
+- **CONUS only, on a global grid.** 13,377 cells carry data; everything else is NaN, so a
+  non-US site returns `OFF_LAYER_MASK`, never a low score. The grid is global *because* a
+  regional one is not deliverable — `extract_by_point` raises outside the grid extent, so a
+  regional grid crashed a delivery containing a Honolulu site (GUARDRAILS §17).
+- **The rate does not survive resampling.** A track crossing several cells is counted in each,
+  so the per-area figure rises as the grid is refined: +7.9% at the median cell aggregating
+  0.25° → 0.5°, total crossings ×1.123. It is a track-intersection frequency in a rate's
+  units. Recompute at another resolution; never resample.
+- **The ladder is the deliverable, and `f2plus` is preferred for a measured reason.** Report
+  density tracks population, roads and radar — the same thing the exposure term measures.
+  Phoenix AZ runs 64.4th → 45.0 → 1st percentile across `all` → `f1plus` → `f2plus` while
+  Moore OK holds 99.9–100 on every rung. `all` is registered `alternate` and should not ship.
+- **No trend, and the reason is not "too short".** 76 years would support one; the fitted
+  slope would measure the observing system (reports ×2.8 since the 1950s while F2+ fell 19%).
+
+Smoothing is **measured but not applied**: held-out predictive likelihood puts the supported
+decay length at 15 km (`all`), 40 km (`f2plus`, `f3plus`) — σ = 0 loses on every rung, so
+smoothing is warranted, but the length is rung-dependent and adopting it changes every
+published number. `scripts/measure_tornado_smoothing.py` reproduces it.
 
 ## Ensemble and framing, per layer
 

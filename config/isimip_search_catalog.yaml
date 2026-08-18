@@ -286,6 +286,48 @@ crop_codes:
 # -----------------------------------------------------------------------------
 search_results:
 
+  lightning:
+    enumerated_on: "2026-08-18"
+    listed:
+      - "https://files.isimip.org/ISIMIP3b/InputData/climate/lightning/"
+      - "https://files.isimip.org/ISIMIP3a/InputData/climate/lightning/"
+    why_this_was_missed: >-
+      This directory was recorded as NOT swept in repository_structure_cache from 2026-08-14
+      to 2026-08-18. It was found only by listing InputData/climate/ level by level while
+      answering a TORNADO question -- i.e. by walking the tree, not by searching for a
+      variable name we already knew. Same mechanism as the tropical_cyclones/ miss.
+    isimip3b:
+      files: "4 scenario files + lightning_fixed.nc"
+      climate_forcing: "ukesm1-0-ll ONLY -- a 1-of-5 GCM fragment, NOT an ensemble"
+      scenarios: [ssp126, ssp245, ssp370, ssp585]
+      note_ssp245: "ssp245 EXISTS here and does NOT exist in the bias-adjusted atmosphere."
+      time_step: monthly
+      span: "2015-2100 (ssp126 ends 2099)"
+      size_per_file: "~505 MB"
+    isimip3a:
+      files: "lightning_fixed.nc only (6.6 MB) -- no scenario files"
+    variable_metadata_read_from_json_sidecar:
+      name: lightning
+      long_name: "Monthly Flash Rate"
+      units: "km-2 d-1"
+      grid: "720 x 360 (0.5 deg), 1032 months"
+      actual_range: [0.0, 6.292572975158691]
+      title: "estimated lightning stroke density using LPJ_cape and WGLC log(CAPE):log(WGLC) linear model"
+      upstream_source: "Kaplan, Koch & Lau (2023), Zenodo 10.5281/zenodo.7511843; prepared for ISIMIP3b by the ISIMIP data team"
+    what_it_is_and_is_not: >-
+      A convective-ACTIVITY proxy (thunderstorm occurrence), NOT a tornado proxy and not a
+      severe-storm proxy. Lightning responds to instability; tornadoes require instability
+      AND vertical shear, and this field carries no shear information whatsoever. Do not let
+      it stand in for the severe-convective hazard family.
+    blockers_if_ever_used:
+      - "ONE GCM. n_models/n_members and any CI would be degenerate (per-GCM counting rule)."
+      - "It is a MODELLED field derived from a regression on CAPE, not an observation -- its uncertainty is the regression's, which is not published alongside."
+      - "NOT VALUE-CHECKED. Units and long_name are declared in the sidecar, not measured (GUARDRAILS 9)."
+    hazard_taxonomy_relevance: >-
+      Closest family is `heavy-precipitation` (which names hail) or a severe-convective family
+      that does not yet exist in config/hazard_taxonomy.yaml. Not currently referenced by any.
+
+
   # -------------------------
   # drought searches
   # -------------------------
@@ -2757,6 +2799,48 @@ search_results:
 # -----------------------------------------------------------------------------
 negative_results:
 
+  tornado:
+    searched: "2026-08-18"
+    result: >-
+      No tornado, hail, thunderstorm, derecho or any severe-convective variable is published
+      in ISIMIP2a, 2b, 3a or 3b. Nor can a tornado-environment proxy be CONSTRUCTED from
+      ISIMIP forcing -- see structural_reason, which is the more durable finding.
+    verified_absent_on: >-
+      2026-08-18 -- listed, serially with 3 s spacing, zero empty listings:
+      https://files.isimip.org/{ISIMIP2a,ISIMIP2b,ISIMIP3a,ISIMIP3b}/DerivedOutputData/ ;
+      https://files.isimip.org/ISIMIP3b/ ;
+      https://files.isimip.org/{ISIMIP3a,ISIMIP3b}/InputData/ and their climate/ subtrees ;
+      https://files.isimip.org/ISIMIP3b/SecondaryInputData/ ;
+      https://files.isimip.org/{ISIMIP3a,ISIMIP3b}/InputData/climate/lightning/ ;
+      https://files.isimip.org/ISIMIP3b/InputData/climate/atmosphere/bias-adjusted/global/daily/
+      to full depth (ssp370/GFDL-ESM4 projected: 99 files, 11 variables).
+    scope_of_this_negative: >-
+      NOT LISTED, so NOT covered by the claim above: every OutputData/ impact sector;
+      DerivedInputData/; atmosphere_composition/, ocean/, geo_conditions/, socioeconomic/;
+      and every InputData root in 2a/2b. No impact sector models tornadoes, but that is
+      reasoning, not enumeration (GUARDRAILS 11) -- and skipping exactly one directory level
+      is how the SSP tropical-cyclone product was missed in 2026-08-11.
+    structural_reason: >-
+      THIS IS THE PART THAT WILL NOT CHANGE WITH A NEW PUBLICATION. Every tornado-environment
+      index (STP, Tippett's TEI, supercell composite) needs CAPE, 0-6 km bulk shear and
+      storm-relative helicity. All three require the atmosphere IN THE VERTICAL. The ISIMIP3b
+      bias-adjusted forcing publishes exactly 11 SURFACE variables and nothing aloft --
+      hurs huss pr prsn ps rlds rsds sfcwind tas tasmax tasmin -- with sfcwind a daily MEAN
+      10 m wind, not a gust. The shear term, which is what separates a thunderstorm from a
+      tornadic thunderstorm, is simply absent. A CAPE-like index built from surface T and
+      humidity alone would be a THUNDERSTORM-FAVOURABILITY field saying nothing about
+      rotation; publishing it as a tornado layer would be wrong in a way that is invisible
+      because every number in it is correct.
+    corroborating_tell: >-
+      ISIMIP's own lightning product (see search_results.lightning) is derived from CAPE that
+      the ISIMIP data team had to IMPORT from outside the forcing archive (Kaplan/Koch, via
+      Zenodo). If the archive could supply CAPE, that import would not exist.
+    resolution_taken: >-
+      Layer built from NOAA SPC occurrence data instead, CONUS-only, historical-only.
+      scripts/download_tornado_spc.py + scripts/process_tornado_spc.py.
+      Full options review incl. non-ISIMIP alternatives: docs/tornado-data-options-2026-08-18.md
+
+
   timber_yield:
     searched: "2026-01-15"
     result: "No direct timber yield variable in ISIMIP"
@@ -3797,7 +3881,7 @@ repository_publication_map:
     - "ISIMIP2a OutputData sectors not listed."
     - "Jaegermeyr2021 (3b) identified from 2 filenames only -- crop coverage not enumerated."
     - "Quesada-Chacon2026 GHM/ subtree not enumerated (only its CaMa-Flood/grdc/counterclim leaf)."
-    - "InputData/ roots partially swept: ISIMIP3b climate/atmosphere and ISIMIP3a climate/atmosphere were walked 2026-08-14 (see search_results.chronic_heat). NOT swept: 3b InputData/climate/{atmosphere_composition,lightning,ocean}, 3a climate/{sealevel,tropical_cyclones_flooding,...}, and every InputData root in 2a/2b/3a beyond climate/atmosphere."
+    - "InputData/ roots partially swept: ISIMIP3b climate/atmosphere and ISIMIP3a climate/atmosphere were walked 2026-08-14 (see search_results.chronic_heat); 3b AND 3a climate/lightning were walked 2026-08-18 (see search_results.lightning). NOT swept: 3b InputData/climate/{atmosphere_composition,ocean}, 3a climate/{sealevel,tropical_cyclones_flooding,...}, and every InputData root in 2a/2b/3a beyond climate/atmosphere and climate/lightning."
     - "SecondaryInputData swept for ISIMIP3b ONLY (climate/atmosphere). 2a, 2b and 3a each have a SecondaryInputData root that has never been listed."
     - "SecondaryOutputData exists in 2a, 2b and 3a and has NEVER been listed in any round. UNVERIFIED in both directions."
     - "DerivedInputData exists in ISIMIP3b only and was first listed 2026-08-14 -- see derived_input_data. Its sibling roots in other rounds are absent, not unlisted (round roots were enumerated)."

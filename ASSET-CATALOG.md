@@ -161,6 +161,22 @@ different scenario families from different CMIP generations — and any narrativ
 This is the one place harmonization enters the CSV; `values.csv` still carries native codes
 only.
 
+### A layer with no forcing pathway is excluded from it
+
+Added 2026-08-18. An **observational** layer (scenario `observed`) summarises a measured
+historical window and has no radiative forcing, so it cannot answer the question the Climate
+Score asks — how an asset's risk differs between low, medium and high pathways.
+
+It is therefore dropped from the score entirely rather than filed under a tier. Letting it
+default into `medium` would raise that one tier and read as a forcing effect produced by a
+layer that has no forcing at all. The hazard is still delivered in `values.csv` and still
+appears in the reports; it just does not enter an aggregate whose axis it lacks. The
+dashboard reports this as "OBSERVATIONAL … excluded from the Climate Score", not as a missing
+scenario, so nobody goes looking for files that do not exist.
+
+`viz_common.is_forcing_scenario()` declares which codes these are; the delivery and its
+independent verifier apply it separately.
+
 ### Two ways it can lie, and the guards
 
 **Incomplete hazard coverage.** A hazard that does not cover a site is excluded, not counted

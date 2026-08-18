@@ -46,7 +46,8 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.utils.viz_common import (  # noqa: E402
+from scripts.utils.viz_common import (
+    is_forcing_scenario,  # noqa: E402
     FONT_STACK, ORDINAL_RISK, ORDINAL_RISK_DARK, PLOTLY_CDN, RISK_BAND_ORDER,
     SCENARIO_TIER, SEQUENTIAL_BLUE, SEQUENTIAL_RED, SEQUENTIAL_RED_DARK,
     TIER_COLOR_DARK, TIER_COLOR_LIGHT, TIER_DASH, TIER_LABELS, TIER_ORDER, TIER_SYMBOL,
@@ -1205,16 +1206,30 @@ def build_dashboard(delivery: Path, quiet: bool = False):
     warnings = check_tier_collisions(
         {lid: m["scenarios"] for lid, m in payload["layers"].items()}
     )
-    tiers_seen = {lid: {tier_of(s) for s in meta["scenarios"]}
+    # A layer with NO forcing scenario at all is observational, not a gap in a projected
+    # layer. Saying it "has no high/low-tier scenario" invites someone to go looking for
+    # the missing files; there are none to find, and the cross-tier panel is simply not a
+    # question this layer answers.
+    tiers_seen = {lid: {tier_of(s) for s in meta["scenarios"] if is_forcing_scenario(s)}
                   for lid, meta in payload["layers"].items()}
-    union = set().union(*tiers_seen.values()) if tiers_seen else set()
+    observational = sorted(lid for lid, t in tiers_seen.items() if not t)
+    union = set().union(*(t for t in tiers_seen.values() if t)) if tiers_seen else set()
     for lid, present in sorted(tiers_seen.items()):
+        if lid in observational:
+            continue
         gap = union - present
         if gap:
             warnings.append(
                 f"{lid} has no {'/'.join(sorted(gap))}-tier scenario, so assets carrying "
                 f"it drop out of the balanced panel for cross-tier comparisons")
-    unknown = sorted(set(payload["tiers"]) - set(SCENARIO_TIER))
+    for lid in observational:
+        warnings.append(
+            f"{lid} is OBSERVATIONAL (scenario "
+            f"{'/'.join(sorted(payload['layers'][lid]['scenarios']))}): it carries no "
+            f"forcing pathway, so it is shown on its own and excluded from the Climate "
+            f"Score and from cross-tier panels. This is not a missing scenario.")
+    unknown = sorted(s for s in set(payload["tiers"]) - set(SCENARIO_TIER)
+                     if is_forcing_scenario(s))
     if unknown:
         warnings.append(
             f"scenario code(s) not in SCENARIO_TIER, defaulted to 'medium': "

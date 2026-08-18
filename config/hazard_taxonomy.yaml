@@ -546,6 +546,49 @@ families:
       The `cyclone` layer is TROPICAL cyclone only. Mid-latitude windstorm is a different
       hazard and is not covered. Not enumerated. UNVERIFIED as absent.
 
+  storm-convective:
+    name: "Tornado and severe convective storm"
+    esrs_class: acute
+    cdp_label: "Storm (including blizzards, dust and sandstorms)"    # UNVERIFIED
+    covered_by: []
+    customer_note: >-
+      Not assessed. Tornadoes and severe convective storms are not represented in this assessment. The climate models behind these layers cannot resolve individual thunderstorms, and outside the United States there is no observational record of tornado occurrence with consistent enough detection to score. Assets in tornado-prone regions should treat this as an open gap, not as a finding of low risk.
+    materiality_note: >-
+      ADDED 2026-08-18. This family did not exist before that date, which meant a tornado was
+      the one hazard that could not even be DISCLOSED as unassessed: it fell between
+      `storm-wind-extratropical` (explicitly extratropical cyclone only) and
+      `heavy-precipitation` (precipitation-typed), and a hazard absent from this file is
+      absent from the mandatory "hazards not assessed" section. That is exactly the invisible
+      omission this file's header warns about.
+      COVERAGE IS EMPTY ON PURPOSE. A CONUS-only historical layer HAS been built
+      (scripts/process_tornado_spc.py, 8 rungs x windows, 2026-08-18) and is deliberately not
+      registered: no rung/window has been chosen, `qa_reviewed_on` is null in every file, and
+      the files answer a different output contract (observational-historical-v1) that the
+      shared verifier rejects by design. Do not populate covered_by until those are resolved.
+      IF IT IS EVER POPULATED, THE LAYER IS CONUS-ONLY AND SCREENING-ONLY. A damage path is
+      ~100 m wide against a ~28 km cell, and the occurrence record measures observing
+      capability as well as hazard (reports rose 2.8x since the 1950s while F2+ reports FELL
+      19%). Both are must-disclose caveats carried in the files' own attributes.
+    isimip_candidate: []
+    candidates_enumerated_on: >-
+      2026-08-18 -- NO ISIMIP CANDIDATE EXISTS, and unusually this is structural rather than a
+      gap awaiting a publication. Listed: DerivedOutputData/ root in all four rounds;
+      ISIMIP3b/ round root; 3a+3b InputData/ and their climate/ subtrees; 3b
+      SecondaryInputData/; 3a+3b climate/lightning/; and 3b bias-adjusted daily atmosphere to
+      full depth. See negative_results.tornado in config/isimip_search_catalog.yaml for the
+      full receipt and for what was NOT listed.
+    blocker: >-
+      Not a missing dataset -- a missing DIMENSION. Every tornado-environment index (STP, TEI,
+      supercell composite) needs CAPE, 0-6 km bulk shear and storm-relative helicity, all of
+      which require the atmosphere in the vertical. ISIMIP3b bias-adjusted forcing publishes
+      11 SURFACE variables and nothing aloft, so the shear term -- what separates a
+      thunderstorm from a tornadic one -- cannot be formed at all. A CAPE-like index from
+      surface temperature and humidity alone would be a thunderstorm-favourability field that
+      says nothing about rotation. Projections would have to come from raw CMIP6 6hrLev, a
+      reanalysis, or a convection-permitting model; none is an ISIMIP ingest.
+      The ISIMIP lightning product (search_results.lightning) is a convective-ACTIVITY proxy
+      from ONE GCM and is not a substitute.
+
   heavy-precipitation:
     name: "Heavy precipitation, hail, snow and ice"
     esrs_class: acute

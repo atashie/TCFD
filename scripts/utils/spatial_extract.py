@@ -6,6 +6,8 @@ Extract climate data values by:
 - Region (Natural Earth boundaries)
 
 All functions work with processed NetCDF files having (decade, lat, lon) dimensions.
+Observational (lat, lon) layers are lifted onto a single-period decade axis by
+`as_period_dataset()` before extraction -- see its docstring.
 """
 
 from pathlib import Path
@@ -114,6 +116,38 @@ KNOWN_HIGHER_IS_WORSE = {
     "burntarea", "ffire",               # Fire
     "potevap",                          # Evaporative demand
 }
+
+
+def as_period_dataset(ds: xr.Dataset) -> xr.Dataset:
+    """Give an observational layer the single `decade` slice the extractor expects.
+
+    Every projected layer is (decade, lat, lon). An `observational-historical-v1` layer
+    is (lat, lon): it summarises ONE observed window, so it has no decade axis and one
+    is deliberately not written to disk (faking a time axis on a file that has no time
+    information is the kind of drift this repo forbids elsewhere).
+
+    Rather than branch the whole extraction path, the axis is added AT READ TIME as a
+    length-1 dimension labelled with the window's FIRST YEAR, taken from the file's own
+    `temporal_window` attribute. Layers already carrying `decade` are returned untouched,
+    so no projected layer changes behaviour.
+
+    THE LABEL IS A PERIOD START, NOT A DECADE. For the tornado layers it is 1950,
+    meaning "the 1950-2025 record", NOT "the 1950s". The pairing is what disambiguates
+    it: these rows carry scenario `observed`, which no projected layer uses, and
+    layers.csv carries the layer's `temporal_window` verbatim. Do not compute a decadal
+    change from a layer whose scenario is `observed` -- there is only one period.
+    """
+    if "decade" in ds.dims:
+        return ds
+    window = str(ds.attrs.get("temporal_window", "")).strip()
+    try:
+        start = int(window.split("-")[0])
+    except (ValueError, IndexError):
+        raise ValueError(
+            f"Layer has no decade dimension and no parseable `temporal_window` attribute "
+            f"(got {window!r}); cannot place its values on a period axis."
+        )
+    return ds.expand_dims(decade=[start])
 
 
 def get_percentile_direction(ds: xr.Dataset, variable: str) -> str:

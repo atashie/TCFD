@@ -49,12 +49,20 @@ sys.path.insert(0, str(PROJECT_ROOT))
 #: check passes. A test must restate what it expects; that is what makes it a test. If this
 #: list and viz_common.SCENARIO_TIER disagree, one of them is wrong and the delivery fails,
 #: which is the correct outcome.
+#: Scenario codes with no forcing pathway -- excluded from the Climate Score.
+NON_FORCING = {"observed"}
+
 TIER = {
     "rcp26": "low", "ssp126": "low",
     "rcp45": "medium", "rcp60": "medium", "ssp245": "medium", "ssp370": "medium",
     "rcp85": "high", "ssp585": "high",
 }
 
+# The RULE, not the 0.5-deg answers it happens to give (see
+# independent_point_extract): radius = 1 cell, sigma = 1/2 cell.
+SEARCH_RADIUS_CELLS = 1.0
+SIGMA_CELLS = 0.5
+CELL_FALLBACK = 0.5
 SIGMA = 0.25
 SEARCH_RADIUS = 0.5
 #: float32 round-trips through CSV as repr(float(x)); allow only representation noise.
@@ -75,31 +83,55 @@ def independent_point_extract(ds, var, lat, lon):
     """Gaussian distance-weighted point value, reimplemented from the spec.
 
     Deliberately NOT importing spatial_extract. Mirrors the documented method: weights
-    exp(-0.5 (d/sigma)^2) over cell centres within SEARCH_RADIUS, longitude separation
-    wrapped at the antimeridian, NaN cells dropped and remaining weights renormalized.
+    exp(-0.5 (d/sigma)^2) over cell centres within one cell of the point, longitude
+    separation wrapped at the antimeridian, NaN cells dropped and remaining weights
+    renormalized.
+
+    GEOMETRY IS PER LAYER, DERIVED HERE FROM THE FILE'S OWN COORDINATES. The module
+    constants SIGMA/SEARCH_RADIUS are the values the rule produces on a 0.5 deg grid and
+    were correct while every layer was 0.5 deg. Hardcoding them silently mis-verifies any
+    finer layer -- caught 2026-08-18 when a 0.25 deg tornado layer reported a passthrough
+    "mismatch" that was really this function using a window twice the layer's own. The
+    rule (radius = 1 cell, sigma = 1/2 cell) is reimplemented, not imported.
     """
     lon = ((lon + 180.0) % 360.0) - 180.0
     lats, lons = ds.lat.values, ds.lon.values
+
+    cell = float(np.abs(np.diff(lats))[0]) if lats.size > 1 else CELL_FALLBACK
+    radius = SEARCH_RADIUS_CELLS * cell
+    sigma = SIGMA_CELLS * cell
 
     dlat = np.abs(lats - lat)
     dlon = np.abs(lons - lon)
     dlon = np.minimum(dlon, 360.0 - dlon)
 
-    lat_sel, lon_sel = dlat <= SEARCH_RADIUS, dlon <= SEARCH_RADIUS
+    lat_sel, lon_sel = dlat <= radius, dlon <= radius
     if not lat_sel.any() or not lon_sel.any():
         return {}
 
     dlon_grid, dlat_grid = np.meshgrid(dlon[lon_sel], dlat[lat_sel])
     dist = np.sqrt(dlat_grid**2 + dlon_grid**2)
-    weights = np.exp(-0.5 * (dist / SIGMA) ** 2)
+    weights = np.exp(-0.5 * (dist / sigma) ** 2)
     weights = weights / weights.sum()
 
     block = ds[var].isel(
         lat=np.where(lat_sel)[0], lon=np.where(lon_sel)[0]
     ).values  # (decade, lat, lon)
 
+    # An observational layer is (lat, lon) -- one observed window, no decade axis. Lift it
+    # here rather than importing spatial_extract.as_period_dataset: this function is a
+    # deliberately INDEPENDENT reimplementation of the extraction, and calling the shared
+    # helper would prove only that the pipeline agrees with itself. The label must match
+    # what the delivery used, which is the first year of `temporal_window`.
+    if "decade" in ds.dims:
+        decades = list(ds.decade.values)
+    else:
+        window = str(ds.attrs.get("temporal_window", "")).strip()
+        decades = [int(window.split("-")[0])]
+        block = block[None, ...]
+
     out = {}
-    for i, decade in enumerate(ds.decade.values):
+    for i, decade in enumerate(decades):
         panel = block[i]
         valid = ~np.isnan(panel)
         if valid.any():
@@ -526,6 +558,20 @@ def main(delivery: Path) -> int:
             for asset_id, arows in grp.groupby("asset_id"):
                 lat, lon = coords[asset_id]["lat"], coords[asset_id]["lon"]
                 for metric, var in metric_to_var.items():
+                    if var not in ds.data_vars:
+                        # An observational layer publishes no slopes and no ensemble
+                        # counts. Absent is legitimate -- but only if the delivery said
+                        # NOTHING there. A number in a column whose source variable does
+                        # not exist would mean the pipeline invented it, so assert NaN
+                        # rather than skipping the metric silently.
+                        for _, r in arows.iterrows():
+                            checks_run += 1
+                            if not pd.isna(r[metric]):
+                                failures.append(
+                                    f"{asset_id} {layer_id} {scenario} {r['decade']} "
+                                    f"{metric}: delivered {r[metric]!r} but the source file "
+                                    f"has no {var!r} variable")
+                        continue
                     expected = independent_point_extract(ds, var, lat, lon)
                     for _, r in arows.iterrows():
                         exp = expected.get(int(r["decade"]), np.nan)
@@ -583,7 +629,19 @@ def main(delivery: Path) -> int:
 
     # 6. baseline slopes are NaN ---------------------------------------------------------
     for layer_id, grp in values.groupby("layer_id"):
-        baseline = int(layers.at[layer_id, "baseline_decade"])
+        raw_baseline = layers.at[layer_id, "baseline_decade"]
+        if pd.isna(raw_baseline):
+            # An observational layer has ONE observed period, so there is no baseline
+            # decade and no expanding window -- the premise of this check does not apply.
+            # Do not simply skip: a projected layer missing its baseline would then pass
+            # silently. Demand that the layer really carries no slopes at all.
+            checks_run += 1
+            if grp["ols_slope"].notna().any() or grp["sen_slope"].notna().any():
+                failures.append(
+                    f"{layer_id}: no baseline_decade in layers.csv, but the layer delivers "
+                    f"finite slopes -- a projected layer must declare its baseline")
+            continue
+        baseline = int(raw_baseline)
         base_rows = grp[grp["decade"] <= baseline]
         check(base_rows["ols_slope"].isna().all() and base_rows["sen_slope"].isna().all(),
               f"{layer_id}: slopes are finite at or before the baseline decade {baseline}; "
@@ -604,9 +662,15 @@ def main(delivery: Path) -> int:
             for _, r in assets.iterrows()
         }
         vv = values[values["percentile"].notna()].copy()
+        # Observational scenarios have no forcing tier by design and are excluded from the
+        # Climate Score. Assert that separation rather than tolerating it: every remaining
+        # scenario must map, and no non-forcing scenario may appear in the score.
+        vv = vv[~vv["scenario"].isin(NON_FORCING)]
         vv["tier"] = vv["scenario"].map(TIER)
         check(vv["tier"].notna().all(),
               "a scenario in values.csv has no forcing tier mapping")
+        check(not set(scores["scenario_tier"]) & NON_FORCING,
+              "climate_score.csv contains a non-forcing scenario tier")
 
         # Two-stage mean, written from the spec rather than imported: average scenario
         # codes WITHIN a hazard, then average the hazards. A flat one-stage mean would

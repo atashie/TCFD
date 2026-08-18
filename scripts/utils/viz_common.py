@@ -161,12 +161,29 @@ SCENARIO_TIER: Dict[str, str] = {
     "rcp85": "high", "ssp585": "high",
 }
 
+#: Scenario codes that are NOT forcing pathways at all. An observational layer summarises
+#: a measured historical window; it has no radiative forcing, so it belongs to no tier and
+#: must never be defaulted into one. Folding `observed` into "medium" would make the medium
+#: pathway look worse than low and high for a reason that has nothing to do with forcing.
+NON_FORCING_SCENARIOS = frozenset({"observed"})
+
+
+def is_forcing_scenario(scenario: str) -> bool:
+    """False for an observational scenario code, which has no forcing tier."""
+    return str(scenario).lower() not in NON_FORCING_SCENARIOS
+
+
 TIER_ORDER = ["low", "medium", "high"]
 TIER_LABELS = {"low": "Low forcing", "medium": "Medium forcing", "high": "High forcing"}
 
 
 def tier_of(scenario: str) -> str:
-    """Forcing tier for a scenario code. Unknown codes fall to 'medium' but are reported."""
+    """Forcing tier for a scenario code. Unknown codes fall to 'medium' but are reported.
+
+    Check `is_forcing_scenario()` first for anything that aggregates across tiers: a
+    non-forcing code has no meaningful answer here and the 'medium' fallback is a
+    placeholder, not a classification.
+    """
     return SCENARIO_TIER.get(scenario.lower(), "medium")
 
 
