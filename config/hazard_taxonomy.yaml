@@ -490,11 +490,30 @@ families:
     cdp_label: "Flood (pluvial)"                     # UNVERIFIED
     covered_by: []
     customer_note: >-
-      Not assessed. Surface-water flooding depends on local drainage and short-duration rainfall, below the resolution of this dataset.
-    isimip_candidate: []
+      Not assessed. Surface-water flooding depends on local drainage capacity and on short-duration rainfall, neither of which is represented here. Heavy daily rainfall -- the driver of surface-water flooding, but not the flooding itself -- IS assessed under "Heavy precipitation, hail, snow and ice".
+    materiality_note: >-
+      DO NOT PROMOTE THE RAINFALL LAYERS TO PLUVIAL-FLOOD COVERAGE. The ten
+      `pluvial-*` layers were built (2026-08-18) as a proxy for the rainfall DRIVER at the
+      user's direction, and their layer_id prefix says "pluvial" -- which makes exactly this
+      mistake easy. They rank rainfall hazard; they never state that a site floods. A
+      well-drained urban cell and an undrained rural one with identical rainfall receive
+      identical values, and drainage is the variable that decides the outcome. Declaring this
+      family covered by them would be the failure this file exists to prevent: every number
+      correct, the document misleading.
+    isimip_candidate:
+      - "PROXY ONLY, BUILT 2026-08-18: `pluvial-rx1day` (annual maximum 1-day rainfall) and `pluvial-r20mm/r50mm` are the closest available drivers. See families.heavy-precipitation, where they are correctly filed."
+      - "NOT INGESTED: ISIMIP3b hourly `pr` (9 extended GCMs, ~24x daily volume) would give sub-daily intensity. It would still not give drainage."
+    candidates_enumerated_on: >-
+      2026-08-16 -- same enumeration as heavy-precipitation. NO pluvial-flood or
+      surface-water impact model exists in any ISIMIP round; the CaMa-Flood products under
+      DerivedOutputData are RIVER routing, not surface water. Scoped to what was listed.
     blocker: >-
-      Needs sub-daily precipitation and local drainage, which a 0.5 deg annual product
-      cannot represent at all. Not closable within this pipeline's resolution.
+      STILL BLOCKED, and the original objection stands. "Needs sub-daily precipitation and
+      local drainage" remains true: the daily rainfall layers built in 2026-08-18 close
+      neither. Drainage capacity is not an ISIMIP variable and is not derivable from climate
+      forcing at all -- it is infrastructure. What CHANGED is that the rainfall driver is now
+      measured and filed under heavy-precipitation, so a report can state the rainfall trend
+      honestly while continuing to declare surface-water flooding unassessed.
 
   sea-level-rise:
     name: "Sea level rise"
@@ -595,9 +614,37 @@ families:
     cdp_label: "Heavy precipitation (rain, hail, snow/ice)"          # UNVERIFIED
     covered_by: []
     customer_note: >-
-      Not assessed. Hail, snow, ice loading and short-duration extreme rainfall are below the resolution of this dataset.
-    isimip_candidate: []
-    blocker: "Sub-daily hazard; outside the resolution of this product."
+      Partly assessed. Heavy RAINFALL is assessed at daily resolution: how often 10/20/50/100 mm falls in a day, how often a rainy day is extreme by local standards, and the wettest single day and wettest five-day run of each year. Hail, snow and ice loading are NOT assessed, and neither is short-duration rainfall -- a 30-minute cloudburst can sit inside an unremarkable daily total.
+    materiality_note: >-
+      THE FAMILY NAME IS BROADER THAN THE COVERAGE. Ten layers measure daily rainfall
+      extremes; NOTHING here measures hail, snow loading or ice accretion, which are distinct
+      hazards with distinct damage mechanisms (hail on solar arrays and vehicle fleets, snow
+      load on roofs and lines, ice on transmission and aviation). Do not let "heavy
+      precipitation: assessed" stand for those. Sub-daily intensity is also absent and is the
+      variable pluvial drainage design actually turns on.
+    isimip_candidate:
+      # BUILT 2026-08-18. Constructed indices -- ISIMIP publishes no threshold-count or
+      # annual-maximum precipitation variable in any round.
+      - "ISIMIP3b InputData + SecondaryInputData bias-adjusted daily `pr` -> `pluvial-r10mm/r20mm/r50mm/r100mm` (absolute depth frequency), `pluvial-r95pd/r99pd` (local-percentile frequency, relative_baseline), `pluvial-rx1day/rx5day` (annual maxima), `pluvial-wetdays`, `pluvial-prcptot`. 14 GCMs x ssp126/370/585. ~911 GB streamed across two stages, sha512-verified and deleted; provenance in data/interim/prthresh/download_provenance.csv."
+      - "NOT INGESTED: hourly `pr` exists in ISIMIP3b SecondaryInputData for 9 extended GCMs and would close the sub-daily gap. Roughly 24x the daily volume. Enumerated 2026-08-14."
+    candidates_enumerated_on: >-
+      2026-08-16 -- listed
+      ISIMIP3b/{InputData,SecondaryInputData}/climate/atmosphere/bias-adjusted/global/daily/
+      for all three SSPs and every GCM directory in both roots. Daily `pr` has 14 GCMs, TWO
+      MORE than tasmax/tasmin (CESM2-WACCM and IITM-ESM publish pr but no tasmax). No hail,
+      snow-load or ice-accretion variable exists in any ISIMIP round; that negative is scoped
+      to what was listed and is why those three remain uncovered.
+    blocker: >-
+      PARTLY RESOLVED 2026-08-18. The previous text -- "sub-daily hazard; outside the
+      resolution of this product" -- was right about the hazard it was aimed at and too broad
+      about the family. DAILY rainfall extremes are squarely inside this product's
+      resolution and are now built. What REMAINS blocked is the part the original sentence
+      actually names: (a) SUB-DAILY intensity, which needs the hourly root (~24x volume) and
+      is what surface-water drainage is designed against; (b) HAIL, SNOW LOAD and ICE
+      ACCRETION, for which no ISIMIP variable exists in any round.
+      COVERAGE IS EMPTY ON PURPOSE: `covered_by` stays [] until an asset type in
+      config/asset_catalog.yaml routes to a layer, which needs user sign-off, and
+      `qa_reviewed_on` is null on all ten pending a human reading the dashboards.
 
   cold-frost:
     name: "Cold wave / frost"

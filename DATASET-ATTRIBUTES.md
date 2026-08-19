@@ -113,6 +113,10 @@ straight.
 | Riverine flood (inundation, no defences) | `flood-3b-none` | `fldfrcmax-none` | 3b `TipESM2025` CaMa-Flood, ssp126/370/585 | `process_fldfrcmax_isimip3b.py` (2026-08-14) |
 | Temperate conifer productivity | `conifer-npp` | `npp-tempnle` | 2b `biomes` CLM45+ORCHIDEE+LPJmL, rcp26/60/85 | `process_tempnle_npp.py` (2026-08-12) |
 | Soil organic carbon | `csoil` | `csoil-total` | 3b `biomes`, ssp126/370/585 | `process_csoil_soilcarbon.py` (rebuilt 2026-08-15) |
+| Heavy rainfall (absolute depth) | `pluvial-r10mm/r20mm/r50mm/r100mm` | `R10mm`…`R100mm` | 3b bias-adjusted daily `pr`, ssp126/370/585 | `process_prthresh.py` (2026-08-18) |
+| Heavy rainfall (local extreme) | `pluvial-r95pd`, `pluvial-r99pd` | `R95pD`/`R99pD` | as above | `process_prthresh.py` (2026-08-18) |
+| Rainfall intensity | `pluvial-rx1day`, `pluvial-rx5day` | `Rx1day`/`Rx5day` | as above | `process_prthresh.py` (2026-08-18) |
+| Rainfall totals / wet days | `pluvial-prcptot`, `pluvial-wetdays` | `prcptot`/`wetdays` | as above | `process_prthresh.py` (2026-08-18) |
 | Chronic heat (day threshold) | `heatdays-hd30/hd35/hd40/hd45` | `hd30`/`hd35`/`hd40`/`hd45` | 3b bias-adjusted daily `tasmax`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
 | Chronic heat (night threshold) | `tropicalnights-tr20/tr25` | `TR20`/`TR25` | 3b bias-adjusted daily `tasmin`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
 | Cold / frost | `frostdays-fd`, `frostdays-fdm10` | `FD`/`FDm10` | 3b bias-adjusted daily `tasmin`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
@@ -199,6 +203,8 @@ knob is not a reason for a third to adopt it.
 | `flood-3b-none` | **32** (7 models — CWATM publishes the unprotected field only) | `pooled_mean_zero_inflated` — taken for estimator consistency, **not** because its own median failed | as above | none | two-tier, `higher_is_worse` — ranked against the **flopros** 2020s; compresses at the top |
 | `conifer-npp` | — | `pooled_median` | 2% cover presence mask | none | **`higher_is_better`** — percentile is already inverted in the file |
 | `csoil` | **17** (4 models × {2,5,5,5} GCMs) | `pooled_median` — branch 4 declined on measurement | union of finite cells, 71,251; `isfinite` IS a footprint here | none — split-half r=0.992 | single-tier, **`higher_is_better`** — inverted in the file |
+| the seven rainfall COUNT metrics (`pluvial-r10mm/r20mm/r50mm/r100mm/r95pd/r99pd/wetdays`) | **14** (14 GCMs × **no impact model**) | `pooled_mean_zero_inflated` | `landseamask_no-ant.nc`, 65,797 cells; the relative pair is further masked to **65,198** where no percentile is definable | none — 140 draws per cell-decade | two-tier where the baseline warrants it, `higher_is_worse` |
+| the three rainfall mm metrics (`pluvial-rx1day/rx5day/prcptot`) | **14** | **`pooled_median`** — OUTPUT-SPEC's default, retained on measurement | as above, no extra mask | none | single-tier, `higher_is_worse` |
 | the nine threshold rungs (`heatdays-*`, `tropicalnights-*`, `frostdays-*`, `icedays-id`) | **12** (12 GCMs × **no impact model**) | `pooled_mean_zero_inflated` — **all nine**, on measurement | **`landseamask_no-ant.nc`, 65,797 cells — ANTARCTICA EXCLUDED**; the counts are finite over the whole globe including ocean, so `isfinite` is **not** a mask here | none — 120 draws per cell-decade on already-coherent bias-adjusted forcing | two-tier, `higher_is_worse` (frost included — user decision) |
 
 ### Which slope to read
@@ -228,8 +234,32 @@ first scenario. Reproduce with `python scripts/generate_customer_delivery.py --m
 | `frostdays-fd` | 49,267 | 0.209 | 0.790 | `ols_slope` |
 | `frostdays-fdm10` | 40,632 | 0.182 | 0.818 | `ols_slope` |
 
+| `pluvial-r10mm` | 65,790 | 0.789 | 0.210 | `ols_slope` |
+| `pluvial-r20mm` | 65,649 | 0.934 | 0.066 | `ols_slope` |
+| `pluvial-r50mm` | 56,923 | 0.998 | 0.002 | `ols_slope` |
+| `pluvial-r100mm` | 31,724 | **1.000** | 0.000 | `ols_slope` |
+| `pluvial-r95pd` | 65,193 | 0.983 | 0.017 | `ols_slope` |
+| `pluvial-r99pd` | 65,178 | **1.000** | 0.000 | `ols_slope` |
+| `pluvial-wetdays` | 65,796 | 0.418 | 0.582 | `ols_slope` |
+| `pluvial-rx1day` | 65,797 | **0.000** | 0.920 | **`sen_slope`** |
+| `pluvial-rx5day` | 65,797 | **0.000** | 0.915 | **`sen_slope`** |
+| `pluvial-prcptot` | 65,797 | 0.014 | 0.952 | **`sen_slope`** |
+
 Measured 2026-08-12; `cropfailure-3b` added 2026-08-13; `heatwave-3b` and `permafrost-3b`
-added 2026-08-14; `csoil` added 2026-08-15; the nine threshold rungs added 2026-08-16.
+added 2026-08-14; `csoil` added 2026-08-15; the nine threshold rungs added 2026-08-16; the ten precipitation
+layers added 2026-08-18.
+
+**The precipitation family splits the slope on the SAME boundary as the statistic, and both
+follow measurement.** `ols_slope`'s failure mode requires uneven member coverage, and
+coverage is 14 members in every cell of every metric — so ols is *safe* throughout. Safe is
+not best. Theil-Sen collapses on the seven zero-inflated day counts (41.8% to **100%** of
+active cells at exactly zero) and does **not** collapse on the three mm-valued metrics
+(0.0–1.5%), which are cleaner than either other `sen_slope` layer in the product
+(`conifer-npp` 2.1%, `csoil` 6.8%). `Rx1day`/`Rx5day` have a structural claim on the robust
+estimator too: an annual maximum is a heavy-tailed extreme-value series, where one freak
+year drags a least-squares fit and a median of pairwise slopes shrugs. So **counts → mean +
+ols, mm → median + sen**. The first pass shipped `ols_slope` on all ten for family
+consistency; the measurement overruled it.
 
 **The threshold ladder is the first family where the choice was made from the FAILURE MODES
 rather than from the `sen==0` share**, and it is worth reading before applying a share
@@ -666,6 +696,79 @@ in front of it:
 Dashboards for all nine are at `reports/maps/{rung}/`; contact sheets at
 `reports/contact_sheets/`. **The review is of the DATA, not of the processor** — a future rung
 built by the same script does not inherit this date.
+
+### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
+
+Built 2026-08-18 from ISIMIP3b bias-adjusted daily `pr`, **14 GCMs** × 3 SSPs. ~911 GB was
+streamed across two stages, sha512-verified and deleted; provenance is
+`data/interim/prthresh/download_provenance.csv`.
+
+**The ensemble is not the heat ladder's.** `CESM2-WACCM` and `IITM-ESM` publish daily `pr`
+but no `tasmax`, so precipitation has 14 GCMs where temperature has 12. A site's rainfall and
+heat numbers come from different model sets — declare it if a narrative combines them.
+
+| family | metrics | unit | statistic | slope |
+|---|---|---|---|---|
+| absolute frequency | `R10mm`, **`R20mm`**, `R50mm`, `R100mm` | days/yr | `pooled_mean_zero_inflated` | `ols_slope` |
+| relative frequency | **`R95pD`**, `R99pD` | days/yr | `pooled_mean_zero_inflated` | `ols_slope` |
+| intensity / total | **`Rx1day`**, `Rx5day`, `prcptot` | mm | `pooled_median` | `sen_slope` |
+| denominator | `wetdays` | days/yr | `pooled_mean_zero_inflated` | `ols_slope` |
+
+Headlines in bold — three, because the family asks three different questions.
+
+**Precipitation is not a second temperature ladder, and that is the whole reason both
+framings ship.** Each cell's 2020s wet-day p95 spans **3.3 → 165.2 mm/day** (median 19.0), a
+50× range. Daily temperature varies about two-fold globally, so `hd35` means the same thing
+everywhere and only its *frequency* changes; a fixed mm/day threshold does not. `R20mm` sits
+almost exactly at the median cell's own p95 — which is why it is the absolute headline — while
+being unreachable in the driest cells and an ordinary wet day in the wettest.
+
+**The two framings invert, measured on this ensemble:**
+
+| site | `R20mm` (absolute) | `R95pD` (relative) |
+|---|---|---|
+| Cherrapunji | **100.8** d/yr | 6.8 d/yr |
+| Singapore | 23.3 | **14.9** |
+
+Cherrapunji's threshold sits far out in a heavy tail; Singapore's rainfall is consistently
+moderate, so its local p95 is low and frequently crossed. Same structure as Chicago
+outranking Delhi on `heatwave-3b`. **Visible on the contact sheets**: `Rx1day` is bright over
+the monsoon belt and dark over the Sahara, while `R95pD` is near-uniform teal across the
+vegetated world because every cell is pinned near 5% of its own wet days by construction.
+
+**`R95pD`/`R99pD` are `relative_baseline: true`**, and their 2020s panel is a *control* by
+construction — every cell sits at ~5% (or ~1%) of its own wet days in the baseline decade by
+definition, so the baseline maps how often it rains, not hazard. The signal is the change.
+Accepted deliberately (user decision 2026-08-17) and machine-enforced as must-disclose.
+
+**The percentile is over WET days (≥1 mm), not calendar days**, and this is load-bearing.
+Verified: `R95pD`/`wetdays` = 0.0509 and `R99pD`/`wetdays` = 0.0093, as constructed — so
+`R95pD` is ~5 d/yr, **not** 5% of 365 = 18.25. On an all-days basis the metric breaks twice:
+below 18.25 wet days a year the p95 of all days is exactly 0 mm and exceedance collapses into
+"did it rain at all" (Cairo has 4.7), and above that it slides what "extreme" means with local
+rain frequency — p95 of all days is ~the **45th** percentile of wet days in Phoenix against
+the **92nd** in Singapore.
+
+**599 of 65,797 cells (0.91%) are masked for the relative pair only**, where the pooled
+baseline holds fewer than 840 wet days (2 per model-year × 14 GCMs × 3 scenarios × 10 years —
+deliberately liberal, user decision 2026-08-17). The median cell carries 36,255, a 43× margin.
+The absolute metrics and intensities are **not** masked and stay global, so an arid site still
+receives `R20mm` and `Rx1day`. **Those cells are NaN, not 0** — see WORKFLOW-ISSUES 2026-08-18
+for the build in which they were not.
+
+**Containment was verified as a dimensional check**: `wetdays ≥ R10mm ≥ R20mm ≥ R50mm ≥
+R100mm`, `R95pD ≥ R99pD`, and `Rx5day ≥ Rx1day` — **0 violations** across all three
+scenarios. That last relation is the only independent test on real data of the stage-1
+chunk-boundary carry; without the carry a synthetic test showed 42.5% of cells understated,
+and no contract check would have caught it.
+
+**What this family cannot do, and it belongs in every delivery:** pluvial flooding is rainfall
+against **drainage capacity**, and drainage is not in this data at all. These layers rank
+rainfall hazard; they never state that a site floods. They are also not river flooding — that
+is `flood-3b-*`, routed through a hydrological model. And sub-daily intensity is absent: a
+30-minute cloudburst that overwhelms a storm drain can sit inside an unremarkable daily total.
+`config/hazard_taxonomy.yaml` therefore files them under **`heavy-precipitation`**, which they
+measure, and leaves **`flood-pluvial` uncovered**, which they do not.
 
 ### The threshold ladder: nine rungs, one ingest, and the absolute counterpart to `heatwave-3b`
 

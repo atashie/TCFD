@@ -411,10 +411,12 @@ a user decision. Layers can sit registered, contract-passing and QA-signed-off w
 delivering nothing — deliberately, because declaring hazard coverage before the mapping exists
 produces a report that lists a hazard as assessed and carries no data for it.
 
-As of 2026-08-16 that applies to **eleven** layers: the nine threshold rungs
+As of 2026-08-19 that applies to **twenty-one** layers: the ten precipitation metrics (`pluvial-*` — heavy rainfall, filed under `heavy-precipitation`, NOT under `flood-pluvial`, which they do not cover because drainage is absent from the data), the nine threshold rungs
 (`heatdays-hd30/hd35/hd40/hd45`, `tropicalnights-tr20/tr25`, `icedays-id`,
 `frostdays-fd/fdm10` — chronic heat and cold/frost), plus `heatwave-3b` and `permafrost-3b`.
-`hazard_taxonomy.yaml` keeps `covered_by: []` for all three families to match.
+`hazard_taxonomy.yaml` keeps `covered_by: []` for all four families to match.
+
+**All ten `pluvial-*` layers also carry `qa_reviewed_on: null`** — they are built and contract-passing, and their dashboards are rendered at `reports/maps/{metric}/`, but nobody has confirmed reading them. Do not set the date on their behalf.
 
 **When routing any of them, three things need deciding with the user, not inferred:**
 

@@ -123,6 +123,7 @@ Shipped layers — every one is registered in `config/layer_registry.yaml`:
 | `process_fldfrcmax_isimip3b.py` | `flood-3b-flopros`, `flood-3b-40yr`, `flood-3b-none` |
 | `process_tempnle_npp.py` | `conifer-npp` (asset condition, **not** a hazard) |
 | `process_csoil_soilcarbon.py` | `csoil` |
+| `process_prthresh.py` | `pluvial-r10mm/r20mm/r50mm/r100mm`, `pluvial-r95pd/r99pd`, `pluvial-rx1day/rx5day`, `pluvial-wetdays`, `pluvial-prcptot` — ten metrics from one ingest |
 | `process_tasthresh.py` | `heatdays-hd30/hd35/hd40/hd45`, `tropicalnights-tr20/tr25`, `icedays-id`, `frostdays-fd/fdm10` — nine rungs from one ladder |
 
 Not registered — earlier or withdrawn work. **These are not shipped layers**, and passing the
@@ -367,6 +368,49 @@ Two stages, built 2026-08-16. Stage 1 streams ISIMIP3b bias-adjusted daily `tasm
 **Output**: `data/processed/{heatdays|tropicalnights|icedays|frostdays}-isimip3b_{rung}_annual/{rung}_{scenario}_processed.nc`
 
 `emit_tasthresh_registry.py` **prints** the `layer_registry.yaml` block read from the built files and does **not** write the registry — that file carries human decisions (`status`, `delivery_note`) alongside measured ones, and a script that rewrote it in place would be one bad run from clobbering the other fourteen layers. It also asserts that a rung's three scenario files agree on `recommended_slope`, which is the defect that forced a rebuild.
+
+### The precipitation pipeline — **the ten pluvial layers**
+
+Three stages plus a driver, built 2026-08-18. **14 GCMs x ssp126/370/585**, ~911 GB moved and
+none retained (peak disk ~10 GB).
+
+```bash
+.venv/bin/python3 scripts/check_pr_nature.py                 # GUARDRAILS 9 + 12, first
+.venv/bin/python3 scripts/pr_baseline_percentiles.py --run    # stage 0: per-cell wet-day p95/p99
+.venv/bin/python3 scripts/download_reduce_prthresh_isimip3b.py --run   # stage 1: annual statistics
+.venv/bin/python3 scripts/process_prthresh.py --run --jobs 8  # stage 2: OUTPUT-SPEC layers
+.venv/bin/python3 scripts/run_pr_pipeline.py --attach         # drives 0 -> 1 with bounded retries
+bash scripts/qa_prthresh_dashboards.sh                        # contract + dashboards + containment
+.venv/bin/python3 scripts/emit_prthresh_registry.py           # PRINTS the registry block
+```
+
+**STAGE 0 EXISTS BECAUSE THE RELATIVE RUNGS CANNOT BE COUNTED IN ONE PASS.** `R95pD`/`R99pD`
+count days above each cell's OWN 2020s wet-day percentile, and that threshold is not knowable
+from the chunk in front of you. Stage 0 reads only the two baseline chunks per member (~147 GB),
+accumulates a per-cell log-spaced histogram (256 bins over 1-1000 mm/day, ~67 MB), and writes
+`baseline_percentiles.nc`. Stage 1 refuses to start without it — running anyway would silently
+emit empty relative rungs. Percentile reconstruction from the histogram was validated against
+exact percentiles: worst error 2.63% against a 2.7% bin width, i.e. at the resolution floor.
+
+- **The percentile is POOLED across members, not per member.** A per-member threshold would pin
+  every member at exactly 5% baseline exceedance and collapse the inter-member spread the CI
+  carries. It is over **WET days (>= 1 mm)**, not calendar days — on an all-days basis the
+  metric is exactly 0 mm wherever wet days fall below 5% of the year.
+- **Rx5day windows cross chunk boundaries.** Each chunk carries its last 4 days forward and the
+  carry is stored INSIDE the checkpoint, because a resume that lost it would reintroduce the bug
+  invisibly. Without the carry a synthetic test understated **42.5% of cells** in every year
+  following a boundary; the real data is verified by `Rx5day >= Rx1day`, 0 violations.
+- **Two statistic branches, split by unit family**: seven day counts take
+  `pooled_mean_zero_inflated` (the median erases 53.5% of land on R50mm); three mm metrics keep
+  `pooled_median` (it erases nothing). The slope follows the same boundary: counts read
+  `ols_slope` (sen collapses on 41.8-100% of active cells), mm metrics read `sen_slope`
+  (0.0-1.5%, and an annual maximum is heavy-tailed where robustness matters most).
+- **599 cells are masked for the relative rungs only** and must be NaN, never 0 — stage 1 counts
+  `hit & usable`, so an unusable cell accumulates a legitimate-looking count of ZERO. Stage 2
+  applies the mask on load and **asserts** it before writing.
+
+**Input**: `data/interim/prthresh/{GCM}_{scenario}_pr.nc` (42 files, 7.1 GB)
+**Output**: `data/processed/pluvial-isimip3b_{metric}_annual/{metric}_{scenario}_processed.nc`
 
 ### generate_qa_report.py
 

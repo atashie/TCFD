@@ -831,6 +831,312 @@ layers:
       is also legitimate for some assets -- loss of reliable frost harms crops needing vernalisation
       and winter roads needing frozen ground -- and this layer does NOT represent that.'
 
+  pluvial-r10mm:
+    folder: pluvial-isimip3b_R10mm_annual
+    file_prefix: R10mm
+    hazard: Heavy precipitation
+    hazard_measure: Days per year with precipitation at or above 10 mm
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
+      and coverage here is 14 members in every cell -- so the bias has no mechanism. (2) sen_slope collapses
+      to exactly 0 where most year-pairs are tied, measured on 28.1%-78.9% of ACTIVE cells (either slope
+      non-zero) across every post-baseline panel of all 3 scenarios. One estimator across the family.
+      BOTH slopes are in this file and their DISAGREEMENT remains the per-cell robustness signal.
+    relative_baseline: false
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. ABSOLUTE metric: the threshold means the same thing everywhere, which is what makes
+      it comparable across a portfolio and what makes it near-silent across the arid belt. Pair with
+      R95pD where ''extreme for this place'' is the question.'
+  pluvial-r20mm:
+    folder: pluvial-isimip3b_R20mm_annual
+    file_prefix: R20mm
+    hazard: Heavy precipitation
+    hazard_measure: Days per year with precipitation at or above 20 mm
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
+      and coverage here is 14 members in every cell -- so the bias has no mechanism. (2) sen_slope collapses
+      to exactly 0 where most year-pairs are tied, measured on 59.3%-93.4% of ACTIVE cells (either slope
+      non-zero) across every post-baseline panel of all 3 scenarios. One estimator across the family.
+      BOTH slopes are in this file and their DISAGREEMENT remains the per-cell robustness signal.
+    relative_baseline: false
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. ABSOLUTE metric: the threshold means the same thing everywhere, which is what makes
+      it comparable across a portfolio and what makes it near-silent across the arid belt. Pair with
+      R95pD where ''extreme for this place'' is the question.'
+  pluvial-r50mm:
+    folder: pluvial-isimip3b_R50mm_annual
+    file_prefix: R50mm
+    hazard: Heavy precipitation
+    hazard_measure: Days per year with precipitation at or above 50 mm
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
+      and coverage here is 14 members in every cell -- so the bias has no mechanism. (2) sen_slope collapses
+      to exactly 0 where most year-pairs are tied, measured on 93.3%-99.8% of ACTIVE cells (either slope
+      non-zero) across every post-baseline panel of all 3 scenarios. One estimator across the family.
+      BOTH slopes are in this file and their DISAGREEMENT remains the per-cell robustness signal.
+    relative_baseline: false
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. ABSOLUTE metric: the threshold means the same thing everywhere, which is what makes
+      it comparable across a portfolio and what makes it near-silent across the arid belt. Pair with
+      R95pD where ''extreme for this place'' is the question.'
+  pluvial-r100mm:
+    folder: pluvial-isimip3b_R100mm_annual
+    file_prefix: R100mm
+    hazard: Heavy precipitation
+    hazard_measure: Days per year with precipitation at or above 100 mm
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
+      and coverage here is 14 members in every cell -- so the bias has no mechanism. (2) sen_slope collapses
+      to exactly 0 where most year-pairs are tied, measured on 99.4%-100.0% of ACTIVE cells (either
+      slope non-zero) across every post-baseline panel of all 3 scenarios. One estimator across the
+      family. BOTH slopes are in this file and their DISAGREEMENT remains the per-cell robustness signal.
+    relative_baseline: false
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. ABSOLUTE metric: the threshold means the same thing everywhere, which is what makes
+      it comparable across a portfolio and what makes it near-silent across the arid belt. Pair with
+      R95pD where ''extreme for this place'' is the question. SPARSE: most sites read exactly 0 and
+      tie at percentile tier 1. Use a lower depth or Rx1day for a measure that discriminates globally.'
+  pluvial-r95pd:
+    folder: pluvial-isimip3b_R95pD_annual
+    file_prefix: R95pD
+    hazard: Heavy precipitation (local extreme)
+    hazard_measure: Days per year above this location's own 2020s wet-day 95th percentile
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
+      and coverage here is 14 members in every cell -- so the bias has no mechanism. (2) sen_slope collapses
+      to exactly 0 where most year-pairs are tied, measured on 41.0%-98.3% of ACTIVE cells (either slope
+      non-zero) across every post-baseline panel of all 3 scenarios. One estimator across the family.
+      BOTH slopes are in this file and their DISAGREEMENT remains the per-cell robustness signal.
+    relative_baseline: true
+    relative_baseline_note: 'THIS METRIC SCORES DEPARTURE FROM THE SITE''S OWN HISTORY, NOT ABSOLUTE
+      RAINFALL. It counts days exceeding the 95th (or 99th) percentile of that cell''s OWN 2020s wet-day
+      rainfall, so the threshold is different in every location: 3.3 mm/day in the driest cells and
+      165.2 in the wettest, median 19.0. A high score means ''rain here is moving furthest from what
+      this place is used to'', NEVER ''it rains hard here''. THE RANKING INVERTS AGAINST THE ABSOLUTE
+      METRICS, measured on this ensemble: Singapore reads 14.9 days a year above its own p95 against
+      Cherrapunji''s 6.8, while on the absolute rung Cherrapunji reads 100.8 days above 20 mm against
+      Singapore''s 23.3. Both are correct and they answer different questions. BY CONSTRUCTION the 2020s
+      panel is a control, not a hazard map: every cell sits at ~5% (or ~1%) of its own wet days in the
+      baseline decade by definition, so the baseline is essentially a map of how often it rains and
+      the SIGNAL IS THE CHANGE from it. Pair this with the absolute metrics (R20mm, Rx1day) before drawing
+      any conclusion, and never quote it as a rainfall depth.'
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. RELATIVE METRIC -- see the must-disclose RELATIVE-BASELINE caveat. The threshold
+      differs in every cell (3.3-165.2 mm/day, median 19.0), the 2020s panel is a control by construction,
+      and the ranking INVERTS against the absolute metrics: Singapore 14.9 d/yr against Cherrapunji''s
+      6.8, while on R20mm Cherrapunji reads 100.8 against Singapore''s 23.3. Deliver it beside R20mm
+      or Rx1day, never alone. MASKED in 599 land cells (0.91%) where the pooled 2020s baseline holds
+      fewer than 840 wet days and no percentile can be defined. Those cells are NaN, not 0 -- the absolute
+      metrics still cover them.'
+  pluvial-r99pd:
+    folder: pluvial-isimip3b_R99pD_annual
+    file_prefix: R99pD
+    hazard: Heavy precipitation (local extreme)
+    hazard_measure: Days per year above this location's own 2020s wet-day 99th percentile
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
+      and coverage here is 14 members in every cell -- so the bias has no mechanism. (2) sen_slope collapses
+      to exactly 0 where most year-pairs are tied, measured on 89.2%-100.0% of ACTIVE cells (either
+      slope non-zero) across every post-baseline panel of all 3 scenarios. One estimator across the
+      family. BOTH slopes are in this file and their DISAGREEMENT remains the per-cell robustness signal.
+    relative_baseline: true
+    relative_baseline_note: 'THIS METRIC SCORES DEPARTURE FROM THE SITE''S OWN HISTORY, NOT ABSOLUTE
+      RAINFALL. It counts days exceeding the 95th (or 99th) percentile of that cell''s OWN 2020s wet-day
+      rainfall, so the threshold is different in every location: 3.3 mm/day in the driest cells and
+      165.2 in the wettest, median 19.0. A high score means ''rain here is moving furthest from what
+      this place is used to'', NEVER ''it rains hard here''. THE RANKING INVERTS AGAINST THE ABSOLUTE
+      METRICS, measured on this ensemble: Singapore reads 14.9 days a year above its own p95 against
+      Cherrapunji''s 6.8, while on the absolute rung Cherrapunji reads 100.8 days above 20 mm against
+      Singapore''s 23.3. Both are correct and they answer different questions. BY CONSTRUCTION the 2020s
+      panel is a control, not a hazard map: every cell sits at ~5% (or ~1%) of its own wet days in the
+      baseline decade by definition, so the baseline is essentially a map of how often it rains and
+      the SIGNAL IS THE CHANGE from it. Pair this with the absolute metrics (R20mm, Rx1day) before drawing
+      any conclusion, and never quote it as a rainfall depth.'
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. RELATIVE METRIC -- see the must-disclose RELATIVE-BASELINE caveat. The threshold
+      differs in every cell (3.3-165.2 mm/day, median 19.0), the 2020s panel is a control by construction,
+      and the ranking INVERTS against the absolute metrics: Singapore 14.9 d/yr against Cherrapunji''s
+      6.8, while on R20mm Cherrapunji reads 100.8 against Singapore''s 23.3. Deliver it beside R20mm
+      or Rx1day, never alone. MASKED in 599 land cells (0.91%) where the pooled 2020s baseline holds
+      fewer than 840 wet days and no percentile can be defined. Those cells are NaN, not 0 -- the absolute
+      metrics still cover them.'
+  pluvial-wetdays:
+    folder: pluvial-isimip3b_wetdays_annual
+    file_prefix: wetdays
+    hazard: Wet days
+    hazard_measure: Days per year with precipitation at or above 1 mm
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: ols_slope
+    recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
+      than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
+      and coverage here is 14 members in every cell -- so the bias has no mechanism. (2) sen_slope collapses
+      to exactly 0 where most year-pairs are tied, measured on 16.0%-41.8% of ACTIVE cells (either slope
+      non-zero) across every post-baseline panel of all 3 scenarios. One estimator across the family.
+      BOTH slopes are in this file and their DISAGREEMENT remains the per-cell robustness signal.
+    relative_baseline: false
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. ABSOLUTE metric: the threshold means the same thing everywhere, which is what makes
+      it comparable across a portfolio and what makes it near-silent across the arid belt. Pair with
+      R95pD where ''extreme for this place'' is the question.'
+  pluvial-rx1day:
+    folder: pluvial-isimip3b_Rx1day_annual
+    file_prefix: Rx1day
+    hazard: Extreme daily rainfall
+    hazard_measure: Annual maximum 1-day precipitation
+    status: preferred
+    qa_reviewed_on: null
+    recommended_slope: sen_slope
+    recommended_slope_rationale: 'sen_slope, on measurement. Theil-Sen has NOT collapsed on this metric:
+      it is exactly zero on only 0.0%-0.0% of ACTIVE cells (either slope non-zero) across every post-baseline
+      panel of all 3 scenarios, with sign agreement no worse than 88.1%. That is cleaner than either
+      other sen_slope layer in the product (conifer-npp 2.1%, csoil 6.8%), so the robust estimator is
+      the read. These are ANNUAL MAXIMA -- a heavy-tailed extreme-value series, where one freak year
+      drags a least-squares fit and a median of pairwise slopes does not, so robustness is worth more
+      here than on any other field in the product. CONTRAST the seven day-count metrics from the same
+      ingest, which take ols_slope because sen collapses on 41.8%-100% of their active cells -- the
+      split follows the same boundary as the decadal statistic. BOTH slopes are in this file; their
+      DISAGREEMENT remains the per-cell signal that a trend is not robust.'
+    relative_baseline: false
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. ABSOLUTE metric: the threshold means the same thing everywhere, which is what makes
+      it comparable across a portfolio and what makes it near-silent across the arid belt. Pair with
+      R95pD where ''extreme for this place'' is the question.'
+  pluvial-rx5day:
+    folder: pluvial-isimip3b_Rx5day_annual
+    file_prefix: Rx5day
+    hazard: Extreme multi-day rainfall
+    hazard_measure: Annual maximum 5-day precipitation total
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: sen_slope
+    recommended_slope_rationale: 'sen_slope, on measurement. Theil-Sen has NOT collapsed on this metric:
+      it is exactly zero on only 0.0%-0.0% of ACTIVE cells (either slope non-zero) across every post-baseline
+      panel of all 3 scenarios, with sign agreement no worse than 85.4%. That is cleaner than either
+      other sen_slope layer in the product (conifer-npp 2.1%, csoil 6.8%), so the robust estimator is
+      the read. These are ANNUAL MAXIMA -- a heavy-tailed extreme-value series, where one freak year
+      drags a least-squares fit and a median of pairwise slopes does not, so robustness is worth more
+      here than on any other field in the product. CONTRAST the seven day-count metrics from the same
+      ingest, which take ols_slope because sen collapses on 41.8%-100% of their active cells -- the
+      split follows the same boundary as the decadal statistic. BOTH slopes are in this file; their
+      DISAGREEMENT remains the per-cell signal that a trend is not robust.'
+    relative_baseline: false
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. ABSOLUTE metric: the threshold means the same thing everywhere, which is what makes
+      it comparable across a portfolio and what makes it near-silent across the arid belt. Pair with
+      R95pD where ''extreme for this place'' is the question. Rx5day windows CROSS chunk boundaries
+      and are assigned to the year they END in; verified against Rx1day (a 5-day window contains its
+      own wettest day) with 0 violations in every scenario.'
+  pluvial-prcptot:
+    folder: pluvial-isimip3b_prcptot_annual
+    file_prefix: prcptot
+    hazard: Annual precipitation
+    hazard_measure: Annual total precipitation from wet days
+    status: alternate
+    qa_reviewed_on: null
+    recommended_slope: sen_slope
+    recommended_slope_rationale: 'sen_slope, on measurement. Theil-Sen has NOT collapsed on this metric:
+      it is exactly zero on only 1.0%-1.5% of ACTIVE cells (either slope non-zero) across every post-baseline
+      panel of all 3 scenarios, with sign agreement no worse than 91.4%. That is cleaner than either
+      other sen_slope layer in the product (conifer-npp 2.1%, csoil 6.8%), so the robust estimator is
+      the read. CONTRAST the seven day-count metrics from the same ingest, which take ols_slope because
+      sen collapses on 41.8%-100% of their active cells -- the split follows the same boundary as the
+      decadal statistic. BOTH slopes are in this file; their DISAGREEMENT remains the per-cell signal
+      that a trend is not robust.'
+    relative_baseline: false
+    delivery_note: 'Constructed from ISIMIP3b bias-adjusted daily `pr`, 14 GCMs x 3 SSPs, with NO impact
+      model in the chain -- the confidence band carries GCM spread and interannual variability only.
+      A RAINFALL HAZARD, NEVER A FLOOD OUTCOME. Pluvial flooding is rainfall against DRAINAGE CAPACITY
+      and drainage is not in this data, so a well-drained urban cell and an undrained rural one with
+      the same rainfall read identically. Distinct from the `flood-3b-*` CaMa-Flood layers, which are
+      RIVER flooding routed through a hydrological model; a site can be exposed to either without the
+      other. THIS ENSEMBLE IS NOT THE HEAT LADDER''S: CESM2-WACCM and IITM-ESM publish `pr` but no `tasmax`,
+      so a site''s rainfall and temperature numbers come from different model sets. Say so if a narrative
+      combines them. ABSOLUTE metric: the threshold means the same thing everywhere, which is what makes
+      it comparable across a portfolio and what makes it near-silent across the arid belt. Pair with
+      R95pD where ''extreme for this place'' is the question.'
+
 # Layers refused by the loader. A folder carrying INVALID-DO-NOT-USE.md is ALSO refused
 # automatically, so this list is belt-and-braces rather than the only guard.
   # ---------------------------------------------------------------------------------

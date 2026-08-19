@@ -1145,6 +1145,161 @@ Also: the calendar risk the stage-1 reducer was designed around (a 360-day membe
 
 **Files**: `scripts/download_reduce_tasthresh_isimip3b.py`, `scripts/process_tasthresh.py`, `scripts/emit_tasthresh_registry.py` (new), `config/layer_registry.yaml`, `config/hazard_taxonomy.yaml`, `config/isimip_search_catalog.yaml`, `DATASET-ATTRIBUTES.md`.
 
+### 2026-08-18: Nature 2026 Hail Deposit -- Evidence Gate Before Any Layer Decision
+
+**What this is**: not an incident. A dated record of the Phase 1 evidence gate run against
+the deposited output of *Rising global hail damage potential in a warming world* (Nature
+653, 1069-1077, 2026), before deciding whether it can support a hail layer. The gate was
+designed after an adversarial review flagged four ways the obvious ingest would be wrong.
+Script: `scripts/measure_hail_nature2026.py` (its docstring is the reference; this entry is
+the outcome). Provenance: `data/raw/hail-nature2026/manifest.json`, 11 files, 6.81 GB,
+CC-BY-4.0, sha256 per file.
+
+**What the deposit is**: a semi-3D hail trajectory model run on 12,412 satellite-detected
+severe hailstorms (2014-04-01 to 2021-03-31), historical from ERA5 soundings, future by
+pseudo-global-warming on the SAME events. 20 EC-Earth3 realizations per SSP, plus
+ensemble-mean runs for MPI-ESM1-2-LR and NorESM2-LM. No time axis, no frequency.
+
+**Four traps, each of which produces a plausible wrong answer:**
+
+1. **The row-position join is wrong and looks fine.** `hailstone_growth_radii_*` renumber
+   events `0..n-1` and carry no coordinates. Joining historical row *i* to future row *i*
+   gives r = -0.0002, i.e. noise. The real index is `date{type}` in the sounding profile
+   files (copied into the `sample` coordinate of the growth-duration files), which is the
+   row index into the catalogue's `para33_Idx{type}`. The authors join exactly this way
+   (`np.isin(proff['date'], profh['date'])`). Verified four ways: per-type counts match the
+   radii arrays exactly; paired Spearman 0.248 against a permutation null of 0.001; hail
+   diameter correlates with the CATALOGUE's MUCAPE for the mapped event (rho 0.36 historical,
+   0.45 future); and the authors' own code performs the same join.
+
+2. **The historical and future files do not share support.** The publication seeds 330
+   embryos per event (6 `w_perc` launch positions x 5 radii x 11 heights) and
+   `severity_calc_n` hard-codes `ndia = 6*5*11`. The deposited FUTURE radii carry all 330;
+   the deposited HISTORICAL radii carry 55 -- `w_perc = 0.5` only -- although the historical
+   growth-duration files carry all six positions, so the full run exists and was not
+   archived. Reducing over all six future positions against one historical position moves
+   the median diameter shift from **+30% to +97%**. Every comparison must be made on the
+   common `w_perc = 0.5` support, and the script refuses to run if that is violated.
+
+3. **Three different denominators are all called "the >=30 mm change".** On ssp245 member 1,
+   paired over 10,869 events: share of ALL seeded embryos landing >=30 mm **+46.0%**; share
+   among embryos that produced a stone at all **+21.3%**; share of EVENTS whose largest stone
+   reaches 30 mm **+19.5%**. The publication's headline is the first. A number quoted without
+   its denominator is unusable here.
+
+4. **The estimand decides the SIGN of the regional pattern.** Same events, same member
+   (ssp245 m1), three statistics, 30-50N: median event diameter **-1.1%**, mean kinetic
+   energy **+27.9%**, share of embryos >=30 mm **+25.1%**. US Plains: -0.2% / +32.0% /
+   +26.6%. The median storm barely changes while the energy-weighted and large-stone measures
+   rise ~30%, because kinetic energy goes as D^3.5 and the change is concentrated in the
+   upper tail. Reporting median diameter would have contradicted the paper's own regional
+   conclusion using its own data.
+
+**The finding a customer would care about most, measured over all 60 member-runs.** The
+paired median change in an event's largest stone is **+1.84 mm at ssp245, +0.52 mm at
+ssp370 and -0.03 mm at ssp585**, with the share of events getting larger falling 55.0% ->
+51.3% -> **49.3%** -- while over the same runs the share of embryos >=30 mm rises +51.7% ->
++54.3% -> +53.7% and mean kinetic energy +46.8% -> +50.2% -> +49.1%. The typical storm does
+not change under the strongest forcing; the damaging tail grows by half. The two orderings
+are not merely different in size, they run in **opposite directions across scenarios**, so
+"does hail get worse here" has two defensible answers from one dataset and the answer must
+name its statistic. Eligibility transitions grow with forcing too: 779 -> 1024 -> 1192
+events change simulation eligibility between the historical and future climates.
+
+**What reproduces.** Ensemble-mean runs, unpaired, common support, across 3 GCMs x 3 SSPs:
+share of embryos >=30 mm **+37.5% to +52.8%** against a published **+37.9% to +51.8%** -- the
+published range spans GCM x scenario, not scenario alone (MPI-ESM1-2-LR ssp245 is the floor,
+EC-Earth3 ssp370 the ceiling). The deposited validation correlations reproduce **exactly**
+(US r = 0.658 vs 0.66 published, China r = 0.633 vs 0.63) but only with the authors'
+undocumented rule -- min-max normalise the month-then-year mean, then fill each field's NaN
+with 0 where the other field is finite. Without the zero-fill: 0.573 and 0.558.
+
+**What does not reproduce.** `<30 mm` change measures **-9.4% to -13.3%** against a published
+-4.2% to -12.3%, and mean kinetic energy **+28.4% to +49.1%** against a published +36.5% to
++42.1%. Both run outside the published ranges in the direction expected if the five missing
+launch positions matter. Until they are obtained, **no claim of reproducing the publication**
+-- the drafted author query is `reports/hail-nature2026/author_query.md`.
+
+**Two facts that constrain any product built from this.** Event eligibility is
+*climate-dependent*: profiles are retained only where the maximum updraft is >= 5 m/s
+(`Calculation_of_Verticl_profiles_for_driving_hailstone_trajectory_model.py`, line 576),
+so 11,158 events simulate historically, ~11,282 under ssp245 m1, and 10,869 pair -- events
+enter and leave the population because of the treatment. And the ensemble is 20 realizations
+of ONE model: across members the >=30 mm change spans +46.0 to +56.8% at ssp245, while
+across the three GCMs the kinetic-energy change spans +28.4 to +49.1%. **Structural spread
+is larger than internal spread**, so a member-only interval would understate uncertainty by
+more than it captures.
+
+**Status**: gate PASSED on the join, the estimand definitions, the >=30 mm headline and the
+validation correlations; OPEN on the 55-vs-330 support. No layer built, no taxonomy change,
+nothing written to `data/processed`. The deposit gives conditional SEVERITY only -- it cannot
+express hail frequency, occurrence or return period, and at 12,412 events a regular global
+grid averages 4.8 events per cell at 5 degrees.
+
+**Files**: `scripts/measure_hail_nature2026.py`, `reports/hail-nature2026/` (gate.csv, author_query.md),
+`data/raw/hail-nature2026/manifest.json`, `isimip-pipeline/pyproject.toml` (py7zr -- the
+deposit ships nested .7z and this machine has no 7z binary).
+
+### 2026-08-18: A Spatial Average Has a WEIGHTING, and Choosing It Wrong Flipped the Sign in Six Regions
+
+**What happened**: building the hail severity fields from the Nature 2026 deposit
+(`scripts/build_hail_severity_fields.py`), each cell's mean stone size and mean kinetic
+energy were computed as the mean over STORMS of each storm's own mean -- one vote per storm.
+The request was for the mean size of stones at a location, which is the mean over STONES.
+The first regional table went out on the wrong one.
+
+**Impact**: the headline conclusion inverted. Under storm-weighting, mean kinetic energy per
+stone read US Plains -1.0%, Argentina -12.3%, Southern Africa -1.4%, and the summary written
+from it said impacts get softer almost everywhere. Pooled over stones the same events give
+US Plains **+18.8%**, Argentina **+6.2%**, Southern Africa **+16.8%**. Six of eleven regions
+changed sign. Both numbers are correct arithmetic on the same data.
+
+**Root cause**: warming lets more WEAK storms produce hail at all. Those newly-producing
+storms enter the per-storm average carrying small stones and drag it down, while the stones
+themselves are not smaller -- pooled over landed stones the US Plains ssp585 median diameter
+rises 37.3 -> 42.6 mm over the very same events. Storm-weighting answers "what does a typical
+storm here drop"; stone-weighting answers "how big are the stones that fall here". The
+composition shift between them is the physical signal, so the two must diverge.
+
+**Fix applied**: both weightings are published and named in the file --
+`mean_diameter`/`mean_ke`/`production`/`ake` pooled over stones and embryos (primary),
+`storm_mean_diameter`/`storm_mean_ke` storm-weighted (secondary) -- with the divergence
+documented in the module docstring and both rendered in the QA maps so it cannot be
+overlooked again.
+
+**A second thing the fix bought**: with pooled fields every quantity is a ratio of the same
+summed numerators and denominators, so `ake == production * mean_ke` holds EXACTLY at cell
+level (max residual 2.7e-16, asserted in the build). Under storm-averaging that identity
+broke by 15-23% because a cell mean of a product is not the product of the cell means when
+the factors covary -- a residual an earlier version of the check mislabelled as a wiring
+warning. An identity that is exact by construction is worth engineering FOR, not just
+asserting: it turned a diagnostic that could only ever be argued about into one that either
+holds or reveals a broken denominator.
+
+**Rule**: state the weighting with every spatial average of a per-event quantity, and where a
+composition shift is part of the signal, publish both. A mean whose weighting is unstated is
+not a measurement -- the same defect as a share of cells whose mask is unnamed.
+
+---
+
+### 2026-08-18: The precipitation layers — a mask that published as a real zero, and a slope I chose for consistency instead of measurement
+
+**What happened**: ten layers were built from ISIMIP3b daily `pr` (14 GCMs x 3 SSPs, ~911 GB streamed and deleted). Two defects, both caught before delivery, and both instructive about *what kind of check finds what kind of error*.
+
+**1. 599 masked cells published as `0`, not as missing — and every contract check passed on it.** The relative metrics (`R95pD`/`R99pD`) count days above each cell's own 2020s wet-day percentile, and 599 hyper-arid cells have too few wet days for a percentile to be definable. Stage 1 computes `hit = (value >= threshold) & usable`, so an unusable cell accumulates a count of **zero** — a perfectly legitimate integer. The `-1` sentinel I had built only ever marked *ocean*, where `scatter` left NaN. So those cells shipped as "0 days above the local 95th percentile": indistinguishable from a genuine zero, ranked at **percentile tier 1 — the LOWEST risk band** — in the driest interiors on Earth, when the honest answer is "no threshold could be defined here".
+
+`test_shared_baseline.py` passes on this without complaint. `lower_ci <= median <= upper_ci` holds at 0. The percentile is well-defined. There is no ocean leak. **Nothing in the contract can distinguish a real zero from a fabricated one**, because the defect is semantic, not algebraic.
+
+What found it was checking a *specific expected property of the one code path that was new*: "the 599 cells the mask excluded should be NaN — are they?" Answer: 0 of 599. Fixed by applying the `usable` mask on load in stage 2, plus an **assertion before writing** so a recurrence fails the build. The lesson generalises past this layer: **a sentinel that is only applied on one axis of a two-stage pipeline is not a sentinel.** Stage 1 knew the cell was unusable and encoded that as a value indistinguishable from data.
+
+**2. I chose a slope estimator for family consistency and the measurement overruled it.** I set `recommended_slope: ols_slope` on all ten, reasoning that ols's failure mode requires uneven member coverage and coverage is 14 members everywhere — so ols cannot be biased here. That argument is correct and **establishes only that ols is SAFE, not that it is BEST**. Measured on active cells at the final decade, Theil-Sen had not collapsed at all on the three mm-valued metrics (`sen==0` on 0.0%-1.4%, sign agreement 0.92-0.95) — cleaner than either existing `sen_slope` layer in the product (`conifer-npp` 2.1%, `csoil` 6.8%) — while collapsing on 41.8%-100% of the seven day counts. `Rx1day`/`Rx5day` have a structural claim on the robust estimator besides: an annual maximum is a heavy-tailed extreme-value series, exactly where one freak year drags a least-squares fit and a median of pairwise slopes does not. Corrected to **counts -> mean + ols, mm -> median + sen**, so the slope now splits on the same boundary as the statistic and both follow measurement.
+
+**Rule reinforced**: "which estimator can fail here" is the right question, but it has two halves. Ruling out one estimator's failure mode does not select it — check whether the other estimator actually failed before defaulting to consistency.
+
+**What went right and is worth copying**: the containment check. `wetdays >= R10mm >= R20mm >= R50mm >= R100mm`, `R95pD >= R99pD`, and **`Rx5day >= Rx1day`** — 0 violations across all three scenarios. That last relation is the only independent test on real data of stage 1's chunk-boundary carry for the 5-day running window; a synthetic test showed that dropping the carry understates **42.5% of cells** in every year after a boundary, and no per-layer contract check would have seen it, because the values would simply be slightly too low everywhere, forever.
+
+**Files**: `scripts/pr_baseline_percentiles.py`, `scripts/download_reduce_prthresh_isimip3b.py`, `scripts/process_prthresh.py`, `scripts/run_pr_pipeline.py`, `scripts/emit_prthresh_registry.py`, `scripts/qa_prthresh_dashboards.sh`, `scripts/check_pr_nature.py` (all new), `config/layer_registry.yaml`, `config/hazard_taxonomy.yaml`, `config/isimip_search_catalog.yaml`, `DATASET-ATTRIBUTES.md`, `scripts/README.md`.
+
 ---
 
 ## Adding New Incidents
@@ -1158,3 +1313,43 @@ When documenting a new incident, include:
 5. **Correct action**: What should have been done instead
 6. **Fix applied**: How was it resolved (if applicable)
 7. **Rule created**: Reference to the guardrail added/updated
+
+---
+
+## 2026-08-18 — Water-stress build: five defects, three external review rounds
+
+Layer: `waterstress-3b-*`. Record: `docs/water-stress-status-2026-08-17.md`.
+Generalizable rules extracted to **GUARDRAILS §14**.
+
+**1. Area convention settled twice, in opposite directions.** Concluded `cellarea` alone on
+0.6% global agreement; reversed to `cellarea × contfrac/100` after an external review
+challenged the comparison's provenance. The reference was a three-model average from a
+previous simulation round; the model ran 26% low and the missing factor 27% high, and they
+cancelled. Resolved by a stratified residual (structured signature) plus a global total that
+only one candidate satisfies across all 15 members. → §14.1
+
+**2. Calendar asserted from a sidecar, wrong for the model in use.** Wrote
+`proleptic_gregorian`; all 45 WaterGAP files declare `365_day`. H08 genuinely declares
+`proleptic_gregorian`, so it is heterogeneous per model. → §14.3
+
+**3. `np.asarray()` dropped a mask; 1e20 fills passed `isfinite`.** Global sum returned
+3.6e41. Initially misdiagnosed as a `netCDF4` defect; the library was innocent. → §14.2
+
+**4. River mask built from the ensemble mean.** Let one member's water license another's
+ratio — 686 cells passed a pooled mask while their own baseline was below it; one returned
+6e9 in every year. → §14.4
+
+**5. Three masks proposed against extreme ratios, each on a wrong hypothesis.** "Tiny
+rivers" (the offending cells had a median baseline of 5.0 m³/s), then "year-specific
+collapse" (excluding collapses left the max untouched). Only inspecting the single worst
+cell-year found the real cause. A proposed 50 m³/s mask was rejected by the user on the
+grounds that it is the Thames at London and would delete exactly the stressed dryland
+basins — correct, and it had been proposed from a max value without checking how many cells
+produced it (0.016%, 174 cells). → §14.6
+
+**Process note.** Three Codex review rounds. Round 2 raised 4 blockers, round 3 confirmed the
+reversal but found the precedence table still ordered the river mask after the zero rules,
+and caught a mislabelled column in the evidence table (ratios of totals presented as
+medians). **Every round found something the previous one had not**, and two rounds found
+errors in the corrections themselves. Budget for more than one review pass on a layer whose
+arithmetic is novel.

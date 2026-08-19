@@ -41,6 +41,66 @@ variable_definitions:
   # Searching the repository for any of these codes returns nothing, correctly. Built and
   # signed off 2026-08-16; see search_results.chronic_heat and search_results.cold_frost.
   # ---------------------------------------------------------------------------------------
+  R10mm:
+    long_name: "Heavy precipitation days (>= 10 mm)"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr >= 10 mm/day"
+    description: "Annual count of days with at least 10 mm of precipitation. ETCCDI R10mm."
+    use_case: "Broad wet-day screen; discriminates the arid belt from the temperate zone."
+  R20mm:
+    long_name: "Very heavy precipitation days (>= 20 mm)"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr >= 20 mm/day"
+    description: "Annual count of days with at least 20 mm. ETCCDI R20mm. THE ABSOLUTE HEADLINE -- 20 mm sits almost exactly at the MEDIAN land cell's own 2020s wet-day 95th percentile (19.0 mm measured over 42 members), so it is a 1-in-20-wet-day event for a typical cell."
+    use_case: "Comparable-across-sites rainfall hazard. Near-silent across the arid belt by design."
+  R50mm:
+    long_name: "Extreme precipitation days (>= 50 mm)"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr >= 50 mm/day"
+    description: "Annual count of days with at least 50 mm. World Bank CCKP ships r50mm."
+    use_case: "Severe rainfall; common only in monsoon and tropical-convective regions."
+  R100mm:
+    long_name: "Exceptional precipitation days (>= 100 mm)"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr >= 100 mm/day"
+    description: "Annual count of days with at least 100 mm. OUR EXTENSION, not a standard index -- do not cite it as ETCCDI. SPARSE: 94.3% of pooled land observations are zero."
+    use_case: "Extreme tail. A portfolio reading all zeros is the layer working, not a failure."
+  R95pD:
+    long_name: "Days above the local 95th-percentile wet day"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr > that cell's own 2020s WET-DAY 95th percentile"
+    description: "Annual count of days exceeding the 95th percentile of WET days (>= 1 mm) in that cell's own 2020s baseline, pooled over all 42 member-scenarios. THE RELATIVE HEADLINE. NOT ETCCDI `R95p`, which is a TOTAL in mm on a 1961-1990 base -- the `D` marks a day COUNT. The percentile is over WET days, not calendar days, so expect ~5 d/yr (5% of ~94 wet days), NOT 5% of 365."
+    use_case: "'How often is a rainy day extreme FOR HERE' -- closer to what local drainage was designed against. relative_baseline: the ranking INVERTS against R20mm."
+  R99pD:
+    long_name: "Days above the local 99th-percentile wet day"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr > that cell's own 2020s WET-DAY 99th percentile"
+    description: "As R95pD at the 99th percentile; ~1 d/yr in the baseline by construction. relative_baseline."
+    use_case: "Rarer local extremes. Doubles by ssp585 2090s (1.28 -> 2.61 d/yr measured)."
+  wetdays:
+    long_name: "Wet days (>= 1 mm)"
+    units: "days per year"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr >= 1 mm/day"
+    description: "Annual count of wet days. Published because it is the DENOMINATOR the relative rungs are defined on -- a reader can verify R95pD is ~5% of it."
+    use_case: "Rainfall frequency; also the quantity the 840-wet-day masking rule is written on."
+  Rx1day:
+    long_name: "Annual maximum 1-day precipitation"
+    units: "mm"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr, annual maximum"
+    description: "The wettest single day of each year. THE INTENSITY HEADLINE and the best single pluvial proxy in the set -- it needs no threshold choice at all. Reads sen_slope: an annual maximum is a heavy-tailed extreme-value series where one freak year drags a least-squares fit."
+    use_case: "Short-duration rainfall hazard. Global land mean 38.0 mm rising to 44.5 mm by ssp585 2090s."
+  Rx5day:
+    long_name: "Annual maximum 5-day precipitation"
+    units: "mm"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr, annual maximum of the running 5-day sum"
+    description: "The wettest five-day run of each year; windows CROSS file boundaries and are assigned to the year they END in. Verified Rx5day >= Rx1day with 0 violations -- the only independent test on real data of the chunk-boundary carry."
+    use_case: "Saturation-driven and compound flooding, where antecedent wetness matters."
+  prcptot:
+    long_name: "Annual precipitation from wet days"
+    units: "mm"
+    constructed_from: "ISIMIP3b bias-adjusted daily pr, annual sum over days >= 1 mm"
+    description: "Annual total precipitation counting wet days only. SDII (intensity per wet day) = prcptot / wetdays."
+    use_case: "Water availability context. NOT a hazard on its own -- more rain is not uniformly worse."
   hd30:
     long_name: "Hot days above 30 C"
     units: "days per year"
@@ -502,7 +562,21 @@ search_results:
   # -------------------------
   pluvial_flood:
     last_searched: "2026-08-16"
-    status: "ENUMERATED AND VALUE-CHECKED. NOT INGESTED -- two design decisions are open, see open_decisions."
+    status: "BUILT 2026-08-18. Ten layers ship; see built_2026_08_18 below before re-searching."
+    built_2026_08_18: >-
+      SHIPPED as `pluvial-r10mm/r20mm/r50mm/r100mm` (absolute depth frequency),
+      `pluvial-r95pd/r99pd` (local-percentile frequency, relative_baseline),
+      `pluvial-rx1day/rx5day` (annual maxima), `pluvial-wetdays`, `pluvial-prcptot`.
+      14 GCMs x ssp126/370/585, all ten contract-passing, qa_reviewed_on NULL pending review.
+      Headlines: Rx1day (intensity), R20mm (absolute), R95pD (relative) -- three, because the
+      family asks three questions. Processors scripts/pr_baseline_percentiles.py (stage 0,
+      per-cell wet-day percentiles) + scripts/download_reduce_prthresh_isimip3b.py (stage 1)
+      + scripts/process_prthresh.py (stage 2); scripts/run_pr_pipeline.py drives 0 -> 1.
+      FILED UNDER families.heavy-precipitation IN THE TAXONOMY, NOT under flood-pluvial:
+      they measure the rainfall DRIVER, and drainage -- which decides whether rain becomes a
+      flood -- is not in this data at all. Do NOT promote them to pluvial-flood coverage.
+      Framing and measurements in DATASET-ATTRIBUTES.md; incidents in WORKFLOW-ISSUES.md
+      2026-08-18. Do not re-derive the availability matrix -- it is below and unchanged.
     description: >
       DISTINCT FROM river_flood below. That hazard is channel overflow simulated by a
       hydrological model; this one is rainfall intensity overwhelming local drainage, which
