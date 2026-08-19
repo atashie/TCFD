@@ -1218,7 +1218,7 @@ with 0 where the other field is finite. Without the zero-fill: 0.573 and 0.558.
 -4.2% to -12.3%, and mean kinetic energy **+28.4% to +49.1%** against a published +36.5% to
 +42.1%. Both run outside the published ranges in the direction expected if the five missing
 launch positions matter. Until they are obtained, **no claim of reproducing the publication**
--- the drafted author query is `reports/hail-nature2026/author_query.md`.
+-- the drafted author query is `reports/maps/hail-severity/author_query.md`.
 
 **Two facts that constrain any product built from this.** Event eligibility is
 *climate-dependent*: profiles are retained only where the maximum updraft is >= 5 m/s
@@ -1236,7 +1236,7 @@ nothing written to `data/processed`. The deposit gives conditional SEVERITY only
 express hail frequency, occurrence or return period, and at 12,412 events a regular global
 grid averages 4.8 events per cell at 5 degrees.
 
-**Files**: `scripts/measure_hail_nature2026.py`, `reports/hail-nature2026/` (gate.csv, author_query.md),
+**Files**: `scripts/measure_hail_nature2026.py`, `reports/maps/hail-severity/` (gate.csv, author_query.md),
 `data/raw/hail-nature2026/manifest.json`, `isimip-pipeline/pyproject.toml` (py7zr -- the
 deposit ships nested .7z and this machine has no 7z binary).
 

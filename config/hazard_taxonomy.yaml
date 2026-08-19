@@ -614,14 +614,32 @@ families:
     cdp_label: "Heavy precipitation (rain, hail, snow/ice)"          # UNVERIFIED
     covered_by: []
     customer_note: >-
-      Partly assessed. Heavy RAINFALL is assessed at daily resolution: how often 10/20/50/100 mm falls in a day, how often a rainy day is extreme by local standards, and the wettest single day and wettest five-day run of each year. Hail, snow and ice loading are NOT assessed, and neither is short-duration rainfall -- a 30-minute cloudburst can sit inside an unremarkable daily total.
+      Partly assessed. Heavy RAINFALL is assessed at daily resolution: how often 10/20/50/100 mm falls in a day, how often a rainy day is extreme by local standards, and the wettest single day and wettest five-day run of each year. HAIL is assessed only as the historical frequency of VERY LARGE hail, 5 cm and above, which is the violent tail rather than the sizes that damage most property -- and only for present-day conditions, with no projection. Snow and ice loading are NOT assessed, and neither is short-duration rainfall -- a 30-minute cloudburst can sit inside an unremarkable daily total.
     materiality_note: >-
       THE FAMILY NAME IS BROADER THAN THE COVERAGE. Ten layers measure daily rainfall
-      extremes; NOTHING here measures hail, snow loading or ice accretion, which are distinct
-      hazards with distinct damage mechanisms (hail on solar arrays and vehicle fleets, snow
-      load on roofs and lines, ice on transmission and aviation). Do not let "heavy
-      precipitation: assessed" stand for those. Sub-daily intensity is also absent and is the
-      variable pluvial drainage design actually turns on.
+      extremes; snow loading and ice accretion are still measured by NOTHING here, and they
+      are distinct hazards with distinct damage mechanisms (snow load on roofs and lines, ice
+      on transmission and aviation). Do not let "heavy precipitation: assessed" stand for
+      those. Sub-daily intensity is also absent and is the variable pluvial drainage design
+      actually turns on.
+      HAIL CHANGED STATUS 2026-08-19 AND THE CHANGE IS NARROWER THAN IT SOUNDS. `hail-vlh` is
+      registered: global 0.25 deg expected annual number of hail >= 5 cm events, AR-CHaMo on
+      ERA5, 1950-2023 (Battaglioli et al., Nature Geoscience 2026, CC BY 4.0 Source Data).
+      Three limits decide how it may be used. (1) THRESHOLD: 5 cm is the violent tail;
+      photovoltaic glass, roofing and vehicle panels fail from roughly 2-3 cm, so this counts
+      a small subset of damaging hail and CANNOT answer "how often is this asset hit by hail
+      that hurts it". (2) NO PROJECTION: it is a historical baseline, answering
+      `observational-historical-v1`, with no scenario dimension at all -- a forward-looking
+      hail frequency does not exist in any public dataset we have found. (3) It is SCREENING
+      ONLY: a hail swath is a few km across against a ~28 km cell.
+      COVERAGE IS EMPTY ON PURPOSE, for hail as for the rain layers: no asset type in
+      config/asset_catalog.yaml routes to `hail-vlh`, that routing needs user sign-off, and
+      `qa_reviewed_on` is null. Do not populate covered_by until both are resolved.
+      SEPARATELY, A HAIL SEVERITY DATASET WAS EVALUATED AND DELIBERATELY NOT MADE A LAYER --
+      hailstone size and impact energy under ssp245/370/585 from the Nature 2026
+      trajectory-model deposit. It is conditional on a storm occurring, cannot express
+      frequency, and 73% of its 0.5 deg cells hold a single storm. See
+      reports/maps/hail-severity/ and the WORKFLOW-ISSUES entries of 2026-08-18.
     isimip_candidate:
       # BUILT 2026-08-18. Constructed indices -- ISIMIP publishes no threshold-count or
       # annual-maximum precipitation variable in any round.
@@ -633,15 +651,24 @@ families:
       for all three SSPs and every GCM directory in both roots. Daily `pr` has 14 GCMs, TWO
       MORE than tasmax/tasmin (CESM2-WACCM and IITM-ESM publish pr but no tasmax). No hail,
       snow-load or ice-accretion variable exists in any ISIMIP round; that negative is scoped
-      to what was listed and is why those three remain uncovered.
+      to what was listed. Re-enumerated for hail specifically on 2026-08-18 across all four
+      rounds INCLUDING the impact sectors -- 39 listings, 0 filenames matching "hail" -- see
+      negative_results.hail. Snow load and ice accretion remain uncovered and unenumerated
+      beyond the above.
     blocker: >-
       PARTLY RESOLVED 2026-08-18. The previous text -- "sub-daily hazard; outside the
       resolution of this product" -- was right about the hazard it was aimed at and too broad
       about the family. DAILY rainfall extremes are squarely inside this product's
       resolution and are now built. What REMAINS blocked is the part the original sentence
       actually names: (a) SUB-DAILY intensity, which needs the hourly root (~24x volume) and
-      is what surface-water drainage is designed against; (b) HAIL, SNOW LOAD and ICE
-      ACCRETION, for which no ISIMIP variable exists in any round.
+      is what surface-water drainage is designed against; (b) SNOW LOAD and ICE ACCRETION,
+      for which no ISIMIP variable exists in any round; and (c) hail BEYOND the 5 cm
+      historical baseline now carried by `hail-vlh` -- neither a smaller-stone threshold nor
+      any projection is available publicly. Hail is structurally impossible from ISIMIP for
+      the same reason as tornado (no atmosphere aloft, so no shear or freezing-level term);
+      the receipt is negative_results.hail in config/isimip_search_catalog.yaml, and the
+      parked licence route to a >= 2 cm product is
+      reports/maps/hail-vlh/essl_licence_query.md.
       COVERAGE IS EMPTY ON PURPOSE: `covered_by` stays [] until an asset type in
       config/asset_catalog.yaml routes to a layer, which needs user sign-off, and
       `qa_reviewed_on` is null on all ten pending a human reading the dashboards.

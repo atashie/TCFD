@@ -19,8 +19,9 @@
 # staying quiet. Passing the output contract means a file is SHAPED right, not that its
 # input is about what its name says -- both sugarcane layers passed every check and were
 # meaningless. Set the date only after actually doing it.
-# As of 2026-08-19 TWENTY layers carry a date: `heatwave-3b` (2026-08-14), the nine threshold
-# rungs (2026-08-16) and the ten precipitation layers (2026-08-19). DATASET-ATTRIBUTES.md
+# As of 2026-08-19 TWENTY-TWO layers carry a date: `heatwave-3b` (2026-08-14), the nine
+# threshold rungs (2026-08-16), the ten precipitation layers (2026-08-19), `landslide-arup`
+# (2026-08-19) and `hail-vlh` (2026-08-19). DATASET-ATTRIBUTES.md
 # records what each of those reviews had in front of it -- a date whose evidence is not
 # written down is worth little more than a null.
 # The remaining seventeen are still null. Do NOT read their nulls as a formality, and do NOT
@@ -1276,6 +1277,52 @@ layers:
       lower than GIRI's or the Arup earthquake layer's. Historical only: it answers where
       significant landsliding HAS been frequent, not where it will become more frequent.
       Attribution to World Bank / GFDRR and Arup is required wherever a value is published.
+
+  # Global very-large-hail occurrence -- added 2026-08-19.
+  #
+  # NOT AN OUTPUT-SPEC LAYER. It answers `observational-historical-v1`, like the tornado
+  # ladder: no decade axis, no slopes, no ensemble, one window (1950-2023), scenario code
+  # `observed`, lifted onto a single-period axis at read time. Do not compute a decadal
+  # change from it -- there is only one period.
+  #
+  # NOT ISIMIP, and that is structural rather than a gap: every hail-environment index needs
+  # CAPE, deep-layer shear and a freezing level, and the ISIMIP bias-adjusted forcing
+  # publishes 11 SURFACE variables and nothing aloft. See negative_results.hail in
+  # config/isimip_search_catalog.yaml.
+  #
+  # THE THRESHOLD IS THE THING TO ARGUE WITH. 5 cm is the violent tail; PV glass, roofing
+  # and vehicle panels start failing around 2-3 cm. This layer ranks where the most violent
+  # hail falls, NOT how often an asset meets hail that can damage it. A >=2 cm version would
+  # be the more useful product and does not exist publicly -- see the parked licence
+  # question at reports/maps/hail-vlh/essl_licence_query.md.
+  #
+  # 0.25 DEG ON THE ERA5 LATTICE, which is offset 0.125 deg from the tornado layers'
+  # cell-centre grid. The two share no coordinate values; never union their masks.
+
+  hail-vlh:
+    folder: hail-vlh-archamo_ge5cm
+    file_prefix: hail-vlh
+    hazard: Hail
+    hazard_measure: Expected annual number of hail >= 5 cm events per 0.25 deg grid box
+    status: alternate
+    recommended_slope: none
+    recommended_slope_rationale: >-
+      Not applicable. This layer publishes no slope. The source's own trend field exists and
+      is CC BY, but fitting a slope ourselves would need the annual fields, which are
+      CC BY-NC-ND and unusable here; republishing the source's trend is a different artifact
+      from a slope we computed. Measured context, in the file's `trend_context_measured`:
+      over covered land cells with any modelled VLH (n=241,491) 17.2% trend significantly at
+      p<0.05, of which only 20.8% are positive.
+    relative_baseline: false
+    delivery_note: >-
+      SCREENING ONLY. A hail swath is a few km across against a ~28 km cell, and the value is
+      PER GRID BOX so it does not survive resampling -- `events_per_1e4km2_per_year` is
+      carried for cross-latitude comparison. The window is the whole record, 1950-2023, not a
+      recent decade, because the annual fields needed for a 2014-2023 window are under a
+      licence this product cannot use. The interval is Poisson SAMPLING on the realised count,
+      not uncertainty in AR-CHaMo, which is unquantified and larger outside Europe, the US and
+      Australia where the model was trained.
+    qa_reviewed_on: "2026-08-19"
 
 blocked:
   sugarcane_yield-sug-firr_annual: >-

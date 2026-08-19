@@ -123,6 +123,7 @@ straight.
 | Cold / ice days | `icedays-id` | `ID` | 3b bias-adjusted daily `tasmax`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
 | Tornado (CONUS, observed) | `tornado-f2plus` / `tornado-all` / `tornado-f1plus` / `tornado-f3plus` | `median` (crossing rate) | **NOT ISIMIP** — NOAA SPC 1950–2025, scenario `observed` | `process_tornado_spc.py` (2026-08-18) |
 | Landslide (global, observed) | `landslide-arup` | `median` (rate on hazard-bearing ground) | **NOT ISIMIP** — World Bank/GFDRR–Arup 1980–2018, scenario `observed` | `process_landslide_arup.py` (2026-08-19) |
+| Hail (global, observed) | `hail-vlh` | `median` (events ≥ 5 cm per box per year) | **NOT ISIMIP** — AR-CHaMo on ERA5 1950–2023, scenario `observed` | `process_hail_vlh_battaglioli.py` (2026-08-19) |
 
 `conifer-npp` is **not a hazard** — it is an asset-condition layer and is excluded from every
 hazard count. `config/hazard_taxonomy.yaml` records that under `non_hazard_layers`.
@@ -241,6 +242,84 @@ value from this layer is published**, and the layer carries it in `attribution_r
 to look for; the first item is whether the deliberate `median`/`percentile` divergence produces
 a sensible pattern, since that is the design decision most likely to be wrong.
 
+
+### `hail-vlh` — a frequency we can publish, at a size that is not the one that hurts
+
+The **third** layer on `observational-historical-v1` and the third non-ISIMIP layer. The
+barrier is the same one tornado hit and for the same reason: every hail-environment proxy —
+SHIP, Raupach, Eccel, AR-CHaMo — is built from mixed-layer CAPE, deep-layer shear and a
+freezing or wet-bulb-zero height, and ISIMIP publishes 11 surface variables and nothing
+aloft. Receipt: `negative_results.hail` in `config/isimip_search_catalog.yaml`, which also
+**closes the gap the tornado receipt left open** — that one could not speak for the impact
+sectors because they were never listed; this sweep projected the variable field over 38
+`OutputData` sector listings plus the 3b hourly forcing, 0 filenames matching `hail`.
+
+Source is Battaglioli et al., *Nature Geoscience* 19, 52–58 (2026): AR-CHaMo — thunderstorm
+occurrence, then hail conditional on a thunderstorm — applied to ERA5 every 3 hours on the
+native 0.25° grid for all 74 years. Over 80 billion profiles.
+
+**The licence decides the window, and it is worth understanding why.** The same fields sit in
+two places. Zenodo `10.5281/zenodo.17064885` holds 74 annual fields plus climatology and
+trends and is **CC BY-NC-ND 4.0** on every version — NC rules it out, ND separately rules out
+regridding. The article's **Source Data is CC BY 4.0** and is *not* figure summaries: each
+file carries the full 813,600-cell grid. So the baseline is the **1950–2023 mean**, not a
+recent decade: a 2014–2023 window would need the annual fields, which we cannot use. The
+parked licence route is `reports/maps/hail-vlh/essl_licence_query.md`.
+
+**A units trap in the source, measured.** The climatology field describes itself as *"Mean
+annual number of hail ≥ 5 cm events per ERA5 grid box (1950-2023)"* and is the 74-year
+**total** — summing all 74 annual fields reproduces it exactly, ratio 1.0000 with p1 = p99 =
+1.0000 across 332,164 cells. At face value it overstates the annual rate **74-fold**. The
+paper's own text gives the maximum as "around 0.50 events per year"; the file says 48.83.
+Every value in this layer is divided by 74.
+
+**Three limits that decide how it may be used.**
+
+1. **5 cm is the violent tail, not the damage threshold.** PV glass, roofing and vehicle
+   panels fail from roughly 2–3 cm. This ranks where the most violent hail falls; it does
+   **not** measure how often an asset meets hail that can hurt it. A ≥ 2 cm product is what
+   would matter and does not exist publicly.
+2. **No projection exists, here or anywhere public.** Historical only. The forward-looking
+   half of the hail question is unanswered by any dataset found in the 2026-08-18/19 review.
+3. **The interval is Poisson sampling, not model uncertainty.** Gamma(k + ½, T) quartiles,
+   the same estimator and Jeffreys prior as the tornado ladder so the two read alike. It says
+   how much a realised count would vary given the modelled rate — *not* how uncertain
+   AR-CHaMo is, which the source never quantifies and which is larger outside Europe, the US
+   and Australia, the only regions it was trained on.
+
+Reference sites, events per box per year: Córdoba **0.431** (global max, the paper's own
+hotspot), Johannesburg 0.344, Oklahoma City 0.310, Mendoza 0.254, Milan 0.159, Beijing 0.091,
+Calgary 0.064, Brisbane 0.062. A field flat across northern Argentina would be wrong whatever
+the contract check said.
+
+Grid is 0.25° on the **ERA5 lattice** (points at exact 0.25 multiples), **offset 0.125° from
+the tornado and landslide cell-centre grids** — they share no coordinate values, so never
+union their masks. **Signed off 2026-08-19** — see the QA sign-off below; maps at
+`reports/maps/hail-vlh/hail-vlh-qa.html`.
+
+### The hail severity dataset — evaluated in full, deliberately not a layer
+
+Distinct from `hail-vlh` and easy to confuse with it. *Rising global hail damage potential in
+a warming world* (Nature 653, 2026) deposits, under CC BY 4.0, a semi-3D hail-trajectory model
+run on 12,412 satellite-detected storms under historical and **ssp245/370/585** — the only
+public hail product with a scenario dimension. It was ingested, verified against the
+publication and analysed; it is **not** a layer, for reasons that are properties of the data:
+
+- It is **conditional severity**, not frequency. The future runs re-simulate *the same*
+  storms, so an event count per cell is a GPM overpass signature and is scenario-invariant:
+  96–98% of cells identical between historical and every SSP.
+- The event population is 12,412 points, so at 0.5° **73% of occupied cells hold one storm**
+  and no cell on Earth holds ten.
+- Its own `w_perc` support differs between the historical and future files (55 vs 330
+  embryos), which inflates a naive median size shift from +30% to +97%.
+
+What it *did* establish is worth keeping: intensity and mean stone size rise across most major
+hail belts while Australia and Maritime SE Asia lose ~28% of per-impact energy, and the
+answer flips sign depending on whether you average over storms or over stones. Fields,
+regional tables, the evidence gate (`gate.csv`, 60 member-runs) and the author query are at
+`reports/maps/hail-severity/`; the traps are recorded in the WORKFLOW-ISSUES entries of
+2026-08-18. Scripts: `measure_hail_nature2026.py`, `build_hail_severity_fields.py`,
+`generate_hail_severity_maps.py`.
 
 ## Ensemble and framing, per layer
 
@@ -675,6 +754,7 @@ is the raw climate signal.
 | `yield-sug-noirr`, `yield-sug-firr` | **WITHDRAWN 2026-08-11, upstream data defect.** ISIMIP2b LPJmL does not simulate cane in the cane belt (São Paulo, UP India, Queensland, Florida all sentinel-zero). Passed the contract and meant nothing. No ISIMIP source supports a scenario-bearing sugarcane layer. Refused by the loader via `blocked:` in the registry. |
 | `burntarea` (2b `biomes`, rcp26/60/85) | **SUPERSEDED 2026-08-10** by the 3b layer. |
 | `csoil-total` | **Rebuilt and registered 2026-08-15** — see the `csoil` rows above. The 2026-07-25 build's output had been lost from disk and its 12-member/3-model ensemble was wrong by omission (LPJmL missing). `process_csoil_soilcarbon.py` remains the OUTPUT-SPEC **reference implementation**. |
+| Hail severity (Nature 2026 trajectory deposit) | **EVALUATED 2026-08-18, NOT A LAYER.** Conditional severity under ssp245/370/585, but it cannot express frequency and 73% of its 0.5° cells hold one storm. Kept as research output at `reports/maps/hail-severity/`. |
 | Timber, fisheries, health, … | Various `process_*.py`, not registered. |
 
 ## Source families in the ISIMIP repository
@@ -790,6 +870,40 @@ little more than a null:
 `process_prthresh.py` does not inherit this date — metrics from this same ingest already
 differ in zero-inflation (0.02% on `Rx1day`, 94.3% on `R100mm`), in statistic branch and in
 which slope to read.
+
+### QA sign-off: `hail-vlh`, 2026-08-19
+
+**Signed off by the user on 2026-08-19** after reviewing the rendered QA page, recorded as
+`qa_reviewed_on: '2026-08-19'` in `config/layer_registry.yaml` and in the file's own global
+attributes. Twenty-two of thirty-nine layers now carry a human QA date; the remaining
+seventeen nulls are real gaps.
+
+What the review had in front of it:
+
+- **Contract**: `test_observational_baseline.py` — **21 of 21 checks pass**. Dims exactly
+  `(lat, lon)`; `ols_slope`/`sen_slope`/`n_members`/`n_models` absent rather than faked;
+  the three interval fields share one missingness pattern; percentile in [1, 100], monotonic
+  in the rate over occupied cells (ρ > 0.999), with the zero tier exactly the cells the model
+  gives no VLH; all four required caveats present and none of them negative.
+- **Reference sites**, events per box per year: Córdoba **0.431** (global maximum),
+  Johannesburg 0.344, Oklahoma City 0.310, Mendoza 0.254, Milan 0.159, Beijing 0.091,
+  Calgary 0.064, Brisbane 0.062 — the ordering the source paper's own text describes.
+- **Field summary**: 263,180 covered cells (land ∩ 57°S–84°N), zero tier 8.24% of them,
+  median rate 0.0148, p99 0.343, max 0.662 events per box per year.
+- **Five things the page asks the reviewer to look for**: whether the maximum sits north-west
+  of Córdoba with the expected hotspots behind it; coastline artefacts from the 100 km
+  maritime exclusion and the land mask; whether the percentile panel reads as a hazard field
+  or as the land mask; whether the relative-interval panel is wide at low rates and narrow at
+  high ones, which is what a Poisson interval does; and grid stripes in the
+  **native-resolution** South America zoom, which exists precisely because the global panels
+  are block-averaged to 0.5° for the browser and coarsening could otherwise hide a lattice
+  artefact.
+
+**What the sign-off does not cover.** It is a review of the field as rendered. It says nothing
+about the 5 cm threshold being the wrong size for most damage, about the absence of any
+projection, or about AR-CHaMo's transferability outside its European/US/Australian training
+regions — those are limits of the product, not defects a map could reveal.
+
 
 ### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
 

@@ -21,6 +21,9 @@ dependencies = [
     "numpy>=1.24.0",
     "plotly>=5.18.0",
     "rich>=13.0.0",
+    # Standalone scripts only: the Nature 2026 hail deposit ships nested .7z archives and
+    # this machine has no 7z binary (scripts/measure_hail_nature2026.py).
+    "py7zr>=1.0.0",
 ]
 
 [project.optional-dependencies]

@@ -2926,6 +2926,42 @@ negative_results:
       published. QA maps: scripts/generate_landslide_qa.py -> reports/maps/landslide/.
 
 
+  hail:
+    searched: "2026-08-18"
+    result: >-
+      No hail variable of any kind -- occurrence, size, energy, hailstorm days -- is published
+      in ISIMIP2a, 2b, 3a or 3b, and no hail proxy can be CONSTRUCTED from ISIMIP forcing.
+      See negative_results.tornado.structural_reason: it is the same missing ingredient, the
+      atmosphere in the vertical, and the same conclusion.
+    verified_absent_on: >-
+      2026-08-18 -- listed serially, zero empty listings: all four round roots;
+      DerivedOutputData/ in all four rounds (9 publications, none hail);
+      ISIMIP3b/DerivedInputData/ (SPARCCLE2025, TipESM2025 -- neither hail);
+      InputData/ and the full climate/ subtree in 3a and 3b, including lightning/;
+      SecondaryInputData/ in all four rounds; SecondaryOutputData/ in 2a/2b/3a;
+      and the bias-adjusted daily and hourly forcing to full depth.
+    scope_extension_over_tornado: >-
+      THIS ENTRY CLOSES THE GAP negative_results.tornado.scope_of_this_negative LEFT OPEN.
+      That entry could not speak for the impact sectors because they were not listed. This
+      sweep projected the VARIABLE FIELD over 38 OutputData sector listings -- every sector
+      in every round, first model x first GCM x one period each -- plus the 3b hourly
+      forcing: 39 listings, 0 filenames matching "hail". Sampling is one model per sector,
+      so it is not exhaustive per model; it is enumeration rather than reasoning, which the
+      tornado entry explicitly was not.
+    structural_reason: >-
+      Every hail-environment proxy in the literature -- SHIP, the Raupach proxy, Eccel,
+      AR-CHaMo -- is built from mixed-layer CAPE, deep-layer shear and a freezing or
+      wet-bulb-zero height. All three need the vertical profile. ISIMIP publishes surface
+      fields only, so the shear and freezing-level terms cannot be formed at all. This does
+      not change when a new impact sector is published.
+    resolution_taken: >-
+      Layer built from a non-ISIMIP source: AR-CHaMo applied to ERA5 (Battaglioli et al.,
+      Nature Geoscience 19, 52-58, 2026), CC BY 4.0 via the article Source Data.
+      scripts/process_hail_vlh_battaglioli.py -> data/processed/hail-vlh-archamo_ge5cm.
+      A separate SEVERITY dataset (hailstone size and impact energy under SSPs, from the
+      Nature 2026 trajectory-model deposit) was evaluated and NOT made into a layer -- see
+      reports/maps/hail-severity/ and the WORKFLOW-ISSUES entries of 2026-08-18.
+
   tornado:
     searched: "2026-08-18"
     result: >-
