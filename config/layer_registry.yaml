@@ -19,11 +19,14 @@
 # staying quiet. Passing the output contract means a file is SHAPED right, not that its
 # input is about what its name says -- both sugarcane layers passed every check and were
 # meaningless. Set the date only after actually doing it.
-# As of 2026-08-16 TEN layers carry a date: `heatwave-3b` (reviewed 2026-08-14) and the nine
-# threshold rungs (reviewed 2026-08-16 -- see DATASET-ATTRIBUTES.md for what that review had
-# in front of it). The other thirteen are still null -- do not read their nulls as a
-# formality, and do not infer that a layer sharing a processor with a reviewed one inherits
-# its date. The review is of the DATA, not of the code that made it.
+# As of 2026-08-19 TWENTY layers carry a date: `heatwave-3b` (2026-08-14), the nine threshold
+# rungs (2026-08-16) and the ten precipitation layers (2026-08-19). DATASET-ATTRIBUTES.md
+# records what each of those reviews had in front of it -- a date whose evidence is not
+# written down is worth little more than a null.
+# Do NOT read the remaining nulls as a formality, and do NOT infer that a layer sharing a
+# processor with a reviewed one inherits its date: the review is of the DATA, not of the code
+# that made it, and metrics from one processor have differed in zero-inflation, censoring and
+# sparsity.
 #
 # Scenarios are NEVER listed here. They are globbed from disk per GUARDRAILS.md §3 --
 # a hardcoded scenario list once made 25% of processed data invisible.
@@ -837,7 +840,7 @@ layers:
     hazard: Heavy precipitation
     hazard_measure: Days per year with precipitation at or above 10 mm
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: ols_slope
     recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
@@ -863,7 +866,7 @@ layers:
     hazard: Heavy precipitation
     hazard_measure: Days per year with precipitation at or above 20 mm
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: ols_slope
     recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
@@ -889,7 +892,7 @@ layers:
     hazard: Heavy precipitation
     hazard_measure: Days per year with precipitation at or above 50 mm
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: ols_slope
     recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
@@ -915,7 +918,7 @@ layers:
     hazard: Heavy precipitation
     hazard_measure: Days per year with precipitation at or above 100 mm
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: ols_slope
     recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
@@ -942,7 +945,7 @@ layers:
     hazard: Heavy precipitation (local extreme)
     hazard_measure: Days per year above this location's own 2020s wet-day 95th percentile
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: ols_slope
     recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
@@ -984,7 +987,7 @@ layers:
     hazard: Heavy precipitation (local extreme)
     hazard_measure: Days per year above this location's own 2020s wet-day 99th percentile
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: ols_slope
     recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
@@ -1026,7 +1029,7 @@ layers:
     hazard: Wet days
     hazard_measure: Days per year with precipitation at or above 1 mm
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: ols_slope
     recommended_slope_rationale: ols_slope, decided by which estimator CAN fail on this layer rather
       than by a threshold. (1) ols_slope's documented failure mode requires UNEVEN member coverage,
@@ -1052,7 +1055,7 @@ layers:
     hazard: Extreme daily rainfall
     hazard_measure: Annual maximum 1-day precipitation
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: sen_slope
     recommended_slope_rationale: 'sen_slope, on measurement. Theil-Sen has NOT collapsed on this metric:
       it is exactly zero on only 0.0%-0.0% of ACTIVE cells (either slope non-zero) across every post-baseline
@@ -1082,7 +1085,7 @@ layers:
     hazard: Extreme multi-day rainfall
     hazard_measure: Annual maximum 5-day precipitation total
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: sen_slope
     recommended_slope_rationale: 'sen_slope, on measurement. Theil-Sen has NOT collapsed on this metric:
       it is exactly zero on only 0.0%-0.0% of ACTIVE cells (either slope non-zero) across every post-baseline
@@ -1114,7 +1117,7 @@ layers:
     hazard: Annual precipitation
     hazard_measure: Annual total precipitation from wet days
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-19'
     recommended_slope: sen_slope
     recommended_slope_rationale: 'sen_slope, on measurement. Theil-Sen has NOT collapsed on this metric:
       it is exactly zero on only 1.0%-1.5% of ACTIVE cells (either slope non-zero) across every post-baseline

@@ -697,6 +697,40 @@ Dashboards for all nine are at `reports/maps/{rung}/`; contact sheets at
 `reports/contact_sheets/`. **The review is of the DATA, not of the processor** — a future rung
 built by the same script does not inherit this date.
 
+### QA sign-off: the precipitation family, 2026-08-19
+
+**Signed off by the user on 2026-08-19** after reviewing the rendered dashboards, recorded as
+`qa_reviewed_on: '2026-08-19'` on all ten layers in `config/layer_registry.yaml`. Twenty of
+thirty-seven layers now carry a human QA date; the other seventeen nulls are real gaps.
+
+What the review had in front of it — a date whose evidence is not written down is worth
+little more than a null:
+
+- **Contract**: `test_shared_baseline.py` on all ten — **zero failures**. 2020s panel
+  bit-identical across scenarios, `percentile` within [1,100] and correctly oriented
+  (+0.83 on `R10mm`, +0.91 on `Rx1day`), no slope finite where the median is NaN,
+  `n_members` 14 everywhere.
+- **Containment across the family** — `wetdays ≥ R10mm ≥ R20mm ≥ R50mm ≥ R100mm`,
+  `R95pD ≥ R99pD`, `Rx5day ≥ Rx1day`: **0 violations** in all three scenarios, 18 relations.
+  `Rx5day ≥ Rx1day` is the only independent test on real data of stage 1's chunk-boundary
+  carry; without the carry a synthetic test understated 42.5% of cells.
+- **Ten dashboards** at `reports/maps/{metric}/{metric}/index.html`, six tabs each.
+- **Ten per-member contact sheets** at `reports/contact_sheets/{metric}_members.png`, all 14
+  GCMs on one shared scale. `Rx1day` shows the monsoon belt, Amazonia and central Africa
+  bright against a dark Sahara, with coastlines intact and no seams, blocks or hemisphere
+  flips; `R95pD` is near-uniform teal by construction, which is the absolute-vs-relative
+  distinction made visible.
+- **Reference sites** on every metric where that metric is diagnostic (GUARDRAILS §12):
+  Cherrapunji 96.9 d/yr above 20 mm and 8112 mm/yr total, Mumbai 35.9, Singapore 24.2,
+  London 2.5, Phoenix 1.9, Cairo 0.0.
+- **Construction verified**: `R95pD`/`wetdays` = 0.0509 and `R99pD`/`wetdays` = 0.0093 over
+  8 members, against 0.05 and 0.01 by definition.
+
+**The review is of the DATA, not of the processor.** A future metric built by
+`process_prthresh.py` does not inherit this date — metrics from this same ingest already
+differ in zero-inflation (0.02% on `Rx1day`, 94.3% on `R100mm`), in statistic branch and in
+which slope to read.
+
 ### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
 
 Built 2026-08-18 from ISIMIP3b bias-adjusted daily `pr`, **14 GCMs** × 3 SSPs. ~911 GB was
