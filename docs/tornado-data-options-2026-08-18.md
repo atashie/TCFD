@@ -774,7 +774,7 @@ hard way:
 
 ## 12.4 QA maps exist, so the review can happen
 
-`scripts/generate_tornado_qa.py` → `reports/tornado-qa/tornado-qa-{full,from1996}.html`,
+`scripts/generate_tornado_qa.py` → `reports/maps/tornado/tornado-qa-{full,from1996}.html`,
 3.6 MB each, 12 panels per page (4 rungs × rate / percentile / crossing count), plus the rung
 summary and the caveats rendered from each file's own attributes.
 

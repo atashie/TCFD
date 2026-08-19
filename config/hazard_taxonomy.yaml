@@ -759,11 +759,32 @@ families:
     name: "Landslide and subsidence"
     esrs_class: acute
     cdp_label: "Landslide"                           # UNVERIFIED
-    covered_by: []
+    covered_by:
+      - landslide-arup                               # historical only; no scenario axis
     customer_note: >-
-      Not assessed. Slope failure and subsidence depend on terrain and geotechnical conditions that are outside this dataset.
-    isimip_candidate: []
-    blocker: "Outside ISIMIP's published impact sectors. Requires terrain and geotechnical data."
+      Assessed for RAINFALL-TRIGGERED landsliding only, as a historical hazard rate over
+      1980-2018. This is a screening result: slope stability turns on metres of terrain and
+      the grid cell is ~28 km, so it ranks which sites merit geotechnical investigation and
+      cannot support a design decision. Earthquake-triggered landsliding, and subsidence, are
+      not assessed. No forward-looking landslide projection is included.
+    isimip_candidate:
+      - >-
+        ISIMIP3b bias-adjusted daily `pr` (0.5 deg, 5 GCMs x 3 SSPs) as the TRIGGER factor only.
+        NGI's GIRI global landslide model is driven by exactly this forcing (IPSL-CM6A-LR,
+        SSP126/585, 2061-2100), so the trigger is expressible in ISIMIP; the terrain factor is not.
+      - >-
+        ISIMIP3b water_global `soilmoist` (10 models) for antecedent wetness -- CADENCE UNVERIFIED,
+        the file counts suggest monthly, which would be useless for a 3-day antecedent window.
+    blocker: >-
+      PARTIALLY CLOSED 2026-08-19. The historical hazard now ships (landslide-arup). What
+      remains uncovered: (1) NO PROJECTION -- ISIMIP publishes no landslide output in any round
+      and InputData/geo_conditions/ carries no slope, elevation or lithology, so the TERRAIN
+      factor must come from outside ISIMIP; the trigger factor is available (ISIMIP3b daily pr)
+      and a susceptibility x trigger build is the route, not yet done. Receipt:
+      isimip_search_catalog.yaml negative_results.landslide. (2) EARTHQUAKE-TRIGGERED
+      landsliding is out of scope by decision -- seismic triggering is stationary under every
+      pathway. (3) SUBSIDENCE is not addressed by this layer at all despite sharing the family
+      name. Full options review: docs/landslide-data-options-2026-08-19.md
 
   marine-warming-acidification:
     name: "Marine warming and ocean acidification"

@@ -2873,6 +2873,59 @@ search_results:
 # -----------------------------------------------------------------------------
 negative_results:
 
+  landslide:
+    searched: "2026-08-18"
+    result: >-
+      No landslide, mass-movement, debris-flow, slope-stability or geotechnical variable is
+      published in ISIMIP2a, 2b, 3a or 3b. Separately -- and this is the more useful finding --
+      InputData/geo_conditions/ carries NO slope, elevation or lithology in either 3a or 3b, so
+      the TERRAIN factor of a landslide model is absent from the archive, not merely the impact
+      model.
+    verified_absent_on: >-
+      2026-08-18 -- listed, serially with 3 s spacing, zero empty listings:
+      https://files.isimip.org/{ISIMIP2a,ISIMIP2b,ISIMIP3a,ISIMIP3b}/ ;
+      the same four /OutputData/ roots ; the same four /DerivedOutputData/ roots ;
+      https://files.isimip.org/ISIMIP{3a,3b}/InputData/ and their geo_conditions/ subtrees ;
+      https://files.isimip.org/ISIMIP3b/SecondaryInputData/ .
+      Sector rosters found -- 2a: agriculture biodiversity biomes forestry lakes_global
+      marine-fishery_{global,regional} permafrost water_{global,regional} ; 2b: as 2a plus health,
+      lakes_local ; 3a: agriculture biomes fire lakes_{global,local} peat permafrost water_global ;
+      3b: agriculture biomes fire lakes_{global,local} marine-fishery_global permafrost
+      water_global. geo_conditions/ (3a and 3b, identical): countrymasks fishmip_regions lakes
+      landseamask ocean river_routing soil.
+    scope_of_this_negative: >-
+      NOT LISTED, so NOT covered by the claim above: individual model directories under each
+      sector; the InputData/climate/ subtrees; composition_atmosphere/; socioeconomic/; and every
+      InputData root in 2a/2b. No impact sector models slope stability, but that is reasoning,
+      not enumeration (GUARDRAILS 11).
+    structural_reason: >-
+      WEAKER THAN THE TORNADO CASE, AND THE DIFFERENCE MATTERS. Landslide hazard factorises into
+      a static terrain term and a time-varying rainfall term. The terrain term is not climate data
+      and never needed to come from ISIMIP; the rainfall term IS in ISIMIP. Proof that the trigger
+      is expressible: NGI's GIRI global landslide model (Palau et al. 2023) is driven by ISIMIP3b
+      bias-adjusted 24 h precipitation -- IPSL-CM6A-LR, SSP126 and SSP585, 2061-2100. So the
+      correct statement is "ISIMIP supplies the trigger and nothing else", NOT "ISIMIP cannot
+      express landslide". Do not quote this entry as the latter.
+    external_options_reviewed: >-
+      docs/landslide-data-options-2026-08-19.md -- four classes enumerated (event inventories,
+      global gridded hazard/susceptibility, national inventories, scenario projections) with
+      resolution, licence and contract fit for each. Key facts: only the World Bank/GFDRR-Arup
+      map publishes a RATE with units (1 km, 1980-2018, rainfall and earthquake layers separate);
+      GIRI is the finest at 3 arcsec and the only distributed global PROJECTION, on one GCM; the
+      Duan et al. 0.15 deg CMIP6 projections publish no grids and are CC BY-NC-ND, and their
+      framework should not be reimplemented (peer-review file reviewed, reviewer 1 recommended
+      rejection over the precipitation proxy and the resolution).
+    resolution_taken: >-
+      Historical-only layer built from the Arup rainfall-triggered map, aggregated 30 arcsec ->
+      0.25 deg, on the observational-historical-v1 contract.
+      scripts/download_landslide_arup.py + scripts/process_landslide_arup.py.
+      SHIPPED -- status:preferred as of 2026-08-19. The source licence is recorded ambiguously
+      by the publisher (WB DDH says CC BY-NC 4.0, the energydata.info mirror says CC-BY-4.0,
+      the report says neither); cleared for our limited commercial use by user determination
+      2026-08-19, with attribution to World Bank / GFDRR and Arup REQUIRED wherever a value is
+      published. QA maps: scripts/generate_landslide_qa.py -> reports/maps/landslide/.
+
+
   tornado:
     searched: "2026-08-18"
     result: >-

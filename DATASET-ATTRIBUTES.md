@@ -122,6 +122,7 @@ straight.
 | Cold / frost | `frostdays-fd`, `frostdays-fdm10` | `FD`/`FDm10` | 3b bias-adjusted daily `tasmin`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
 | Cold / ice days | `icedays-id` | `ID` | 3b bias-adjusted daily `tasmax`, ssp126/370/585 | `process_tasthresh.py` (2026-08-16) |
 | Tornado (CONUS, observed) | `tornado-f2plus` / `tornado-all` / `tornado-f1plus` / `tornado-f3plus` | `median` (crossing rate) | **NOT ISIMIP** — NOAA SPC 1950–2025, scenario `observed` | `process_tornado_spc.py` (2026-08-18) |
+| Landslide (global, observed) | `landslide-arup` | `median` (rate on hazard-bearing ground) | **NOT ISIMIP** — World Bank/GFDRR–Arup 1980–2018, scenario `observed` | `process_landslide_arup.py` (2026-08-19) |
 
 `conifer-npp` is **not a hazard** — it is an asset-condition layer and is excluded from every
 hazard count. `config/hazard_taxonomy.yaml` records that under `non_hazard_layers`.
@@ -181,6 +182,65 @@ Smoothing is **measured but not applied**: held-out predictive likelihood puts t
 decay length at 15 km (`all`), 40 km (`f2plus`, `f3plus`) — σ = 0 loses on every rung, so
 smoothing is warranted, but the length is rung-dependent and adopting it changes every
 published number. `scripts/measure_tornado_smoothing.py` reproduces it.
+
+### `landslide-arup` — a rate we did not model, on a licence we have not resolved
+
+The second layer on `observational-historical-v1` and the second non-ISIMIP layer. ISIMIP
+publishes no landslide output in any round, and `InputData/geo_conditions/` carries no slope,
+elevation or lithology — so unlike tornado, where the barrier is that the *forcing* cannot
+express the hazard, here it is the **terrain factor** that is missing from the archive. The
+trigger factor is not: NGI's GIRI model is driven by ISIMIP3b precipitation. Receipt:
+`negative_results.landslide` in `config/isimip_search_catalog.yaml`; options review in
+[docs/landslide-data-options-2026-08-19.md](docs/landslide-data-options-2026-08-19.md).
+
+Source is the World Bank / GFDRR "Global landslide hazard map" (Arup, 2021), rainfall
+trigger, median 1980–2018, 30″ (~1 km), aggregated here to 0.25°. It is the **only** global
+landslide product publishing a rate with physical units, which is the only reason it can be
+aggregated at all — the areal mean of a per-km² frequency is arithmetic; the mean of an
+ordinal susceptibility class is not a quantity.
+
+**Three things about this layer are unusual and all three are deliberate.**
+
+1. **The statistic is conditional on hazard-bearing ground.** `median`/`lower_ci`/`upper_ci`
+   are the 50/25/75th percentiles of the rate over the cell's *non-zero* 1 km pixels — one
+   distribution, so the triple orders without clipping. Four branches were measured first;
+   over occupied cells the naive within-cell quantiles give `median == 0` in **78.48%** and a
+   flat IQR in **64.73%**, the `pooled_mean_zero_inflated` branch puts `lower_ci` below zero
+   in **88.55%** (unphysical for a frequency), and sub-block quartiles fail to bracket the
+   areal mean in **42.48%** because the field is right-skewed — that last one cannot be fixed
+   by changing the block size, so do not re-attempt it. Read `median` with
+   `hazard_area_fraction`: the hazard-bearing share of a cell has an inter-quartile range of
+   **1.4%–42.4%**, so two cells with the same median can differ thirty-fold in extent.
+2. **`percentile` ranks on `areal_mean_rate`, not on `median`.** Spearman between the two
+   orderings is **0.34**, so this changes essentially every score. Reference sites decide it:
+   the conditional median puts the Apennines at 58.9 against 74.2, and Cairo at 5.3 off one
+   pixel covering 0.1% of the cell against 1.4. Consequence a reader must be told — **a cell
+   can show `median` = 0 with a high percentile**, meaning most of it is flat while the cell
+   as a whole carries substantial landslide activity.
+3. **Zero was ambiguous in the source and had to be disambiguated.** The COG declares no
+   nodata and writes exact `0.0` for ocean *and* flat land — Pacific, Atlantic, Sahara,
+   Amazon, Netherlands and Greenland all read `0.000000`. Published mask is the source extent
+   ∩ (ISIMIP3b land upsampled 0.5→0.25° ∪ any cell with a hazard-bearing pixel), so a coarse
+   coastline cannot mask away ground the source modelled as hazardous: **247,271 cells
+   published, 89,871 (36.35%) occupied.**
+
+Reference sites (percentile): Baguio PH 99.996, Wenchuan CN 98.9, Medellín CO 98.6, Shimla IN
+98.3, Bergen NO 94.3, Cusco PE 93.6, Kathmandu NP 91.6, Apennines IT 84.2, Freetown SL 81.2,
+Rio de Janeiro BR 67.9; Amsterdam and Des Moines at tier 1, Cairo 2.4, ocean and Antarctica
+NaN. Rio is the one to watch — a coastal cell 84% water/flat, a resolution artifact at 28 km
+rather than a modelling error.
+
+**Licence and attribution.** The publisher records the licence inconsistently — the World
+Bank DDH record says CC BY-NC 4.0, its own energydata.info mirror says CC-BY-4.0, and the
+113-page project report says neither. Cleared for our limited commercial use by user
+determination 2026-08-19; **attribution to World Bank / GFDRR and Arup is required wherever a
+value from this layer is published**, and the layer carries it in `attribution_required`.
+
+**`qa_reviewed_on` is still null.** QA maps exist — `scripts/generate_landslide_qa.py` writes
+`reports/maps/landslide/landslide-qa.html` — but nobody has read them yet. The page states what
+to look for; the first item is whether the deliberate `median`/`percentile` divergence produces
+a sensible pattern, since that is the design decision most likely to be wrong.
+
 
 ## Ensemble and framing, per layer
 

@@ -48,7 +48,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from utils import viz_common as vc  # noqa: E402
 
 PROCESSED = Path("data/processed")
-OUT_DIR = Path("reports/tornado-qa")
+OUT_DIR = Path("reports/maps/tornado")     # QA/QC maps live in reports/maps/{hazard}/
 RUNGS = ["all", "f1plus", "f2plus", "f3plus"]
 
 METRICS = [

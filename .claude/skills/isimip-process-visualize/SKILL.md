@@ -87,6 +87,18 @@ percentile *reference* distribution global so percentiles stay comparable.
 > per-scenario form stands. All scenarios still belong in ONE folder; never split folders
 > per scenario (avoid `burntarea-rcp26/`, `burntarea-rcp60/`).
 
+**QA/QC MAPS GO IN `reports/maps/{hazard}/` — ALWAYS, whatever renders them.** User
+preference, standing as of 2026-08-19. `reports/` already holds several kinds of artifact and
+only *maps* belong under `reports/maps/`: markdown QA records go to `reports/qa/`, model
+diagnostics to `reports/{var}_model_diagnostics/`, correspondence and licence queries to their
+own directory. The `{hazard}` segment is the hazard or layer name, matching the directories
+already there (`hd35`, `csoil`, `flood-3b-none`, `heatwave-isimip3b`, `landslide`, `tornado`).
+
+A one-off renderer is exactly where this slips: `generate_maps.py` already writes to
+`reports/maps`, but the two narrow renderers below were each written with their own top-level
+folder (`reports/landslide-qa/`, `reports/tornado-qa/`) and both had to be moved on 2026-08-19.
+**Set `OUT_DIR` to `reports/maps/{hazard}` when you create the script, not after.**
+
 **CLI workflow**: Always use `isimip-pipeline run` for downloading data. It handles
 multi-scenario downloads into a single output directory. Avoid manual `search` + `download`
 workflows that may fragment scenarios into separate folders.
@@ -335,6 +347,24 @@ Three knobs, none of which change what the reader sees:
   `block_mean()`, **never** `values[::2, ::2]`: slicing samples every other cell and
   silently deletes burning cells on a sparse hazard.
 
+**ON A RASTER `go.Heatmap` THE KNOBS ABOVE DO NOTHING — THE TERM IS DTYPE.** Measured
+2026-08-19 on the landslide QA page. `COORD_DECIMALS` / `VALUE_SIGFIGS` work because a
+`Scattergeo` is serialised as JSON *text*; **plotly ≥ 6 serialises numpy arrays handed to
+`go.Heatmap` as base64 typed arrays** (`"bdata"` in the HTML), so rounding the values changes
+the file size by exactly zero. Rounding a global 0.25° layer to 5 decimals moved a 4-panel page
+from 50.4 MB to 39.8 MB, and every byte of that came from an unrelated latitude crop in the
+same edit; the string `"null"` appeared **once** in the whole 40 MB document.
+
+The cost is bytes-per-cell: 818k cells × 4 panels × 8 B (float64) × 4/3 (base64) ≈ 35 MB.
+So on a Heatmap page:
+
+- **Cast the panel to `float32` before handing it to plotly** — halves the page (39.8 → 21.7 MB)
+  and is far more precision than a colour ramp can show.
+- **Crop to the data's own extent**, not the global grid, when the layer is not global. Rows
+  that are NaN in every panel still cost 4 bytes per cell.
+- Confirm which encoding you actually got before optimising: `grep -c '"bdata"' page.html`.
+  Do not infer the payload term from the shape of the code.
+
 **Watch the count when adding panels.** A tab with many panels (Members) is the one that
 breaks first. If pages still feel slow, the real fix is switching from SVG markers to a
 raster `go.Heatmap` — equirectangular is exactly linear in lon/lat so it maps 1:1 — at the
@@ -352,6 +382,26 @@ defect confined to one member.
 
 Map values serialize at 5 significant figures, which is display-only — full precision stays
 in the NetCDF. Do not "fix" this by writing full float64.
+
+## `generate_maps.py` renders the DECADAL contract only
+
+It selects on `ds.decade`, builds Trend from `ols_slope`/`sen_slope` and Members from
+`n_members`. An `observational-historical-v1` layer has none of those, so it cannot be
+rendered by it, and teaching it a second contract would put a branch through the tool that
+renders 23 shipped layers. Such layers get a **narrow per-contract renderer** instead:
+
+| Renderer | Layers | Writes |
+|---|---|---|
+| `scripts/generate_maps.py` | every decadal layer | `reports/maps/{hazard}/` |
+| `scripts/generate_tornado_qa.py` | CONUS tornado ladder, 4 rungs × 3 metrics | `reports/maps/tornado/` |
+| `scripts/generate_landslide_qa.py` | global landslide, 4 metrics | `reports/maps/landslide/` |
+
+**Two shared tools also crash on these layers, and that is pre-existing**: both
+`scripts/generate_layer_qa.py` and `scripts/test_shared_baseline.py` raise
+`KeyError: 'decade'` on any `observational-historical-v1` file. The contract check for those
+is `scripts/test_observational_baseline.py`; there is currently **no markdown QA record** for
+an observational layer, so the HTML page has to carry the summary table and the caveats
+itself. Do not "fix" `test_shared_baseline.py` by relaxing it — its strictness guards 23 layers.
 
 ## Review the QA report before claiming success
 

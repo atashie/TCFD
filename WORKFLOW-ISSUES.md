@@ -1353,3 +1353,124 @@ and caught a mislabelled column in the evidence table (ratios of totals presente
 medians). **Every round found something the previous one had not**, and two rounds found
 errors in the corrections themselves. Budget for more than one review pass on a layer whose
 arithmetic is novel.
+
+---
+
+### 2026-08-19: Landslide — the obvious aggregation was degenerate, and the licence is the real blocker
+
+**Context.** Asked to document the landslide options and aggregate landslide risk to 0.25° on
+the standard output shape. Full options review:
+[docs/landslide-data-options-2026-08-19.md](docs/landslide-data-options-2026-08-19.md).
+
+**1. The ISIMIP negative is real but weaker than tornado's, and saying so matters.** ISIMIP
+publishes no landslide output in any round *and* `InputData/geo_conditions/` carries no
+slope, elevation or lithology. But landslide hazard factorises into terrain × trigger, and
+the trigger IS in ISIMIP — NGI's GIRI global model is driven by ISIMIP3b precipitation
+(IPSL-CM6A-LR, SSP126/585, 2061–2100). Recording this as "ISIMIP cannot express landslide",
+by analogy with tornado, would have been wrong and would have foreclosed the one build that
+would actually be ours. The catalog entry says so explicitly.
+
+**2. Measuring the statistic before writing it saved a degenerate layer — again.** Each 0.25°
+cell holds 900 native 1 km pixels, so within-cell quartiles look obvious. Over occupied cells
+(n=89,871) they give `median == 0` in **78.48%** and `q25 == q75` in **64.73%** — three of
+four published variables carrying no information over two-thirds of the map, in a file that
+would still pass a structural contract check. This is the third time this failure has been
+caught by measuring first (`let` 2026-08-11, tornado 2026-08-18, here). **The check is cheap
+and it keeps paying.**
+
+**3. Two further branches were tried and both failed, on numbers worth keeping.** The repo's
+own `pooled_mean_zero_inflated` (mean ± SD) is non-degenerate but puts `lower_ci` below zero
+in **88.55%** of occupied cells — unphysical for a frequency. Sub-block (0.05°) quartiles were
+built specifically to give the areal mean a non-negative bracketing interval, and **cannot**:
+the within-cell field is right-skewed, so the mean exceeds its own sub-block upper quartile in
+**42.48%** of cells. That is a property of the distribution, not the block size — recorded so
+nobody re-attempts it with a different block.
+
+**4. A new departure: `percentile` ranks on a different variable than `median`.** The adopted
+central value is conditional on hazard-bearing ground, which discards *extent*; the areal mean
+integrates extent and intensity. Spearman between the two orderings is **0.34**, so the choice
+changes essentially every customer score, and reference sites settle it (Apennines 74.2 vs
+58.9; Cairo 1.4 vs 5.3 off one pixel covering 0.1% of the cell). Declared in the file, the
+registry and DATASET-ATTRIBUTES, because a cell showing `median = 0` at a high percentile
+looks like a bug and is not.
+
+**5. Zero was ambiguous in the source.** The COG declares no nodata and writes exact `0.0` for
+ocean *and* flat land — Pacific, Atlantic, Sahara, Amazon, Netherlands, Greenland all
+`0.000000`. Masked as source extent ∩ (ISIMIP3b land ∪ any hazard-bearing cell), the union
+deliberately so a coarse coastline cannot erase ground the source modelled as hazardous.
+
+**6. The blocker is legal, not scientific, and it was nearly missed.** The one global product
+with a real rate has **two publisher-side records that disagree about its licence** — the World
+Bank DDH says CC BY-NC 4.0, the energydata.info mirror of the same dataset says CC-BY-4.0, and
+the 113-page project report states neither. NC would forbid redistribution in a commercial
+deliverable outright. The layer is `status: blocked`. **Recorded as `source_licence_status`, a
+non-caveat attribute, not as a caveat** — caveat attributes are promoted verbatim into customer
+reports and our licensing problem is not the customer's.
+
+**Process note.** `rasterio` (and `pypdf`) were installed into `.venv` to do this work and are
+**not declared in `isimip-pipeline/pyproject.toml`**, which had uncommitted edits from the user
+at the time and was deliberately not touched. Anyone rebuilding the venv will need
+`pip install rasterio` before `process_landslide_arup.py` runs.
+
+**Follow-up, same day.** The licence was cleared by the user for our limited commercial use,
+so the layer moved from `blocked:` to `layers:` with `status: preferred` and
+`covered_by: [landslide-arup]` in the taxonomy. **Attribution to World Bank / GFDRR and Arup
+is now a shipping requirement**, carried in the file's `attribution_required` attribute, the
+registry `delivery_note` and the ingest sidecars. The publisher's own inconsistency is
+retained in `source_licence` rather than deleted — it is a real defect in the source's records
+and the next person to check provenance will hit it.
+
+QA maps were built (`scripts/generate_landslide_qa.py` → `reports/maps/landslide/`), which is a
+third renderer for the observational contract after `generate_maps.py` (decadal only) and
+`generate_tornado_qa.py` (CONUS rungs). **`generate_layer_qa.py` and `test_shared_baseline.py`
+both crash with `KeyError: 'decade'` on any observational layer** — verified identical on the
+shipped tornado layer, so pre-existing and not introduced here, but it means no observational
+layer has ever had a markdown QA record. Left alone; `test_shared_baseline.py` guards 23 layers
+and is not mine to widen unasked.
+
+**A wrong comment, caught by measuring the thing it asserted.** The QA page came out at 50 MB.
+I attributed that to unrounded floats serialised as JSON text, added per-metric rounding, and
+wrote a comment stating that decimal places were the dominant payload term. The page went to
+39.8 MB — entirely from an unrelated latitude crop in the same edit. Checking the file showed
+plotly 6.9 emits **base64 typed arrays** (`bdata`), so rounding changed nothing at all and the
+string `"null"` appears once in the whole document. The real term is bytes-per-cell: casting
+the panels to float32 took it to 21.7 MB. **The lesson is not about plotly** — it is that a
+plausible explanation written into a comment as if measured is indistinguishable from a
+measured one to the next reader, and this repo's own rule (a claim needs its receipt) applies
+to comments about performance exactly as it does to claims about data. The corrected comment
+now records what was measured, including that rounding is retained only as a guard.
+
+**Sign-off and cleanup, 2026-08-19.** User reviewed `reports/maps/landslide/landslide-qa.html`
+and signed off on the layer as an **initial high-level landslide risk mapping product**.
+`qa_reviewed_on: "2026-08-19"` is set; the scope of that sign-off (screening only, still no
+scenario axis) is a comment beside it. `landslide-arup` is now the first layer to go from
+first ingest to signed-off delivery-ready inside one session.
+
+Three things came out of the cleanup and all three generalise:
+
+**1. QA/QC maps belong in `reports/maps/{hazard}/`, and a one-off renderer is exactly where
+that slips.** `generate_maps.py` has always written there, but both narrow per-contract
+renderers — `generate_tornado_qa.py` (2026-08-18) and `generate_landslide_qa.py` (2026-08-19)
+— invented their own top-level folders, `reports/tornado-qa/` and `reports/landslide-qa/`.
+Both were moved and every reference updated. The rule is now in CLAUDE.md and in the
+`/isimip-process-visualize` skill under *Output Organization*, phrased as **set `OUT_DIR` when
+you create the script, not after**. Note what does *not* move: `reports/qa/` (markdown
+records), `reports/{var}_model_diagnostics/`, and licence/author correspondence directories are
+not maps. `reports/coastal-inundation/maps/` is still non-conforming and was left alone — it
+has no references anywhere in the tree, so moving it would be a guess about what it is.
+
+**2. `config/layer_registry.yaml` has a schema, and an extra key breaks EVERY layer.**
+Adding `qa_reviewed_scope:` alongside `qa_reviewed_on:` raised
+`TypeError: __init__() got an unexpected keyword argument` out of `LayerSpec`, and because
+`load_registry()` builds all layers in one dict comprehension, one unknown key on one layer
+takes down the whole registry — not just that entry. Caught immediately because the verify step
+ran, but the blast radius is the point: the registry is not a free-form notes file. **Put
+anything that is not a `LayerSpec` field in a YAML comment**, which is what the landslide
+sign-off scope is now.
+
+**3. The browser-payload guidance in the skill was right for the wrong renderer.** Its
+`COORD_DECIMALS` / `VALUE_SIGFIGS` knobs are real, and they work because a `Scattergeo` is
+serialised as JSON text. They do nothing on a raster `go.Heatmap`, where plotly ≥ 6 emits
+base64 typed arrays and the term is bytes-per-cell. Both facts now sit in the same section of
+the skill so the next person does not apply the text-encoding fix to a binary-encoded page, as
+I did. See the same-day entry above for how that error was made and caught.

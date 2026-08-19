@@ -23,10 +23,10 @@
 # rungs (2026-08-16) and the ten precipitation layers (2026-08-19). DATASET-ATTRIBUTES.md
 # records what each of those reviews had in front of it -- a date whose evidence is not
 # written down is worth little more than a null.
-# Do NOT read the remaining nulls as a formality, and do NOT infer that a layer sharing a
-# processor with a reviewed one inherits its date: the review is of the DATA, not of the code
-# that made it, and metrics from one processor have differed in zero-inflation, censoring and
-# sparsity.
+# The remaining seventeen are still null. Do NOT read their nulls as a formality, and do NOT
+# infer that a layer sharing a processor with a reviewed one inherits its date: the review is
+# of the DATA, not of the code that made it, and rungs from one processor have differed in
+# zero-inflation, censoring and sparsity.
 #
 # Scenarios are NEVER listed here. They are globbed from disk per GUARDRAILS.md §3 --
 # a hardcoded scenario list once made 25% of processed data invisible.
@@ -1222,6 +1222,60 @@ layers:
       in the zero tier and many occupied cells rest on a single event.
     qa_reviewed_on: null
 
+
+  # Global historical landslide hazard -- added 2026-08-19, licence cleared same day.
+  #
+  # NOT AN OUTPUT-SPEC LAYER. It answers `observational-historical-v1`: no decade axis, no
+  # slopes, no ensemble, one historical window (1980-2018). Lifted onto a single-period axis
+  # at read time by spatial_extract.as_period_dataset; its rows carry scenario `observed`.
+  # Do not compute a decadal change from it -- there is only one period, and no scenario.
+  #
+  # NOT AN ISIMIP LAYER. ISIMIP publishes no landslide output in any round and its
+  # geo_conditions/ carries no slope, elevation or lithology, so the terrain factor cannot
+  # come from ISIMIP at all. Receipt: isimip_search_catalog.yaml negative_results.landslide.
+  # Options review: docs/landslide-data-options-2026-08-19.md
+  #
+  # ATTRIBUTION IS REQUIRED, NOT OPTIONAL. Cleared for our limited commercial use by user
+  # determination 2026-08-19. "World Bank / GFDRR Global landslide hazard map, produced by
+  # Arup (2021)" must appear wherever a value from this layer is published. The layer carries
+  # it in `attribution_required`.
+  #
+  # THE PERCENTILE RANKS ON A DIFFERENT VARIABLE THAN THE CENTRAL VALUE, DELIBERATELY.
+  # `median` is the rate over the cell's HAZARD-BEARING ground; `percentile` ranks on
+  # `areal_mean_rate` over the WHOLE cell. Spearman between the two orderings is 0.34, so
+  # this is not a rounding difference -- it changes essentially every score. The areal mean
+  # is the defensible ranking (Apennines 74.2 vs 58.9; Cairo 1.4 vs 5.3 off a single pixel
+  # covering 0.1% of the cell). A cell can therefore show median = 0 with a high percentile:
+  # most of it is flat, the cell as a whole still carries substantial landslide activity.
+
+  landslide-arup:
+    folder: landslide-arup_rf-median_hist
+    file_prefix: landslide-arup
+    hazard: Landslide (rainfall-triggered)
+    hazard_measure: Significant rainfall-triggered landslides per km2 per year, 1980-2018
+    status: preferred
+    recommended_slope: none
+    recommended_slope_rationale: >-
+      Not applicable. This layer publishes no slope: the source is a single map summarising
+      1980-2018 with no annual series behind it, so a slope would have to be invented rather
+      than estimated.
+    relative_baseline: false
+    # SIGNED OFF 2026-08-19 on reports/maps/landslide/landslide-qa.html, as an INITIAL
+    # HIGH-LEVEL landslide risk mapping product. The sign-off covers the four QA panels and
+    # the reference sites. It does not extend beyond screening use, and it does not make this
+    # a projection -- there is no scenario axis. (Scope is a comment, not a field: LayerSpec
+    # rejects unknown keys, so an extra attribute here breaks load_registry for EVERY layer.)
+    qa_reviewed_on: "2026-08-19"
+    delivery_note: >-
+      SCREENING ONLY, AND RAINFALL-TRIGGERED ONLY. Slope stability turns on metres of terrain;
+      a 0.25 deg cell is ~28 km and holds ~900 km2 of ground, of which a median 10.1% carries
+      any landslide hazard at all (inter-quartile range 1.4%-42.4%). This ranks which sites
+      merit a geotechnical investigation and cannot support a design decision or an
+      asset-level loss estimate. Earthquake-triggered landsliding is excluded by scope --
+      seismic triggering is stationary under every emissions pathway -- so totals here are
+      lower than GIRI's or the Arup earthquake layer's. Historical only: it answers where
+      significant landsliding HAS been frequent, not where it will become more frequent.
+      Attribution to World Bank / GFDRR and Arup is required wherever a value is published.
 
 blocked:
   sugarcane_yield-sug-firr_annual: >-
