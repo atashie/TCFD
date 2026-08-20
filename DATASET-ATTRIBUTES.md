@@ -1013,6 +1013,43 @@ What the review had in front of it:
 **The review is of the DATA, not of the processors**, and each layer's date covers that
 layer only.
 
+### QA sign-off: the land-systems trio, 2026-08-20
+
+**Approved by the user on 2026-08-20** ("sufficient to our current purpose") after reviewing
+the regenerated dashboards and contact sheets, recorded as `qa_reviewed_on: '2026-08-20'` on
+`cropfailure-3b`, `conifer-npp` and `permafrost-3b` in `config/layer_registry.yaml`.
+Thirty-two of thirty-nine layers now carry a human QA date; the remaining seven nulls are
+real gaps.
+
+What the review had in front of it:
+
+- **Contract**: `test_shared_baseline.py` on all three, run the day of review — **ALL
+  CHECKS PASSED**. Floors: `cropfailure` 1–40 members / 1–8 models, `conifer-npp` 1–10 /
+  1–3, `permafrost` 2–12 / 2–3.
+- **Dashboards and contact sheets regenerated the day of review** with the current
+  renderer: 40-, 12- and 12-member sheets respectively.
+- **Reference sites** read fresh from the processed files. `cropfailure`: the Iowa ≫ Sahel
+  inversion reproduces (Iowa pct 98.6 → 100.0 under ssp585 against the Sahel cell's
+  28.9 → 52.8; Punjab pct 99 already at baseline) — the must-disclose relative-baseline
+  reading working as defined; Greenland returns OFF_LAYER_MASK while oasis-margin desert
+  cells are in-footprint at median 0, i.e. the footprint is the source's own cropland
+  mask. `conifer-npp`: NPP rises everywhere under rcp85 (Oregon 556→660, SE US 494→679
+  gC/m²/yr) and the inverted `higher_is_better` percentile falls accordingly (21→11,
+  30→10); Amazon and Sahara return off-footprint NaN (the 2%-cover presence mask).
+  `permafrost`: thawed fraction rises as documented (Yakutsk 0.47→0.70, Prudhoe Bay
+  0.42→0.72, Tibet 0.42→0.62 at ssp585; Norilsk slower at 0.16→0.28), Moscow and the
+  Mongolian margin off-footprint; its percentile ranks within the permafrost footprint.
+- **Items put in front of the reviewer and not flagged**: the negative-NPP lobe on the
+  conifer members sheet (shared scale reaching −455 gC/m²/yr — respiration exceeding
+  production at range margins in at least one member); the oasis-margin extent of the
+  cropfailure footprint; the width of the permafrost Confidence tab (the documented
+  "agree on how much, disagree on where", CLASSIC∩LPJmL Jaccard 2.8%). Carried as
+  properties of the ensembles to read with each layer's documented caveats, not defects.
+
+**The review is of the DATA, not of the processors**, and each layer's date covers that
+layer only. It does not resolve `csoil`'s open hazard-vs-asset-condition question, which
+stays with the user.
+
 
 ### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
 

@@ -19,14 +19,15 @@
 # staying quiet. Passing the output contract means a file is SHAPED right, not that its
 # input is about what its name says -- both sugarcane layers passed every check and were
 # meaningless. Set the date only after actually doing it.
-# As of 2026-08-20 TWENTY-NINE layers carry a date: `heatwave-3b` (2026-08-14), the nine
+# As of 2026-08-20 THIRTY-TWO layers carry a date: `heatwave-3b` (2026-08-14), the nine
 # threshold rungs (2026-08-16), the ten precipitation layers (2026-08-19), `landslide-arup`
 # (2026-08-19), `hail-vlh` (2026-08-19), the three riverine flood variants, the two
-# drought siblings, and wildfire + tropical cyclone (all 2026-08-20).
+# drought siblings, wildfire + tropical cyclone, and the land-systems trio --
+# cropfailure-3b, conifer-npp, permafrost-3b (all 2026-08-20).
 # DATASET-ATTRIBUTES.md
 # records what each of those reviews had in front of it -- a date whose evidence is not
 # written down is worth little more than a null.
-# The remaining ten are still null. Do NOT read their nulls as a formality, and do NOT
+# The remaining seven are still null. Do NOT read their nulls as a formality, and do NOT
 # infer that a layer sharing a processor with a reviewed one inherits its date: the review is
 # of the DATA, not of the code that made it, and rungs from one processor have differed in
 # zero-inflation, censoring and sparsity.
@@ -153,7 +154,7 @@ layers:
     hazard: Timber productivity
     hazard_measure: Temperate conifer stand net primary productivity
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-20'
     recommended_slope: sen_slope
     recommended_slope_rationale: >-
       sen_slope == 0 on only 2.1% of active cells (2090s, 25,603 active of 25,714 finite;
@@ -172,7 +173,7 @@ layers:
     hazard: Crop failure
     hazard_measure: Cropland area share exposed to unprecedented crop failure
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-20'
     recommended_slope: ols_slope
     recommended_slope_rationale: >-
       sen_slope == 0 on 100.0% of active cells at ssp126 2090s (measured 2026-08-13).
@@ -219,7 +220,7 @@ layers:
     # enumerates what is still open on this hazard (the ISIMIP2b route, `tsl`, solifluction)
     # and registration was not among them: this was an omission, not a deferral.
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-20'
     recommended_slope: ols_slope
     recommended_slope_rationale: >-
       MEASURED 2026-08-14: 14,455 active cells, sen exactly zero on 15.2%, sign agreement
