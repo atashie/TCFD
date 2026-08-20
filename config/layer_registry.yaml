@@ -19,13 +19,14 @@
 # staying quiet. Passing the output contract means a file is SHAPED right, not that its
 # input is about what its name says -- both sugarcane layers passed every check and were
 # meaningless. Set the date only after actually doing it.
-# As of 2026-08-20 TWENTY-FIVE layers carry a date: `heatwave-3b` (2026-08-14), the nine
+# As of 2026-08-20 TWENTY-SEVEN layers carry a date: `heatwave-3b` (2026-08-14), the nine
 # threshold rungs (2026-08-16), the ten precipitation layers (2026-08-19), `landslide-arup`
-# (2026-08-19), `hail-vlh` (2026-08-19) and the three riverine flood variants (2026-08-20).
+# (2026-08-19), `hail-vlh` (2026-08-19), the three riverine flood variants (2026-08-20)
+# and the two drought siblings (2026-08-20).
 # DATASET-ATTRIBUTES.md
 # records what each of those reviews had in front of it -- a date whose evidence is not
 # written down is worth little more than a null.
-# The remaining fourteen are still null. Do NOT read their nulls as a formality, and do NOT
+# The remaining twelve are still null. Do NOT read their nulls as a formality, and do NOT
 # infer that a layer sharing a processor with a reviewed one inherits its date: the review is
 # of the DATA, not of the code that made it, and rungs from one processor have differed in
 # zero-inflation, censoring and sparsity.
@@ -62,7 +63,7 @@ layers:
     hazard: Drought
     hazard_measure: Drought exposure frequency
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-20'
     recommended_slope: ols_slope
     recommended_slope_rationale: >-
       sen_slope == 0 on 100.0% of active cells (2090s, 61,810 active of 63,455 finite;
@@ -85,7 +86,7 @@ layers:
     hazard: Drought
     hazard_measure: Drought exposure frequency (ISIMIP2b/RCP)
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-20'
     recommended_slope: ols_slope
     recommended_slope_rationale: >-
       sen_slope == 0 on 100.0% of active cells (2090s, 66,741 active of 68,116 finite;
@@ -96,6 +97,13 @@ layers:
       preference is the more recent / more robust option, which is drought-3b. Select
       explicitly when RCP scenarios or ensemble depth is the requirement. See the
       must-disclose RELATIVE-BASELINE caveat for how to read the score.
+      ARID CELLS ARE HAIR-TRIGGER ON THIS INDEX (measured at the 2026-08-20 QA review):
+      the deep Sahara ranks at the 94th-99th percentile with 0.16->0.20 of years flagged
+      by the 2090s, because the 2.5th-percentile threshold of a near-degenerate
+      preindustrial soil-moisture distribution flags on tiny declines -- the same
+      low-variance mechanism documented on heatwave-3b, in soil-moisture form. The
+      sibling driedarea masks the deep desert out; this layer covers it. Pair an arid
+      site's score with absolute water availability before reading it as drought risk.
     relative_baseline: true
     relative_baseline_note: >-
       This layer scores how far soil-moisture conditions at a site depart from a fixed

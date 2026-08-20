@@ -704,7 +704,9 @@ deliberately on all three, not left at a default.
 GCMs, rcp26/60) and `driedarea` (3b, 3 models × 5 CMIP6 GCMs, ssp126/370/585) — deeper
 ensemble versus newer scenarios. Pick per delivery; neither supersedes the other. They
 resolve the **minimum-model mask differently on measured evidence** (`led` ≥2, `driedarea`
-full union), which is the intended behaviour.
+full union), which is the intended behaviour. **Both signed off 2026-08-20** — see the QA
+sign-off section for what the review had in front of it, including the arid-cell reading
+trap recorded on `led` at review.
 
 `cropfailure-3b` has an unshipped 2b sibling in the same relationship: `lec` (Lange2020,
 GEPIC + PEPIC × 4 CMIP5 GCMs, rcp26/60).
@@ -937,6 +939,44 @@ What the review had in front of it:
 **The review is of the DATA, not of the processor**, and it covers these three protection
 variants only — a fourth variant built by `process_fldfrcmax_isimip3b.py` would not inherit
 this date.
+
+### QA sign-off: the drought siblings, 2026-08-20
+
+**Signed off by the user on 2026-08-20** after reviewing the regenerated dashboards and
+contact sheets, recorded as `qa_reviewed_on: '2026-08-20'` on both layers in
+`config/layer_registry.yaml`. Twenty-seven of thirty-nine layers now carry a human QA date;
+the remaining twelve nulls are real gaps.
+
+What the review had in front of it:
+
+- **Contract**: `test_shared_baseline.py` on both, run the day of review — **ALL CHECKS
+  PASSED**, ensemble floors matching the documented masking decisions: `driedarea` 1–15
+  members / 1–3 models (the full 63,455-cell union, the measured no-mask decision), `led`
+  4–31 members with a 2-model floor (user decision 2026-08-11). `led`'s baseline is the
+  2010s panel at index 1, located from the attribute.
+- **Provenance**: fields computed 2026-08-11; the 2026-08-14 file touch was
+  `backfill_grid_attribute.py` only, which digests every contract variable before and
+  after and asserts them identical.
+- **Dashboards and contact sheets regenerated the day of review** with the current
+  renderer (the 08-11 originals predated the fix that puts slope increases in red on
+  `higher_is_worse` layers): six tabs × 3 scenarios plus a 15-member sheet for
+  `driedarea`; six tabs × 2 scenarios plus a 31-member sheet for `led`.
+- **Reference sites** read fresh from the processed files: the drying belt agrees across
+  the siblings (`driedarea` ssp585: Seville 0.10→0.43, Perth 0.09→0.46, Santiago →0.35,
+  Manaus →0.76, all pct ≥ 99; `led` rcp60: Seville →0.28, Perth →0.33, Santiago →0.36,
+  all pct 100); the relative-baseline signature is visible and reads as designed (Chicago
+  pct 100 on `driedarea` ssp585 — departure, not aridity); NW Europe is quiet on `led`
+  (Amsterdam exact 0 → 0.003) and modest on `driedarea`.
+- **Finding recorded at review — arid cells on `led`**: the deep Sahara ranks pct 94–99
+  (0.16→0.20 of years flagged by the 2090s rcp60) while `driedarea` masks the deep desert
+  out entirely. Mechanism: a 2.5th-percentile threshold over a near-degenerate
+  preindustrial soil-moisture distribution is hair-trigger — the `heatwave-3b`
+  low-variance trap in soil-moisture form. Recorded as a `led` delivery-note addendum in
+  the registry (approved at review), not as a data defect: the values are the index
+  working as defined, and the trap is in the reading.
+
+**The review is of the DATA, not of the processors**, and each sibling's date covers that
+sibling only.
 
 
 ### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
