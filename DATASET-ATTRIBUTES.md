@@ -978,6 +978,41 @@ What the review had in front of it:
 **The review is of the DATA, not of the processors**, and each sibling's date covers that
 sibling only.
 
+### QA sign-off: wildfire and tropical cyclone, 2026-08-20
+
+**Signed off by the user on 2026-08-20** after reviewing the regenerated dashboards and
+contact sheets, recorded as `qa_reviewed_on: '2026-08-20'` on `wildfire` and `cyclone` in
+`config/layer_registry.yaml`. Twenty-nine of thirty-nine layers now carry a human QA date;
+the remaining ten nulls are real gaps.
+
+What the review had in front of it:
+
+- **Contract**: `test_shared_baseline.py` on both, run the day of review — **ALL CHECKS
+  PASSED**. `burntarea` reads back 1–22 members / 1–5 models (genuinely uneven coverage —
+  read the CI with `n_members` in view); `let` exactly 4 members / 1 model everywhere (the
+  documented single-impact-model ensemble; its CI is inter-GCM spread only). The pass also
+  affirmatively excludes the historic ocean-baseline-trend defect class for the shipped 3b
+  wildfire file — the verifier checks slopes are NaN through the baseline; the "live
+  defect" note in the process-visualize skill concerns the superseded 2b processor.
+- **Dashboards and contact sheets regenerated the day of review** with the current
+  renderer: six tabs × 3 scenarios plus a 22-member sheet for `burntarea` (shared scale to
+  46.5 %/yr); six tabs × 2 scenarios plus a 4-member sheet for `let`.
+- **Reference sites** read fresh from the processed files: the savanna belt tops wildfire
+  (N Australia 3.4→5.5 %/yr at ssp585, Sahel 1.8→2.6), Iberia amplifies to 12.7 %/yr
+  (pct 99) under ssp585, England control ~0; on `let` the basins rank correctly (Luzon
+  pct 100 at 0.18→0.24 exposure, then Taiwan, Madagascar, Queensland) and England reads
+  exact zero at pct 1 — the two-tier zero percentile working as designed.
+- **Three items put in front of the reviewer and not flagged**: the miombo (Zambia)
+  burnt-area decline (34.9 → ~5–6 %/yr — African savanna burning decline is a real
+  modeled and observed phenomenon, and the cell stays pct 94–96 because the level remains
+  globally high); the Siberian decline under ssp585 (0.13→0.04 %/yr against the usual
+  boreal-increase expectation); and the Louisiana TC-exposure decline under both RCPs.
+  All three remain properties of the ensembles to be read with the layers' documented
+  caveats (uneven coverage on `burntarea`; single model on `let`), not defects.
+
+**The review is of the DATA, not of the processors**, and each layer's date covers that
+layer only.
+
 
 ### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
 
