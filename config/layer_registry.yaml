@@ -19,15 +19,15 @@
 # staying quiet. Passing the output contract means a file is SHAPED right, not that its
 # input is about what its name says -- both sugarcane layers passed every check and were
 # meaningless. Set the date only after actually doing it.
-# As of 2026-08-20 THIRTY-TWO layers carry a date: `heatwave-3b` (2026-08-14), the nine
+# As of 2026-08-20 THIRTY-THREE layers carry a date: `heatwave-3b` (2026-08-14), the nine
 # threshold rungs (2026-08-16), the ten precipitation layers (2026-08-19), `landslide-arup`
 # (2026-08-19), `hail-vlh` (2026-08-19), the three riverine flood variants, the two
-# drought siblings, wildfire + tropical cyclone, and the land-systems trio --
-# cropfailure-3b, conifer-npp, permafrost-3b (all 2026-08-20).
+# drought siblings, wildfire + tropical cyclone, the land-systems trio --
+# cropfailure-3b, conifer-npp, permafrost-3b -- and `sealevel-2b` (all 2026-08-20).
 # DATASET-ATTRIBUTES.md
 # records what each of those reviews had in front of it -- a date whose evidence is not
 # written down is worth little more than a null.
-# The remaining seven are still null. Do NOT read their nulls as a formality, and do NOT
+# The remaining six are still null. Do NOT read their nulls as a formality, and do NOT
 # infer that a layer sharing a processor with a reviewed one inherits its date: the review is
 # of the DATA, not of the code that made it, and rungs from one processor have differed in
 # zero-inflation, censoring and sparsity.
@@ -368,7 +368,7 @@ layers:
     # extreme water levels well above mean sea level -- so filing it under coastal flood
     # would tell a reader the acute hazard had been assessed when it has not.
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-20'
     recommended_slope: ols_slope
     recommended_slope_rationale: >-
       sen_slope == 0 on 100.0% of active cells (2090s, 10,542 active of 18,964 finite;
@@ -396,6 +396,15 @@ layers:
       Climate Score averaging them must say so. Read `sparsity_caveat` before drawing any
       conclusion from a zero -- the DEM understates absolute exposure and South Florida reads
       0.00000 at every decade.
+      SCENARIO CONTRAST IS BELOW THE PRODUCT'S VERTICAL RESOLUTION (measured at the
+      2026-08-20 QA review): GEBCO_2026 stores integer-metre elevations (int16), and the
+      rcp26-vs-rcp60 difference in Mengel p50 mean sea level is ~0.1 m by the 2090s, so
+      97.6% of published cells read bit-identically across the two scenarios at the 2090s
+      (95.6% among cells with any exposure; the 447 differing cells differ meaningfully,
+      mean |delta| 0.035). The same quantization produces the step-then-plateau shape in
+      the per-decade means. Do not read scenario insensitivity from this layer: it reports
+      the shared first-metre exposure signal, not a scenario comparison. Deliver both
+      scenarios, and state this wherever they appear side by side.
 
   # -------------------------------------------------------------------------------------
   # Riverine flood -- THREE PROTECTION VARIANTS OF ONE PRODUCT, not three products.

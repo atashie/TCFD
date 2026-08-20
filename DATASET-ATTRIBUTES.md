@@ -1050,6 +1050,48 @@ What the review had in front of it:
 layer only. It does not resolve `csoil`'s open hazard-vs-asset-condition question, which
 stays with the user.
 
+### QA sign-off: `sealevel-2b`, 2026-08-20
+
+**Signed off by the user on 2026-08-20**, recorded as `qa_reviewed_on: '2026-08-20'` in
+`config/layer_registry.yaml`, **together with a new delivery-note addendum** (below).
+Thirty-three of thirty-nine layers now carry a human QA date; the remaining six nulls are
+real gaps.
+
+What the review had in front of it:
+
+- **Contract**: `test_shared_baseline.py` run the day of review — **ALL CHECKS PASSED**
+  (1–4 members / 1 model, the single Mengel sea-level model; CI is inter-GCM spread only).
+  The ship-time record was already strong: 73/73 checks in
+  `reports/qa/coastal-inundation-QA-REPORT.md`, generated minutes after processing with the
+  current renderer, so nothing needed regenerating.
+- **Reference sites** read fresh from the processed files: Rotterdam 0.054 → 0.429 of
+  coastal land below projected MSL by the 2090s (the documented undefended-bathtub
+  admission in plain sight); Pearl delta → 0.300; Bangladesh and Nile deltas rising from
+  exact zero; S Florida → 0.00122 — the documented DSM sparsity caveat in the flesh;
+  Denver control off-footprint. Observed and recorded: the **Po delta / Venice cell is
+  off-footprint** (one of the 419 documented no-solution coastal cells or a TID
+  classification; visible on the median map).
+- **Finding measured at review — the scenario axis is inert on 97.6% of the layer.** At
+  the 2090s, rcp26 and rcp60 medians are bit-identical on 18,517 of 18,964 published
+  cells (95.6% among exposed cells); the 447 differing cells differ meaningfully (mean
+  |Δ| 0.035, max 0.576). Mechanism: GEBCO_2026 is int16 — integer-metre elevations — so
+  the hypsometric mass sits on 1 m spikes; the hypsometry's own 0.05 m bins resolve fine,
+  but the ~0.1 m rcp26-vs-rcp60 MSL difference almost never crosses a spike. The same
+  quantization produces the step-then-plateau in the QA report's per-decade means. No
+  algebraic check could catch this: the cross-scenario check only requires that final
+  decades differ somewhere, and they do, on 2.4% of cells. **User ruling: sign, with the
+  scenario-quantization addendum** now in the registry delivery note — the screening use
+  survives; the false reading ("sea-level risk is scenario-insensitive") is what the
+  addendum forecloses.
+- **Housekeeping**: the layer's QA artifacts were relocated to the standing layout —
+  dashboards at `reports/maps/coastal-inundation/coastalinundation/`, the decade panel
+  beside them, contact sheet at `reports/contact_sheets/coastalinundation_members.png`,
+  and the markdown QA record at `reports/qa/coastal-inundation-QA-REPORT.md`.
+
+**The review is of the DATA, not of the processor.** A future variant (a sub-metre DEM
+rebuild, an rcp85 addition) would not inherit this date — and a sub-metre DEM would
+specifically invalidate the quantization addendum, which should be re-measured then.
+
 
 ### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
 
