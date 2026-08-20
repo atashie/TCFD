@@ -19,12 +19,13 @@
 # staying quiet. Passing the output contract means a file is SHAPED right, not that its
 # input is about what its name says -- both sugarcane layers passed every check and were
 # meaningless. Set the date only after actually doing it.
-# As of 2026-08-19 TWENTY-TWO layers carry a date: `heatwave-3b` (2026-08-14), the nine
+# As of 2026-08-20 TWENTY-FIVE layers carry a date: `heatwave-3b` (2026-08-14), the nine
 # threshold rungs (2026-08-16), the ten precipitation layers (2026-08-19), `landslide-arup`
-# (2026-08-19) and `hail-vlh` (2026-08-19). DATASET-ATTRIBUTES.md
+# (2026-08-19), `hail-vlh` (2026-08-19) and the three riverine flood variants (2026-08-20).
+# DATASET-ATTRIBUTES.md
 # records what each of those reviews had in front of it -- a date whose evidence is not
 # written down is worth little more than a null.
-# The remaining seventeen are still null. Do NOT read their nulls as a formality, and do NOT
+# The remaining fourteen are still null. Do NOT read their nulls as a formality, and do NOT
 # infer that a layer sharing a processor with a reviewed one inherits its date: the review is
 # of the DATA, not of the code that made it, and rungs from one processor have differed in
 # zero-inflation, censoring and sparsity.
@@ -409,7 +410,7 @@ layers:
     hazard: Riverine flood
     hazard_measure: Annual maximum flooded fraction of the cell, behind FLOPROS defences
     status: preferred
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-20'
     recommended_slope: ols_slope
     recommended_slope_rationale: >-
       sen_slope == 0 on 97.3-98.1% of active cells across the three scenarios (2090s;
@@ -443,7 +444,7 @@ layers:
     hazard: Riverine flood
     hazard_measure: Annual maximum flooded fraction of the cell, behind a uniform 40-year standard
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-20'
     recommended_slope: ols_slope
     recommended_slope_rationale: >-
       sen_slope == 0 on 98.7-98.8% of active cells (2090s; measured 2026-08-14), sign
@@ -465,7 +466,7 @@ layers:
     hazard: Riverine flood
     hazard_measure: Annual maximum flooded fraction of the cell, no defences assumed
     status: alternate
-    qa_reviewed_on: null
+    qa_reviewed_on: '2026-08-20'
     recommended_slope: ols_slope
     recommended_slope_rationale: >-
       THE ONLY VARIANT WHERE THIS IS A JUDGEMENT RATHER THAN A READING OFF THE NUMBERS, and

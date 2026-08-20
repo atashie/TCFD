@@ -747,6 +747,9 @@ is the raw climate signal.
   the protected variants (97–99%). `ols_slope` is still the recommended read on all three —
   on `none` that is a judgement recorded in the registry, not a reading off the numbers.
 
+**Signed off 2026-08-20, all three variants** — see the QA sign-off section for what the
+review had in front of it.
+
 ### Withdrawn, superseded and unregistered
 
 | | Status |
@@ -903,6 +906,37 @@ What the review had in front of it:
 about the 5 cm threshold being the wrong size for most damage, about the absence of any
 projection, or about AR-CHaMo's transferability outside its European/US/Australian training
 regions — those are limits of the product, not defects a map could reveal.
+
+### QA sign-off: the riverine flood family, 2026-08-20
+
+**Signed off by the user on 2026-08-20** after reviewing the rendered dashboards, recorded as
+`qa_reviewed_on: '2026-08-20'` on all three variants in `config/layer_registry.yaml`.
+Twenty-five of thirty-nine layers now carry a human QA date; the remaining fourteen nulls are
+real gaps.
+
+What the review had in front of it:
+
+- **Contract**: `test_shared_baseline.py` on all three variants, run the day of review —
+  **ALL CHECKS PASSED**, with ensemble depth read back exactly as documented: 27 members /
+  6 models on the protected variants, 32 / 7 on `none` (CWATM publishes unprotected only).
+- **Reference boxes re-read from the processed files** (box means of `median`, final decade,
+  the `check_fldfrcmax_nature.py` boxes): the protection effect at the Rhine ~45× (`none`
+  0.057 → `flopros` 0.0013 at ssp585) and Lower Mississippi ~34×; the 40yr-vs-flopros
+  reversal reproduced in **every scenario** (Amazon lower under `40yr`, Ganges higher);
+  Mekong delta 0.482 under `none`; Sahara dry control ~0.001. Values sit within a few
+  percent of the 2026-08-14 receipts, which were computed on the raw member survey rather
+  than the processed medians — orderings and magnitudes all hold.
+- **Fifteen dashboard panels per variant** (five tabs × ssp126/370/585) at
+  `reports/maps/flood-3b-{variant}/fldfrcmax-{variant}/index.html`, rendered 2026-08-15
+  against data files unchanged since processing (2026-08-14 16:05).
+- **The three framings confirmed with the maps in view**: a `flopros` zero means
+  protected-to-standard, not no hazard; `40yr` is a uniform counterfactual, not an ordered
+  midpoint; `none` is judged on its median because all three variants rank against the
+  `flopros` 2020s baseline and its percentile compresses (most floodplain ≥ 90).
+
+**The review is of the DATA, not of the processor**, and it covers these three protection
+variants only — a fourth variant built by `process_fldfrcmax_isimip3b.py` would not inherit
+this date.
 
 
 ### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
