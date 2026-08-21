@@ -59,14 +59,21 @@ score_families:
     layers: [frostdays-fd, frostdays-fdm10, icedays-id]
   heatwave:
     layers: [heatwave-3b]
-  precip-absolute:
+  total-rainfall:
+    layers: [pluvial-prcptot, pluvial-wetdays]
+    note: "Raw rainfall totals and frequency (rainfall consolidation, user 2026-08-21)."
+  extreme-rainfall:
     layers: [pluvial-r10mm, pluvial-r20mm, pluvial-r50mm, pluvial-r100mm,
-             pluvial-wetdays, pluvial-rx1day, pluvial-rx5day, pluvial-prcptot]
-  precip-local-extreme:
-    layers: [pluvial-r95pd, pluvial-r99pd]
+             pluvial-rx1day, pluvial-rx5day, pluvial-r95pd, pluvial-r99pd]
     note: >-
-      Split from precip-absolute (user, 2026-08-20) because the relative rungs' rankings
-      invert against the absolute ones; each family carries its own weight.
+      Threshold exceedances, annual maxima and the local-relative metrics -- consolidated
+      2026-08-21 (user) from the former precip-absolute / precip-local-extreme split. The
+      relative pair (R95pD/R99pD) keeps its must-disclose relative-baseline caveat inside
+      this family. WEIGHT NOTE: power plant weighted the former relative-only family 0; on
+      consolidation extreme-rainfall is 1 for all four walked types (six of its eight
+      members are absolute metrics power plants already weighted), which folds the
+      relative pair into the power-plant score diluted 1-in-8 -- flagged to the user
+      2026-08-21, one edit to reverse.
   drought:
     layers: [drought-3b]
   flood-riverine:
@@ -107,8 +114,8 @@ assets:
       chronic-heat: 1
       cold-frost: 1
       heatwave: 1
-      precip-absolute: 1
-      precip-local-extreme: 1
+      total-rainfall: 1
+      extreme-rainfall: 1
       drought: 0
       flood-riverine: 1
       wildfire: 1
@@ -131,8 +138,8 @@ assets:
       chronic-heat: 1
       cold-frost: 1
       heatwave: 1
-      precip-absolute: 1
-      precip-local-extreme: 0
+      total-rainfall: 1
+      extreme-rainfall: 1   # see the extreme-rainfall WEIGHT NOTE (2026-08-21)
       drought: 1
       flood-riverine: 1
       wildfire: 1
@@ -144,7 +151,8 @@ assets:
       storm-convective: 1
     rationale: >-
       Weights set in the 2026-08-20 walk-through (user determinations). The only walked
-      type that weights drought (1) and the only one that zeroes precip-local-extreme.
+      type that weights drought (1). It zeroed the former relative-only rainfall family;
+      see the extreme-rainfall WEIGHT NOTE for the 2026-08-21 consolidation.
     confirmed_on: "2026-08-20"
 
   retail:
@@ -154,8 +162,8 @@ assets:
       chronic-heat: 1
       cold-frost: 1
       heatwave: 1
-      precip-absolute: 1
-      precip-local-extreme: 1
+      total-rainfall: 1
+      extreme-rainfall: 1
       drought: 0
       flood-riverine: 1
       wildfire: 1
@@ -175,8 +183,8 @@ assets:
       chronic-heat: 1
       cold-frost: 1
       heatwave: 1
-      precip-absolute: 1
-      precip-local-extreme: 1
+      total-rainfall: 1
+      extreme-rainfall: 1
       drought: 0
       flood-riverine: 1
       wildfire: 1

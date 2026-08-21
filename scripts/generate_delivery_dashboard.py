@@ -573,10 +573,15 @@ function initControls() {
         .sort((a,b) => TIER_ORDER.indexOf(a) - TIER_ORDER.indexOf(b));
 
   fill($("f-tier"), [["__all","All tiers"]].concat(tiers.map(t => [t, TIER_LABELS[t]])));
-  fill($("f-hazard"), layerIds.map(l => [l, DATA.layers[l].hazard + " (" + l + ")"]));
+  // Hazard dropdowns sort alphabetically by label, and the map initialises on the first
+  // option (user call, 2026-08-21).
+  const hazardOpts = layerIds
+      .map(l => [l, DATA.layers[l].hazard + " (" + l + ")"])
+      .sort((a, b) => a[1].localeCompare(b[1]));
+  fill($("f-hazard"), hazardOpts);
   fill($("f-loc"), DATA.locations.map(l => [l.id, l.name]));
 
-  state.hazard = layerIds[0];
+  state.hazard = hazardOpts[0][0];
   state.decade = decades.includes(2050) ? 2050 : decades[decades.length-1];
   state.loc = DATA.locations[0].id;
   $("f-hazard").value = state.hazard;
@@ -616,8 +621,7 @@ function initControls() {
   // not a toggle: with the v2 standard set there are 30+ layers and a button row cannot
   // list them (user call, 2026-08-20).
   fill($("score-sel"),
-    [["__score","Climate Score (all hazards)"]].concat(
-      layerIds.map(l => [l, DATA.layers[l].hazard + " (" + l + ")"])));
+    [["__score","Climate Score (all hazards)"]].concat(hazardOpts));
   $("score-sel").value = state.scoreMetric;
   $("score-sel").onchange = e => { state.scoreMetric = e.target.value; renderScoreSeries(); };
 
@@ -1175,6 +1179,9 @@ function renderSeries() {
     // shown-as-0 absence never reads as a measured zero. Offshore/off-grid stays an
     // explicit "no data" note: there the value is unknown, not absent.
     const offMask = !anyVal && statuses.length === 1 && statuses[0] === "OFF_LAYER_MASK";
+    // An OBSERVED layer with no data here (tornado outside CONUS) means UNOBSERVED, not
+    // absent -- its panel stays blank rather than drawing a zero (user call, 2026-08-21).
+    const obsNoCover = offMask && (lay.scenarios || []).includes("observed");
     const hover = pan.single ? "Current" : "%{x}s";
 
     // ALL scenarios, ALWAYS -- the forcing-tier filter never reaches a time series.
@@ -1195,7 +1202,7 @@ function renderSeries() {
         hovertemplate: `${esc(scn)}<br>${hover}: %{y:.4g}<extra></extra>`,
       });
     });
-    if (offMask) {
+    if (offMask && !obsNoCover) {
       const decs = layerDecs[pan.lid];
       traces.push({
         type: "scatter", mode: decs.length > 1 ? "lines+markers" : "markers",
@@ -1209,7 +1216,8 @@ function renderSeries() {
     legendDone = true;
     annos.push({text: lay.hazard + (state.seriesMetric === "value"
                     ? (lay.units ? ` [${lay.units}]` : "") : " [percentile]") +
-                    (offMask ? " — absent here, shown as 0" : ""),
+                    (obsNoCover ? " — no coverage at this site"
+                     : offMask ? " — absent here, shown as 0" : ""),
                 xref: "x" + ax + " domain", yref: "y" + ax + " domain",
                 x: 0, y: 1.14, showarrow: false, xanchor: "left",
                 font: {size: 12, color: offMask ? ink("--text-muted")

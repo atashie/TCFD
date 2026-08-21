@@ -858,7 +858,10 @@ layers:
   pluvial-r10mm:
     folder: pluvial-isimip3b_R10mm_annual
     file_prefix: R10mm
-    hazard: Heavy precipitation
+    # Rainfall hazard labels consolidated 2026-08-21 (user): Total rainfall = raw
+    # totals/frequency (prcptot, wetdays); Extreme rainfall events = threshold
+    # exceedances, annual maxima and the local-relative metrics (the other eight).
+    hazard: Extreme rainfall events
     hazard_measure: Days per year with precipitation at or above 10 mm
     status: alternate
     qa_reviewed_on: '2026-08-19'
@@ -884,7 +887,7 @@ layers:
   pluvial-r20mm:
     folder: pluvial-isimip3b_R20mm_annual
     file_prefix: R20mm
-    hazard: Heavy precipitation
+    hazard: Extreme rainfall events
     hazard_measure: Days per year with precipitation at or above 20 mm
     status: preferred
     qa_reviewed_on: '2026-08-19'
@@ -910,7 +913,7 @@ layers:
   pluvial-r50mm:
     folder: pluvial-isimip3b_R50mm_annual
     file_prefix: R50mm
-    hazard: Heavy precipitation
+    hazard: Extreme rainfall events
     hazard_measure: Days per year with precipitation at or above 50 mm
     status: alternate
     qa_reviewed_on: '2026-08-19'
@@ -936,7 +939,7 @@ layers:
   pluvial-r100mm:
     folder: pluvial-isimip3b_R100mm_annual
     file_prefix: R100mm
-    hazard: Heavy precipitation
+    hazard: Extreme rainfall events
     hazard_measure: Days per year with precipitation at or above 100 mm
     status: alternate
     qa_reviewed_on: '2026-08-19'
@@ -963,7 +966,7 @@ layers:
   pluvial-r95pd:
     folder: pluvial-isimip3b_R95pD_annual
     file_prefix: R95pD
-    hazard: Heavy precipitation (local extreme)
+    hazard: Extreme rainfall events
     hazard_measure: Days per year above this location's own 2020s wet-day 95th percentile
     status: preferred
     qa_reviewed_on: '2026-08-19'
@@ -1005,7 +1008,7 @@ layers:
   pluvial-r99pd:
     folder: pluvial-isimip3b_R99pD_annual
     file_prefix: R99pD
-    hazard: Heavy precipitation (local extreme)
+    hazard: Extreme rainfall events
     hazard_measure: Days per year above this location's own 2020s wet-day 99th percentile
     status: alternate
     qa_reviewed_on: '2026-08-19'
@@ -1047,7 +1050,7 @@ layers:
   pluvial-wetdays:
     folder: pluvial-isimip3b_wetdays_annual
     file_prefix: wetdays
-    hazard: Wet days
+    hazard: Total rainfall
     hazard_measure: Days per year with precipitation at or above 1 mm
     status: alternate
     qa_reviewed_on: '2026-08-19'
@@ -1073,7 +1076,7 @@ layers:
   pluvial-rx1day:
     folder: pluvial-isimip3b_Rx1day_annual
     file_prefix: Rx1day
-    hazard: Extreme daily rainfall
+    hazard: Extreme rainfall events
     hazard_measure: Annual maximum 1-day precipitation
     status: preferred
     qa_reviewed_on: '2026-08-19'
@@ -1103,7 +1106,7 @@ layers:
   pluvial-rx5day:
     folder: pluvial-isimip3b_Rx5day_annual
     file_prefix: Rx5day
-    hazard: Extreme multi-day rainfall
+    hazard: Extreme rainfall events
     hazard_measure: Annual maximum 5-day precipitation total
     status: alternate
     qa_reviewed_on: '2026-08-19'
@@ -1135,7 +1138,7 @@ layers:
   pluvial-prcptot:
     folder: pluvial-isimip3b_prcptot_annual
     file_prefix: prcptot
-    hazard: Annual precipitation
+    hazard: Total rainfall
     hazard_measure: Annual total precipitation from wet days
     status: alternate
     qa_reviewed_on: '2026-08-19'
