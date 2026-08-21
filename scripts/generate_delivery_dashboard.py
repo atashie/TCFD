@@ -149,9 +149,14 @@ def build_payload(locations, assets, layers, values, scores):
         # Climate Score stays at ASSET grain here. Rolling it up to a location or the
         # portfolio is the dashboard's job and depends on the live asset-type filter, so
         # pre-aggregating would freeze a filter choice into the payload.
+        # v2 (2026-08-20): n counts FAMILIES present, ne the asset type's weighted
+        # families, and h the family list -- rollups compare rows on identical h, since
+        # full coverage is structurally unreachable (permafrost exists at few sites;
+        # cyclone and sea level publish no high tier).
         "scores": [
             {"a": r["asset_id"], "t": r["scenario_tier"], "d": int(r["decade"]),
-             "s": float(r["climate_score"]), "n": int(r["n_hazards"])}
+             "s": float(r["climate_score"]), "n": int(r["n_hazards"]),
+             "ne": int(r["n_hazards_expected"]), "h": str(r.get("hazards") or "")}
             for _, r in scores.iterrows()
         ] if len(scores) else [],
     }
@@ -180,9 +185,9 @@ def render(delivery: Path, payload: dict, manifest: dict, warnings: list) -> Pat
             'is about what its name says. Treat these numbers as provisional.'
             '</div>'
         )
-    if warnings:
-        banner += '<div class="banner warn"><strong>Build warnings:</strong> ' + \
-                  esc("; ".join(warnings)) + '</div>'
+    # Build warnings are OPERATOR-facing and are printed to the terminal at build time;
+    # they no longer render into the page (user decision 2026-08-20 -- the banner read as
+    # a defect list to customers while describing expected portfolio structure).
 
     tokens = css_tokens()
     # SAFE JSON EMBEDDING. json.dumps escapes quotes and backslashes but NOT `<`, `>` or
@@ -250,6 +255,9 @@ th, td {{ text-align:left; padding:5px 8px; border-bottom:1px solid var(--grid);
          white-space:nowrap; }}
 th {{ position:sticky; top:0; background: var(--surface); cursor:pointer;
      color: var(--text-secondary); font-weight:600; z-index:1; }}
+/* Per-column dropdown filters sit in a second header row, below the sort row. */
+tr.colf th {{ top:29px; cursor:default; padding:2px 4px; }}
+tr.colf select {{ min-width:0; width:100%; font-size:11px; padding:3px 4px; }}
 /* Portfolio overview: the story is one number, so it is a stat tile, not a chart. */
 .tiles {{ display:grid; grid-template-columns: repeat(auto-fit, minmax(190px,1fr));
          gap:14px; }}
@@ -316,7 +324,11 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
     <div id="bar-band" style="height:300px"></div></div>
 
   <div class="card"><h2>Climate Score over time</h2>
-    <div class="toggle" id="score-toggle"></div>
+    <div style="margin-bottom:10px">
+      <label for="score-sel" style="font-size:11px;text-transform:uppercase;
+          letter-spacing:.04em;color:var(--text-muted)">Series</label>
+      <select id="score-sel"></select>
+    </div>
     <div class="note" id="score-note"></div>
     <div id="score-series" style="height:300px"></div></div>
 
@@ -340,7 +352,8 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
 
   <div class="card full">
     <h2>Values</h2>
-    <div class="note">Every row in the filtered slice. Click a header to sort.</div>
+    <div class="note">Every row in the filtered slice. Click a header to sort; each
+        discrete column also has its own dropdown filter, composing with the search.</div>
     <input type="search" id="f-search" placeholder="Filter rows…" style="margin-bottom:10px">
     <div class="scroll"><table id="table"></table></div>
   </div>
@@ -444,27 +457,25 @@ const CFG = {responsive: true, displaylogo: false,
 // component of it. The hazard filter does not apply while it is selected.
 const state = {tier: "__all", hazard: null, asset: "__all", decade: null,
                metric: "climate_score", loc: null, seriesMetric: "percentile",
-               scoreMetric: "__score", search: "", sortCol: null, sortDir: 1};
+               scoreMetric: "__score", search: "", sortCol: null, sortDir: 1,
+               colFilters: {}};
 
 // --- Climate Score helpers ------------------------------------------------------------
-// An asset's score is complete only when every hazard in its catalog set contributed.
-// ISIMIP3b layers have no 2010s panel, so a 2010s row can legitimately rest on ONE hazard
-// while the 2020s rests on three -- plotting both on one axis would read as risk tripling
-// when only the hazard set changed. Incomplete rows are excluded and counted, never
-// silently averaged in.
+// v2 model (2026-08-20): a score row is the mean over the asset type's WEIGHTED hazard
+// families PRESENT at the site, and full coverage is structurally unreachable (permafrost
+// exists at few sites; cyclone and sea level publish no high tier). So rows are shown as
+// delivered -- renormalized, with n of ne families disclosed -- and never filtered away
+// for being "incomplete". What IS guarded is comparison: any rollup across decades first
+// restricts to assets whose family set (r.h) is IDENTICAL in every compared cell, so a
+// composition change can never read as a risk change.
 const assetById = Object.fromEntries(DATA.assets.map(a => [a.id, a]));
-function expectedHazards(assetId) {
-  const a = assetById[assetId];
-  return a ? a.layers.length : 0;
-}
-function scoreRows({tier, decade, completeOnly = true} = {}) {
+function scoreRows({tier, decade} = {}) {
   return DATA.scores.filter(r => {
     const a = assetById[r.a];
     if (!a) return false;
     if (state.asset !== "__all" && a.type !== state.asset) return false;
     if (tier && tier !== "__all" && r.t !== tier) return false;
     if (decade !== undefined && decade !== null && r.d !== decade) return false;
-    if (completeOnly && r.n < expectedHazards(r.a)) return false;
     return true;
   });
 }
@@ -472,26 +483,37 @@ const mean = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
 
 // BALANCED PANEL -- the single most important guard on this page.
 //
-// Layer scenario coverage is NOT uniform across tiers: `cyclone` publishes rcp26/rcp60 and
-// no rcp85, so every cyclone-carrying asset is INCOMPLETE at the high tier. Averaging each
-// tier over whatever assets it happens to have makes the tier lines describe different
-// portfolios. Measured on the example delivery: the high-tier 2020s mean read 39.9 against
-// 42.1 for low and medium -- entirely a composition artifact, since the shared 2020s
-// baseline is bit-identical across scenarios and the three MUST be equal on a common basis.
+// Layer scenario coverage is NOT uniform across tiers: `cyclone` and `sealevel-2b`
+// publish no high-tier scenario, so the high-tier line structurally lacks those families
+// for every asset. Averaging each cell over whatever happens to be there makes the lines
+// describe different portfolios -- measured on an early delivery, the high-tier 2020s
+// mean read 39.9 against 42.1 for low and medium, purely composition.
 //
-// So any chart that compares across tiers or decades first restricts to the assets present
-// and complete in EVERY cell of that grid, and states what it dropped.
+// The v2 guard: an asset joins a comparison panel only if, WITHIN EACH tier compared, its
+// family set (r.h) is identical across every decade compared. Family sets may differ
+// BETWEEN tiers -- that gap is structural and is stated in the chart note (tierGaps())
+// rather than blanking the chart, because no asset could ever satisfy cross-tier equality.
 function balancedAssets(tiers, decades, locId) {
-  const cand = new Set(DATA.assets
+  const cand = DATA.assets
     .filter(a => (state.asset === "__all" || a.type === state.asset)
                  && (!locId || a.loc === locId))
-    .map(a => a.id));
-  const have = new Set();
-  DATA.scores.forEach(r => {
-    if (r.n >= expectedHazards(r.a)) have.add(r.a + "|" + r.t + "|" + r.d);
+    .map(a => a.id);
+  const cell = {};
+  DATA.scores.forEach(r => { (cell[r.a] = cell[r.a] || {})[r.t + "|" + r.d] = r.h; });
+  return cand.filter(id => {
+    const m = cell[id];
+    if (!m) return false;
+    return tiers.every(t => {
+      let fam = null;
+      for (const d of decades) {
+        const h = m[t + "|" + d];
+        if (h === undefined) return false;
+        if (fam === null) fam = h;
+        else if (h !== fam) return false;
+      }
+      return true;
+    });
   });
-  return [...cand].filter(id =>
-    tiers.every(t => decades.every(d => have.has(id + "|" + t + "|" + d))));
 }
 
 // Which layers are missing a tier entirely? That is a portfolio-level fact, not a bug.
@@ -545,10 +567,14 @@ function initControls() {
     () => state.seriesMetric, v => { state.seriesMetric = v; renderSeries(); });
 
   // Climate Score, or the per-hazard percentile it is the mean of. Same axis meaning
-  // (1-100 risk percentile) either way, so the two are directly comparable.
-  buildToggle("score-toggle",
-    [["__score","Climate Score"]].concat(layerIds.map(l => [l, DATA.layers[l].hazard])),
-    () => state.scoreMetric, v => { state.scoreMetric = v; renderScoreSeries(); });
+  // (1-100 risk percentile) either way, so the two are directly comparable. A DROPDOWN,
+  // not a toggle: with the v2 standard set there are 30+ layers and a button row cannot
+  // list them (user call, 2026-08-20).
+  fill($("score-sel"),
+    [["__score","Climate Score (all hazards)"]].concat(
+      layerIds.map(l => [l, DATA.layers[l].hazard + " (" + l + ")"])));
+  $("score-sel").value = state.scoreMetric;
+  $("score-sel").onchange = e => { state.scoreMetric = e.target.value; renderScoreSeries(); };
 
   $("counts").textContent = DATA.locations.length + " locations · " +
       DATA.assets.length + " assets · " + Object.keys(DATA.layers).length + " layers · " +
@@ -668,29 +694,29 @@ function renderScoreMap() {
   }
   const pts = Object.entries(byLoc).map(([loc, rs]) => ({
     loc, s: mean(rs.map(x => x.s)), n: rs.length,
-    haz: Math.max(...rs.map(x => x.n)),
+    fmin: Math.min(...rs.map(x => x.n)), fmax: Math.max(...rs.map(x => x.n)),
+    ne: Math.max(...rs.map(x => x.ne)),
     tiers: [...new Set(rs.map(x => x.t))],
   }));
 
-  const dropped = scoreRows({tier: state.tier, decade: state.decade, completeOnly: false})
-      .length - rowsIn.length;
   $("map-note").textContent =
-    `Mean risk percentile across all of a location's hazards, ${state.decade}s` +
+    `Mean risk percentile across a location's weighted hazard families, ${state.decade}s` +
     (state.tier === "__all" ? ", averaged over all forcing tiers" :
        ` under ${TIER_LABELS[state.tier].toLowerCase()}`) +
     ". Higher = higher aggregate physical risk. Darker = worse. " +
     "The hazard filter does not apply to this metric. " +
-    "Keyed on forcing tier, not a native scenario code — no ISIMIP code spans both " +
-    "rounds, so a per-code score would cover only a subset of hazards." +
-    (dropped ? ` ${dropped} asset-row(s) excluded for incomplete hazard coverage.` : "");
+    "Families absent at a site (off-footprint, or publishing no scenario in the tier) " +
+    "renormalize out — the hover shows families present of families weighted. " +
+    "Keyed on forcing tier, not a native scenario code — no ISIMIP code spans both rounds.";
 
   const trace = {
     type: "scattergeo", mode: "markers",
     lat: pts.map(p => locById[p.loc].lat), lon: pts.map(p => locById[p.loc].lon),
     text: pts.map(p => {
       const l = locById[p.loc];
+      const fam = p.fmin === p.fmax ? String(p.fmax) : `${p.fmin}–${p.fmax}`;
       return `<b>${esc(l.name)}</b><br>Climate Score ${p.s.toFixed(1)}` +
-        `<br>${p.haz} hazard(s) · ${p.n} asset-row(s)` +
+        `<br>families ${fam} of ${p.ne} weighted · ${p.n} asset-row(s)` +
         `<br>tier(s): ${esc(p.tiers.join(", "))}`;
     }),
     hovertemplate: "%{text}<extra></extra>",
@@ -742,11 +768,13 @@ function renderTiles() {
 
   const gaps = tierGaps();
   $("tiles-note").textContent =
-    `Unweighted mean of risk percentile across each asset's hazards. Scoped by the ` +
-    `asset-type, forcing-tier and decade filters; the hazard filter does not apply. ` +
-    `Assets without full hazard coverage are excluded rather than scored on a subset.` +
-    (gaps.length ? ` Note: ${gaps.join("; ")} — assets carrying those hazards cannot be ` +
-      `scored at the missing tier at all.` : "");
+    `Mean of risk percentile over each asset type's weighted hazard families present at ` +
+    `the site (families absent at a site renormalize out and are disclosed per row). ` +
+    `Scoped by the asset-type, forcing-tier and decade filters; the hazard filter does ` +
+    `not apply. The change tile compares decades on assets with an identical family set ` +
+    `in both.` +
+    (gaps.length ? ` Note: ${gaps.join("; ")} — those families drop out of the affected ` +
+      `tier for every asset.` : "");
   $("tiles").innerHTML = [
     tile("Portfolio Climate Score", score === null ? "—" : score.toFixed(1),
          `${state.decade}s · ` + (state.tier === "__all" ? "all tiers"
@@ -759,7 +787,8 @@ function renderTiles() {
               (delta > 0 ? "rising risk" : delta < 0 ? "falling risk" : "flat")),
     tile("Highest-risk location", worst ? worst[1].toFixed(1) : "—",
          worst ? locById[worst[0]].name : ""),
-    tile("Coverage", nAssets + " assets", nHaz + " hazards · " + cur.length + " score rows"),
+    tile("Coverage", nAssets + " assets",
+         nHaz + " hazard families (max present) · " + cur.length + " score rows"),
   ].join("");
 }
 function tile(k, v, s) {
@@ -808,25 +837,27 @@ function renderScoreSeries() {
     const perDecade = decades.map(d =>
       `${d}s: ${balancedAssets(tiers, [d]).length}`).join(", ");
     $("score-note").textContent =
-      `No asset has complete hazard coverage in every tier across all decades shown, so ` +
-      `there is no common basis to plot. Assets qualifying in individual decades — ` +
-      `${perDecade || "none"}. Averaging those would compare different asset sets across ` +
-      `time. Narrow the asset-type filter to a class with uniform coverage.` +
-      (gaps.length ? ` Cause: ${gaps.join("; ")}.` : "");
+      `No asset keeps an identical hazard-family set across all decades shown, so there ` +
+      `is no common basis to plot over time. Assets qualifying in individual decades — ` +
+      `${perDecade || "none"}. Averaging those would compare different family mixes ` +
+      `across time. Narrow the asset-type filter.` +
+      (gaps.length ? ` Structural gaps: ${gaps.join("; ")}.` : "");
     $("score-series").innerHTML = "";
     return;
   }
 
   $("score-note").textContent =
     `Portfolio mean over a BALANCED PANEL of ${panel.size} of ${candidates} asset(s) — ` +
-    `those with complete hazard coverage in every tier and decade shown, so the three ` +
-    `lines describe the same portfolio. Scoped by the asset-type filter only; the ` +
-    `forcing-tier and decade filters do not apply, because varying them is what this ` +
+    `those whose hazard-family set is identical across every decade shown, within each ` +
+    `tier, so each line describes one portfolio over time. Family sets can still differ ` +
+    `BETWEEN tiers` +
+    (gaps.length ? ` (${gaps.join("; ")} — those families are absent from the affected ` +
+      `tier's line)` : "") +
+    `, so read cross-tier gaps with that in mind. Scoped by the asset-type filter only; ` +
+    `the forcing-tier and decade filters do not apply, because varying them is what this ` +
     `chart shows.` +
     (droppedDec.length ? ` ${droppedDec.map(d=>d+"s").join(", ")} omitted (no asset has ` +
-      `full coverage there — ISIMIP3b layers have no 2010s panel).` : "") +
-    (panel.size < candidates && gaps.length
-      ? ` ${candidates - panel.size} asset(s) excluded because ${gaps.join("; ")}.` : "");
+      `a stable family set there — ISIMIP3b layers have no 2010s panel).` : "");
 
   Plotly.react("score-series", traces, baseLayout({
     showlegend: true,
@@ -1040,12 +1071,18 @@ function renderSeries() {
   // An empty balanced panel means the Score cannot be shown on a common basis here; the
   // hazard panels are still valid, so drop only the Score panel rather than the grid.
   const hasScore = score.panelSize > 0 && score.traces.some(t => t.x.length);
-  // Panel 0 is the Climate Score when it can be computed; hazards follow.
+  // Panel 0 is the Climate Score when it can be computed; hazards follow, sorted by
+  // hazard label so related panels sit together and a reader can scan for one.
+  have.sort((a, b) => (DATA.layers[a].hazard + a).localeCompare(DATA.layers[b].hazard + b));
   const panels = (hasScore ? [{kind: "score"}] : [])
       .concat(have.map(lid => ({kind: "hazard", lid})));
 
+  // With the v2 standard set this grid holds 30+ panels. Cramming them into a fixed-height
+  // box made every panel unreadable (user call, 2026-08-20): the height now scales with
+  // the row count -- each panel gets ~250px -- and the page simply scrolls.
   const cols = panels.length <= 2 ? panels.length : (panels.length <= 4 ? 2 : 3);
   const rowsN = Math.ceil(panels.length / cols);
+  $("series").style.height = (rowsN * 250 + 140) + "px";
   const traces = [], annos = [];
   let legendDone = false;
 
@@ -1105,7 +1142,7 @@ function renderSeries() {
 
   const layout = baseLayout({
     grid: {rows: rowsN, columns: cols, pattern: "independent",
-           roworder: "top to bottom", xgap: 0.14, ygap: 0.34},
+           roworder: "top to bottom", xgap: 0.14, ygap: rowsN > 4 ? 0.16 : 0.34},
     annotations: annos, showlegend: true,
     legend: {orientation: "h", y: -0.14, x: 0, font: {color: ink("--text-secondary")}},
     margin: {l: 56, r: 16, t: 34, b: 62},
@@ -1129,28 +1166,41 @@ function renderSeries() {
 }
 
 // ---- table --------------------------------------------------------------------------
+// [label, getter, numeric, filterable]. Filterable columns are the discrete ones -- they
+// get a dropdown in a second header row (user call, 2026-08-20), composing with the text
+// search and with each other.
 const COLS = [
-  ["Location", r => locById[r.loc].name, false],
-  ["Hazard", r => DATA.layers[r.lay].hazard, false],
-  ["Scenario", r => r.scn, false],
-  ["Decade", r => r.dec, true],
-  ["Value", r => r.v, true],
-  ["25th", r => r.lo, true],
-  ["75th", r => r.hi, true],
-  ["Percentile", r => r.p, true],
-  ["OLS", r => r.ols, true],
-  ["Sen", r => r.sen, true],
-  ["Agree", r => r.ag === null ? "—" : String(r.ag), false],
-  ["Members", r => r.nm, true],
-  ["Status", r => r.st, false],
+  ["Location", r => locById[r.loc].name, false, true],
+  ["Hazard", r => DATA.layers[r.lay].hazard, false, true],
+  ["Layer", r => r.lay, false, true],
+  ["Scenario", r => r.scn, false, true],
+  ["Decade", r => r.dec, true, true],
+  ["Value", r => r.v, true, false],
+  ["25th", r => r.lo, true, false],
+  ["75th", r => r.hi, true, false],
+  ["Percentile", r => r.p, true, false],
+  ["OLS", r => r.ols, true, false],
+  ["Sen", r => r.sen, true, false],
+  ["Agree", r => r.ag === null ? "—" : String(r.ag), false, true],
+  ["Members", r => r.nm, true, false],
+  ["Status", r => r.st, false, true],
 ];
 
 function renderTable() {
-  let data = rows({allHazards: true});
+  let base = rows({allHazards: true});
   if (state.search) {
-    data = data.filter(r => (locById[r.loc].name + " " + DATA.layers[r.lay].hazard + " " +
-        r.scn + " " + r.st).toLowerCase().includes(state.search));
+    base = base.filter(r => (locById[r.loc].name + " " + DATA.layers[r.lay].hazard + " " +
+        r.lay + " " + r.scn + " " + r.st).toLowerCase().includes(state.search));
   }
+  // Column filters compose: each dropdown narrows the rows the others act on, but its own
+  // OPTION LIST comes from the slice ignoring only itself, so a choice never deletes its
+  // own alternatives from the menu.
+  const passes = (r, skip) => COLS.every((c, i) => {
+    if (i === skip || !c[3]) return true;
+    const f = state.colFilters[i];
+    return f === undefined || f === "__all" || String(c[1](r)) === f;
+  });
+  let data = base.filter(r => passes(r, -1));
   if (state.sortCol !== null) {
     const get = COLS[state.sortCol][1];
     data = data.slice().sort((a,b) => {
@@ -1159,20 +1209,37 @@ function renderTable() {
       return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir;
     });
   }
-  const head = "<thead><tr>" + COLS.map((c,i) =>
+  const head = "<tr>" + COLS.map((c,i) =>
       `<th data-i="${i}">${esc(c[0])}${state.sortCol===i ? (state.sortDir>0?" ▲":" ▼") : ""}</th>`
-    ).join("") + "</tr></thead>";
+    ).join("") + "</tr>";
+  const filt = "<tr class='colf'>" + COLS.map((c,i) => {
+      if (!c[3]) return "<th></th>";
+      const vals = [...new Set(base.filter(r => passes(r, i)).map(r => String(c[1](r))))];
+      vals.sort((a,b) => {
+        const na = Number(a), nb = Number(b);
+        return isFinite(na) && isFinite(nb) ? na - nb : a.localeCompare(b);
+      });
+      const cur = state.colFilters[i] ?? "__all";
+      return `<th><select data-f="${i}"><option value="__all">All</option>` +
+        vals.map(v => `<option value="${esc(v)}"${v===cur ? " selected" : ""}>` +
+                      `${esc(v)}</option>`).join("") + `</select></th>`;
+    }).join("") + "</tr>";
   const body = "<tbody>" + data.map(r => "<tr>" + COLS.map(c => {
       const v = c[1](r);
       const txt = c[2] ? (typeof v === "number" ? fmt(v) : (v ?? "—")) : (v ?? "—");
       return `<td class="${c[2] ? "num" : ""}">${esc(txt)}</td>`;
     }).join("") + "</tr>").join("") + "</tbody>";
   const t = $("table");
-  t.innerHTML = head + body;
-  t.querySelectorAll("th").forEach(th => th.onclick = () => {
+  t.innerHTML = "<thead>" + head + filt + "</thead>" + body;
+  // Sort on the label row only -- a click inside the filter row must never re-sort.
+  t.querySelectorAll("thead tr:first-child th").forEach(th => th.onclick = () => {
     const i = +th.dataset.i;
     state.sortDir = state.sortCol === i ? -state.sortDir : 1;
     state.sortCol = i;
+    renderTable();
+  });
+  t.querySelectorAll("thead select").forEach(sel => sel.onchange = e => {
+    state.colFilters[+sel.dataset.f] = e.target.value;
     renderTable();
   });
 }
