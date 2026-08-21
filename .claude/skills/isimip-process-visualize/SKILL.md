@@ -261,7 +261,7 @@ auto-detection of SSP vs RCP scenarios.
 python scripts/generate_maps.py {variable} {processed_dir} {output_dir}
 
 # Example for heatwave data:
-python scripts/generate_maps.py leh ./outputs/heatwave-exposure_leh-annual/processed ./reports/maps
+python scripts/generate_maps.py leh data/processed/heatwave-isimip2b_leh_annual reports/maps/heatwave-2b
 ```
 
 ### Dashboard conventions (2026-08-10 — apply to EVERY layer's dashboard)
@@ -396,6 +396,7 @@ renders every shipped decadal layer. Such layers get a **narrow per-contract ren
 | `scripts/generate_maps.py` | every decadal layer | `reports/maps/{hazard}/` |
 | `scripts/generate_tornado_qa.py` | CONUS tornado ladder, 4 rungs × 3 metrics | `reports/maps/tornado/` |
 | `scripts/generate_landslide_qa.py` | global landslide, 4 metrics | `reports/maps/landslide/` |
+| `scripts/generate_hail_vlh_qa.py` | global very-large-hail observational layer | `reports/maps/hail-vlh/` |
 
 **Two shared tools also crash on these layers, and that is pre-existing**: both
 `scripts/generate_layer_qa.py` and `scripts/test_shared_baseline.py` raise

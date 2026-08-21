@@ -24,14 +24,15 @@ layer you are working on; see *Scope discipline* in CLAUDE.md before reading the
 ## Finding a layer in this file
 
 A layer's facts are cut across up to six cross-cutting sections, in this file order:
-**Identity** (layer_id ↔ variable ↔ processor — every layer has a row) → **Ensemble and
-framing** matrix → **Which slope to read** table → **Per-layer specifics worth knowing
-before use** → the dated **QA sign-off** sections → the **family deep dives** (precipitation,
-threshold ladder, heatwaves). The three observational layers (tornado, landslide, hail) each
-have a single consolidated section near the top of Product 1 instead — no framing/slope rows,
-because those concepts do not exist under their contract. `waterstress-3b-*` (development)
-sits at the end of Product 1. To find one layer fast: grep its `layer_id`; to find a family's
-QA evidence: grep `QA sign-off`.
+**Spatial support** (the regional-result rule and its per-layer instances) → **Identity**
+(layer_id ↔ variable ↔ processor — every layer has a row) → **Ensemble and framing** matrix
+→ **Which slope to read** table → **Per-layer specifics worth knowing before use** → the
+dated **QA sign-off** sections → the **family deep dives** (precipitation, threshold ladder,
+heatwaves). The three observational layers (tornado, landslide, hail) each have a single
+consolidated section instead, between Identity and the framing matrix — no framing/slope
+rows, because those concepts do not exist under their contract. `waterstress-3b-*`
+(development) sits at the end of Product 1. To find one layer fast: grep its `layer_id`; to
+find a family's QA evidence: grep `QA sign-off`.
 
 ---
 

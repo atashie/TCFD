@@ -67,7 +67,7 @@ TCFD/
 ├── CLAUDE.md                 # Development guide (for Claude Code)
 │
 ├── scripts/                  # Standalone scripts — both products
-│   ├── process_*.py          # Per-layer processors (one per shipped layer)
+│   ├── process_*.py          # Layer processors (the registry maps processor → layers)
 │   ├── generate_maps.py      # Gridded interactive maps
 │   ├── generate_customer_delivery.py   # Customer delivery driver
 │   ├── generate_delivery_dashboard.py  # Per-delivery QA dashboard

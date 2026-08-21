@@ -9,7 +9,7 @@ netCDF4
 plotly
 PyYAML
 shapely
-rasterio
+rasterio       # scripts/process_landslide_arup.py — reads the Arup GeoTIFF (function-local import)
 py7zr          # scripts/measure_hail_nature2026.py — reads the 7z hail deposit archive
 pytest         # scripts/tests/ (run `pytest` from the repo root; see pytest.ini)
 
@@ -19,3 +19,6 @@ pytest         # scripts/tests/ (run `pytest` from the repo root; see pytest.ini
 # httpx
 # rich
 # isimip-client
+
+# Deliberately NOT installed: geopandas — only scripts/utils/natural_earth.py imports it
+# (module-level), and that module is documented as unusable in this venv.

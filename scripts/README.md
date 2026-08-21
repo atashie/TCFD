@@ -5,8 +5,10 @@ Standalone Python scripts for data processing, visualization and customer delive
 Two groups, and they belong to different stages of the same product:
 
 - **Layer processing** — `process_*.py`, `download_*.py`, `generate_maps.py`,
-  `test_shared_baseline.py`. One processor per shipped layer; each writes the
-  [OUTPUT-SPEC.md](../OUTPUT-SPEC.md) contract.
+  `test_shared_baseline.py`. `config/layer_registry.yaml` maps each processor to the
+  layer(s) it produces — several emit a whole family from one ingest. Decadal layers write
+  the [OUTPUT-SPEC.md](../OUTPUT-SPEC.md) contract; observational layers write
+  `observational-historical-v1`.
 - **Customer delivery** — everything under *Customer delivery* below. Reads processed layers,
   never reprocesses them.
 
@@ -192,8 +194,10 @@ blocks read from built files — they never write the registry), and
 
 **Verifiers** (CLI tools that exit non-zero — not pytest): `test_shared_baseline.py`,
 `test_observational_baseline.py`, `test_customer_delivery.py`,
-`test_extraction_resolution.py`. The pytest-collected contract tests live in
-`scripts/tests/` (`test_decadal_stats.py`, 42 tests — run `pytest` from the repo root).
+`test_extraction_resolution.py`, and `check_doc_refs.py` (fails when a live doc or config
+cites a nonexistent repo path; frozen history is exempt). The pytest-collected contract
+tests live in `scripts/tests/` (`test_decadal_stats.py`, 42 tests — run `pytest` from the
+repo root).
 
 **`utils/`**: `decadal_stats.py` (the contract), `delivery.py` (extraction + star schema),
 `report_common.py` / `report_figures.py` / `report_profiles.py` (reports),
@@ -206,8 +210,9 @@ venv — module-level geopandas import), `water_index_compare.py` (water product
 ### process_tornado_spc.py — **the shipped CONUS tornado ladder** (NOT ISIMIP)
 
 Builds four rungs (`all`, `f1plus`, `f2plus`, `f3plus`) from the NOAA SPC tornado database.
-The only non-ISIMIP layer in the product, because ISIMIP forcing publishes 11 SURFACE
-variables and nothing aloft, so the shear term every tornado index needs cannot be formed.
+The first non-ISIMIP layer in the product (landslide and hail followed), admitted because
+ISIMIP forcing publishes 11 SURFACE variables and nothing aloft, so the shear term every
+tornado index needs cannot be formed.
 
 Answers `observational-historical-v1`, not the OUTPUT-SPEC decadal contract: no decade axis,
 no slopes, scenario `observed`. **Global 0.25° grid, CONUS data, everything else NaN** — a
