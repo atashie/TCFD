@@ -1474,3 +1474,27 @@ serialised as JSON text. They do nothing on a raster `go.Heatmap`, where plotly 
 base64 typed arrays and the term is bytes-per-cell. Both facts now sit in the same section of
 the skill so the next person does not apply the text-encoding fix to a binary-encoded page, as
 I did. See the same-day entry above for how that error was made and caught.
+
+### 2026-08-20: Tornado QA pages were never human-reviewable
+
+**What happened**: The tornado QA renderer was orphaned 24 minutes after its last run by the `historical` → `observed` scenario-token rename — it printed "no layers found" instead of raising, so nothing flagged it. Once revived at the QA review, its uncropped global float64 Heatmap panels emitted 153.7 MB pages no browser could usefully open. The rungs shipped 2026-08-18 with evidence pages nobody could actually have read.
+
+**Impact**: A QA sign-off would have rested on unviewable evidence; caught only because the 2026-08-20 review regenerated evidence before presenting it.
+
+**Prevention**: A renderer that discovers zero inputs must raise, not print; regenerate evidence at review time and compare page mtimes against data mtimes; the Heatmap payload rules (crop to the data's extent, cast float32) are in the process-visualize skill. Fixed in `aef11c0` and `39db4ae`; recorded in the tornado sign-off record in DATASET-ATTRIBUTES.md.
+
+### 2026-08-21: Date rollover split a delivery across two dated folders
+
+**What happened**: A `--run` re-extract after midnight wrote `deliveries/storefront-test/20260821/` while the verifier and caveat commands were still pointed at the previous day's `20260820/`, which held pre-decade-policy CSVs. The verifier "failures" were real disagreements — with a stale folder.
+
+**Impact**: ~270 phantom verification failures and a debugging detour before the path mismatch was noticed.
+
+**Prevention**: After any `--run`, point every downstream command at the output path the run **printed**, never at a remembered path; a delivery re-extracted near midnight lands in a new dated folder by design. Delete or clearly supersede the stale folder in the same session.
+
+### 2026-08-21: Dashboard table rebuilt itself out from under its own dropdowns
+
+**What happened**: The Values table rebuilt its entire DOM (header, filter row, ~7,000 body rows as one innerHTML string) on every dropdown change — destroying the `<select>` the user was interacting with while its change event was still dispatching, and generating enough DOM churn to crash the tab (which auto-reloads, reading as "the filter reset"). Two fix rounds treated symptoms before the mechanism was restructured.
+
+**Impact**: Repeated user-visible filter failures across three feedback rounds.
+
+**Prevention**: The stable-header pattern is now the rule (ASSET-CATALOG.md, dashboard section): controls are built once and never rebuilt — only `<tbody>` re-renders; handlers are delegated to a persistent ancestor; rendered rows are capped with the truncation stated; and a global error banner surfaces any uncaught page error as text a reviewer can report verbatim, so no control can fail silently again.

@@ -103,10 +103,13 @@ decided on it.
 
 ## Composition traps, both measured
 
-**Decade.** ISIMIP3b layers publish no 2010s panel, so a 2010s Climate Score can rest on one
-hazard where the 2020s rests on three — measured 30.4 → 39.9 on the example portfolio, a 31%
-jump entirely manufactured by hazards arriving. `portfolio_score_series()` drops incomplete
-decades for this reason.
+**Decade.** (Historical — the trigger cannot recur.) ISIMIP3b layers publish no 2010s
+panel, so a 2010s Climate Score could rest on one hazard where the 2020s rested on three —
+measured 30.4 → 39.9 on the example portfolio, a 31% jump entirely manufactured by hazards
+arriving. Since the 2026-08-21 **decade policy** a delivery carries no pre-2020 rows at all
+(a layer with only observed history files under the 2020s label as *current conditions*;
+its true window is in `layers.csv` `temporal_window`), so no current delivery has a 2010s
+score. `portfolio_score_series()` still drops incomplete decades defensively.
 
 **Tier.** `cyclone` publishes no `rcp85`, so cyclone-carrying assets are unscoreable at high
 forcing. Averaging each tier over whatever assets it has made the high-tier baseline read

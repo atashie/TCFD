@@ -116,9 +116,11 @@ actually approving it, is the one failure this field exists to prevent.
 python scripts/generate_customer_delivery.py --customer "<name>" --input <sites.csv>
 ```
 
-Planning is the default and touches no data. **Show the resolved asset → layer mapping to
-the user and get agreement before adding `--run`.** The mapping encodes a claim about which
-hazards reach which asset, and the customer is the one who knows their business.
+Planning is the default and touches no data. **Show the plan — the standard set and each
+asset type's 0/1 hazard-family weights — to the user and get agreement before adding
+`--run`.** Since the 2026-08-20 model change every asset receives the full standard set and
+the weights scope only the Climate Score, but they still encode a claim about which hazards
+matter to which asset type, and the customer is the one who knows their business.
 
 Surface the per-layer `NOTE:` lines from the plan in that conversation — they carry the
 things that change how a number should be read (`drought-3b` measures departure from a fixed

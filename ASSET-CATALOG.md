@@ -199,10 +199,10 @@ its independent verifier apply it separately.
 ### Two ways it can lie, and the guards
 
 **Incomplete hazard coverage.** A hazard that does not cover a site is excluded, not counted
-as zero, and ISIMIP3b layers have no 2010s panel. So the 2010s score rests on 1 hazard where
-the 2020s rests on 3 — a 22 → 42 jump that reads as risk doubling when only the hazard set
-changed. `n_hazards` exists for this; **two scores with different `n_hazards` are not like
-for like.**
+as zero, so `n_hazards` varies by site and **two scores with different `n_hazards` are not
+like for like.** (The original instance — a 2010s score resting on one hazard where the
+2020s rested on three, a 22 → 42 jump manufactured by hazards arriving — cannot recur in a
+current delivery: the 2026-08-21 decade policy delivers no pre-2020 rows at all.)
 
 **Uneven tier coverage across layers.** `cyclone` publishes rcp26/rcp60 and *no rcp85*, so
 every cyclone-carrying asset is unscoreable at the high tier. Averaging each tier over
@@ -211,18 +211,22 @@ Measured before the fix: the high-tier 2020s portfolio mean read **39.9 against 
 low and medium, which is impossible on a common basis — the shared 2020s panel is
 bit-identical across scenarios, so all three tiers *must* be equal there.
 
-Any chart comparing across tiers or decades therefore restricts to a **balanced panel** —
-assets complete in every cell of that grid — and states what it dropped. On the example
-delivery that is 2 of 6 assets, and the baseline then reads 39.88 in all three tiers.
+Any chart comparing across decades therefore restricts to a **balanced panel** and states
+what it dropped. The v2 definition (2026-08-20): an asset joins the panel only if, within
+each tier compared, its **family set is identical across every decade compared** — full
+coverage is structurally unreachable under the standard set (permafrost exists at few
+sites; cyclone and sea level publish no high tier), so family sets may differ *between*
+tiers, and that structural gap is stated in the chart note rather than blanking the chart.
 
 This applies at **every** level of rollup, not just the portfolio. It bit a second time at
-location level: Shasta holds a timber asset and a warehouse, and the warehouse carries
+location level: Shasta held a timber asset and a warehouse, and the warehouse carried
 cyclone, so at the high tier only the timber asset survived — the 2020s read 62.3 against
 51.7 for low and medium. Same fix, same invariant.
 
-`test_customer_delivery.py` enforces both: it recomputes every score from `values.csv` with
-an independent two-stage mean, and asserts the baseline-decade score is identical across
-tiers for any asset with the same hazard set.
+`test_customer_delivery.py` enforces this: it recomputes every score from `values.csv` and
+`score_config.json` with an independent **three-stage** mean (codes → layer, layers →
+family, weight-1 families → asset, observed families as constants) and asserts the
+baseline-decade score is identical across tiers for any asset with the same family count.
 
 ### Weights are 0/1 per hazard family per asset type
 
@@ -243,10 +247,14 @@ delivered unscored.
 python scripts/generate_delivery_dashboard.py deliveries/{customer}/{date}
 ```
 
-Writes `dashboard.html` into the delivery folder — one self-contained page (~110 KB for a
-6-asset delivery) with five views over the same filtered slice:
+Writes `dashboard.html` into the delivery folder — one self-contained page (~1.3 MB for a
+10-site standard-set delivery) with five views over the same filtered slice. The header is
+one line (generated timestamp + location/asset/layer counts) with an **FAQ dropdown top
+right** carrying every definition and methodological note; figure captions stay at the
+operational minimum, and the full guidance lives in the delivery README's "Reading the
+dashboard" section (all user calls, 2026-08-21).
 
-The page header carries a **build stamp** (an 8-hex hash of the payload plus the page
+The page **footer** carries a **build stamp** (an 8-hex hash of the payload plus the page
 logic). Confirm what is on disk with:
 
 ```bash
@@ -260,10 +268,10 @@ chasing two phantom bugs before the stamp existed.
 | View | Shows |
 |---|---|
 | **Overview** | Climate Score stat tiles — portfolio score, change vs baseline, highest-risk location, coverage |
-| **Map** | one marker per site; metric toggle, **Climate Score selected by default** |
-| **Summaries** | mean risk percentile by hazard and by asset class, a portfolio band histogram, and Climate Score over time beside it — toggle between the Score and any single hazard's percentile, on the same 1–100 axis |
-| **Time series** | one location at a time; the Climate Score panel first, then one panel per hazard, in a single grid. Toggle switches the hazard panels between Percentile and Value |
-| **Table** | every filtered row, sortable, with a text search |
+| **Map** | one marker per site; metric toggle, **Climate Score selected by default**; the hazard selection cascades the Decade and Asset-type options to choices that have data |
+| **Summaries** | average risk percentile by hazard and by asset type (bars coloured on the percentile ramp), a portfolio band histogram, and Climate Score over time — a dropdown switches between the Score and any single hazard, same 1–100 axis |
+| **Time series** | **hidden by default behind a Show-plots toggle** (it draws one panel per standard-set layer); one location at a time, Climate Score panel first, x-axes pinned to the delivered decade span; a projected hazard absent at the site plots as a labelled flat zero, an observed hazard with no coverage stays blank |
+| **Table** | self-contained: its own per-column cascading dropdown filters plus a search (the page filter bar does not reach it); sortable; capped at 800 rendered rows with the truncation stated |
 
 Climate Score leads because it is the portfolio-level answer and every other metric is a
 component of it. The overview is stat tiles rather than a chart — the story is one number.
@@ -276,6 +284,7 @@ exceptions, each because varying that dimension *is* the view's purpose:
 |---|---|---|
 | **Every time series** | tier **and** decade | seeing the full scenario spread across time is the point of the chart; filtering to one tier collapses it to a single line |
 | Summaries | hazard | "impacts by hazard" is the chart |
+| **Values table** | the whole bar (since 2026-08-21) | bar filters silently intersecting with its column filters produced empty results that read as broken filters; it answers to its own dropdowns and search only |
 
 **No time series is ever filtered by the forcing-tier selector** (user decision 2026-08-12).
 That applies to all four: the per-location hazard panels, the per-location Climate Score,
@@ -318,16 +327,30 @@ the map subtitle.
 `percentile` and therefore deliberately absent from `values.csv` under the no-derived-columns
 rule. Thresholds carry over from the retired `export_formatter.RELATIVE_HAZARD_THRESHOLDS` so
 a band means what it did in prior deliveries. Being *ordered* categories, they get the ordinal
-ramp; the nominal bar charts get a single colour, never a value-ramp.
+ramp. (The v1 rule that nominal bar charts never take a value-ramp was superseded 2026-08-21:
+the percentile bar charts colour each bar by its value on the percentile ramp, a user call.)
+
+**The stable-header table pattern is a hard rule** (2026-08-21). The table's label and
+filter rows are built once and never rebuilt — only `<tbody>` re-renders — because
+replacing a `<select>` while its change event is dispatching produced filter resets and,
+with a full ~7,000-row innerHTML rebuild per change, tab crashes. Any uncaught page error
+surfaces as a visible red banner to report verbatim.
+
+**A projected hazard absent at a site plots as a labelled flat zero; an observed hazard
+with no coverage stays blank** (2026-08-21). "Absent" (permafrost outside permafrost
+regions) and "unobserved" (tornado outside CONUS) are different facts and must never render
+the same.
 
 ### Colour
 
-**Red means risk; blue means magnitude.** `percentile` and Climate Score use a single-hue
-**red** ramp light→dark, because 100 is worst by construction and red carries that without a
-legend lookup (user decision 2026-08-12). Raw `value` keeps the blue ramp — large is not
-inherently bad — which also separates "how much" from "how bad" at a glance. Signed slopes
-keep the blue↔red diverging scale with a neutral gray midpoint, reversed on
-`higher_is_better` layers so red is always worse.
+**Colour, as revised 2026-08-21 (user calls).** Raw **percentile** views — the percentile
+map and both bar charts — use a continuous **green → yellow → orange → red** ramp over
+1–100. The **Climate Score map** uses the diverging **blue → white → red** ramp. Raw
+`value` keeps the blue ramp — large is not inherently bad — which separates "how much"
+from "how bad" at a glance. Signed slopes keep the blue↔red diverging scale with a neutral
+midpoint, reversed on `higher_is_better` layers so red is always worse. The basemap
+follows the page theme (a fixed dark basemap was tried and reverted the same day) and
+markers carry a fixed dark-grey outline.
 
 **Forcing tiers are blue / yellow / red** for low / medium / high — the conventional
 climate-scenario reading (user decision 2026-08-12). These are reference-palette slots 1, 4

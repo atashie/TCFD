@@ -1,0 +1,11 @@
+Location,Lat,Lon,Asset_Type,Country,City,Coord_Source
+Rotterdam Port Warehouse,51.9,4.4,Warehouse,Netherlands,Rotterdam,derived: city-representative test coordinate
+Memphis Distribution Center,35.1,-90.0,Warehouse,United States,Memphis,derived: city-representative test coordinate
+Singapore Logistics Hub,1.35,103.8,Warehouse,Singapore,Singapore,derived: city-representative test coordinate
+Phoenix Generating Station,33.4,-112.1,Power Plant,United States,Phoenix,derived: city-representative test coordinate
+Yakutsk Power Station,62.0,129.7,Power Plant,Russia,Yakutsk,derived: city-representative test coordinate
+Miami Retail Center,25.8,-80.2,Retail,United States,Miami,derived: city-representative test coordinate
+Madrid Retail Center,40.4,-3.7,Retail,Spain,Madrid,derived: city-representative test coordinate
+Mumbai Residential Complex,19.1,72.9,Apartment Complex,India,Mumbai,derived: city-representative test coordinate
+Brisbane Residential Complex,-27.5,153.0,Apartment Complex,Australia,Brisbane,derived: city-representative test coordinate
+Chicago Residential Complex,41.9,-87.6,Apartment Complex,United States,Chicago,derived: city-representative test coordinate

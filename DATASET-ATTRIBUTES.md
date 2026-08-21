@@ -1142,6 +1142,11 @@ sign-off: the user's expectation of a future revisit is part of the record.
 
 ### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
 
+> **Customer-facing hazard labels consolidated 2026-08-21 (user):** `prcptot` and `wetdays`
+> now carry the registry hazard **"Total rainfall"**; the other eight metrics carry
+> **"Extreme rainfall events"**. The per-metric identities, statistics and caveats below
+> are unchanged — only the grouping label a delivery shows.
+
 Built 2026-08-18 from ISIMIP3b bias-adjusted daily `pr`, **14 GCMs** × 3 SSPs. ~911 GB was
 streamed across two stages, sha512-verified and deleted; provenance is
 `data/interim/prthresh/download_provenance.csv`.
