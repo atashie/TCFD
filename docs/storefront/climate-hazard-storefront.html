@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Climate Hazard Storefront</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f6f8f7;
+    --surface: #ffffff;
+    --surface-2: #eef2f0;
+    --ink: #1c2b2d;
+    --muted: #5a6b6d;
+    --line: #d8e0de;
+    --accent: #0e7c86;
+    --accent-ink: #0a5b62;
+    --amber: #b4690e;
+    --amber-bg: #f7ecdc;
+    --accent-bg: #e2eff0;
+    --shadow: 0 1px 2px rgba(28, 43, 45, 0.06), 0 4px 14px rgba(28, 43, 45, 0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101718;
+      --surface: #182224;
+      --surface-2: #1e2b2d;
+      --ink: #e4ecea;
+      --muted: #8fa3a1;
+      --line: #2c3b3d;
+      --accent: #3fb8c2;
+      --accent-ink: #6fd0d8;
+      --amber: #e0a458;
+      --amber-bg: #33270f;
+      --accent-bg: #12343a;
+      --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101718;
+    --surface: #182224;
+    --surface-2: #1e2b2d;
+    --ink: #e4ecea;
+    --muted: #8fa3a1;
+    --line: #2c3b3d;
+    --accent: #3fb8c2;
+    --accent-ink: #6fd0d8;
+    --amber: #e0a458;
+    --amber-bg: #33270f;
+    --accent-bg: #12343a;
+    --shadow: none;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 16px/1.65 "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  }
+  .page { max-width: 1080px; margin: 0 auto; padding: 48px 24px 80px; }
+  .col { max-width: 72ch; }
+  h1, h2, h3 { font-family: "Bitter", Georgia, serif; text-wrap: balance; margin: 0; }
+  h1 { font-size: 34px; font-weight: 700; line-height: 1.2; }
+  h2 { font-size: 21px; font-weight: 600; line-height: 1.3; margin-bottom: 14px; }
+  h3 { font-size: 17px; font-weight: 600; }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent-ink); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.86em;
+  }
+  code { background: var(--surface-2); border-radius: 4px; padding: 1px 5px; }
+  .eyebrow {
+    font-family: "Source Sans 3", system-ui, sans-serif;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent-ink); margin: 0 0 6px;
+  }
+  header.doc { border-bottom: 2px solid var(--ink); padding-bottom: 20px; margin-bottom: 12px; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px;
+    font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--muted);
+  }
+  section { margin-top: 44px; }
+  .lede { font-size: 18px; }
+  .lede strong { color: var(--accent-ink); }
+
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 18px 0 6px; }
+  .fact {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; box-shadow: var(--shadow);
+  }
+  .fact .n { font-family: "Bitter", serif; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .fact .l { font-size: 13px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+
+  .decisions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .decision {
+    background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 14px 16px; box-shadow: var(--shadow);
+  }
+  .decision .eyebrow { margin-bottom: 4px; }
+  .decision .what { font-weight: 700; margin-bottom: 6px; }
+  .decision .so { font-size: 14px; color: var(--muted); margin: 0; }
+
+  figure { margin: 22px 0 8px; }
+  figure svg { max-width: 100%; height: auto; display: block; }
+  figcaption { font-size: 13.5px; color: var(--muted); margin-top: 10px; max-width: 80ch; }
+  .diagram-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; box-shadow: var(--shadow); }
+
+  .chip {
+    display: inline-block; font-family: "IBM Plex Mono", monospace; font-size: 11.5px; font-weight: 500;
+    padding: 1px 8px; border-radius: 999px; background: var(--accent-bg); color: var(--accent-ink);
+    white-space: nowrap;
+  }
+  .chip.amber { background: var(--amber-bg); color: var(--amber); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 14px; border-top: 1px solid var(--line); vertical-align: top; }
+  thead th { border-top: none; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+  td.num, th.num { font-family: "IBM Plex Mono", monospace; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.total td { font-weight: 700; background: var(--surface-2); }
+
+  ol.plan { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+  ol.plan > li {
+    counter-increment: step; position: relative; padding: 14px 16px 14px 58px; margin-bottom: 10px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow);
+  }
+  ol.plan > li::before {
+    content: counter(step); position: absolute; left: 16px; top: 14px;
+    font-family: "Bitter", serif; font-weight: 700; font-size: 18px; color: var(--accent-ink);
+    width: 28px; height: 28px; border: 1.5px solid var(--accent); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  ol.plan .who {
+    float: right; margin-left: 12px; font-family: "IBM Plex Mono", monospace; font-size: 11.5px;
+    padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted);
+  }
+  ol.plan .who.you { background: var(--amber-bg); color: var(--amber); }
+  ol.plan h3 { display: inline; }
+  ol.plan p { margin: 6px 0 0; font-size: 14.5px; color: var(--muted); }
+
+  .gate {
+    border: 1.5px dashed var(--amber); border-radius: 8px; padding: 14px 16px; margin-top: 14px;
+    background: var(--amber-bg);
+  }
+  .gate p { margin: 4px 0 0; font-size: 14.5px; }
+
+  dl.ruled { margin: 0; }
+  dl.ruled dt { font-weight: 700; margin-top: 12px; }
+  dl.ruled dd { margin: 2px 0 0; color: var(--muted); font-size: 14.5px; }
+
+  ul.open { padding-left: 20px; margin: 0; }
+  ul.open li { margin-bottom: 10px; }
+
+  .semantics li { margin-bottom: 12px; }
+  .semantics strong { color: var(--accent-ink); }
+
+  footer.doc {
+    margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--muted);
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="doc">
+    <p class="eyebrow">Architecture decision record</p>
+    <h1>Climate Hazard Storefront</h1>
+    <div class="meta">
+      <span>decided 2026-08-20 · updated 2026-08-21</span>
+      <span>repo: TCFD</span>
+      <span>status: QA reviews complete (37/39) · delivery model v2 + 10-site test delivery live · storefront build not started</span>
+    </div>
+  </header>
+
+  <div class="col">
+    <p class="lede">How the TCFD hazard layers get served to people who don't have access to the laptop: bulk downloads for large customers, a public map explorer, and self-serve analyses — free up to 3 location-asset pairs, keyed up to 1,000 — at <strong>near-zero monthly cost</strong>. The laptop stays the factory; the cloud is only the storefront.</p>
+  </div>
+
+  <section>
+    <p class="eyebrow">Why this is cheap</p>
+    <h2 class="col">The measured premise</h2>
+    <div class="facts">
+      <div class="fact"><div class="n">1.54&nbsp;GB</div><div class="l">total processed product — 121 NetCDF files, 43 registered layers; largest file 50&nbsp;MB</div></div>
+      <div class="fact"><div class="n">&lt;1&nbsp;MB</div><div class="l">one global field (layer × scenario × decade × statistic) at 0.5°, 720×360 cells</div></div>
+      <div class="fact"><div class="n">~secs</div><div class="l">compute per 10-site extraction — the delivery code is importable Python, not a port</div></div>
+      <div class="fact"><div class="n">0 LLM</div><div class="l">calls in stages 1, 2, and 4 — CSVs, dashboard, and caveats are fully deterministic</div></div>
+    </div>
+    <div class="col">
+      <p>The 65&nbsp;GB under <code>data/</code> is 51&nbsp;GB raw + 11&nbsp;GB interim that never leaves the laptop. Nothing in the cloud ever processes climate data; it stores finished artifacts and runs one small, already-written extraction step on demand. Publishing the processed layers also creates their first off-site copy — today they exist only on the laptop. (This is distribution of finished artifacts; the abandoned S3 pipeline-storage migration stays abandoned.)</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Settled 2026-08-20 · access model revised 2026-08-21</p>
+    <h2 class="col">The decisions</h2>
+    <div class="decisions">
+      <div class="decision">
+        <p class="eyebrow">Access model — revised 2026-08-21</p>
+        <p class="what">Map free and ungated. Self-serve in two lanes: a free, ungated lane under aggressive rate caps — 3 location-asset combinations, for now — and a paid, keyed lane capped in the hundreds of location-assets (1,000 total, for now). Bulk stays gated.</p>
+        <p class="so">Free surfaces double as lead generation, and the capped lane is the taster that sells the keyed one. Gating at launch = a per-customer key issued by hand — bulk and paid self-serve alike — no auth or payments build until demand exists.</p>
+      </div>
+      <div class="decision">
+        <p class="eyebrow">Compute</p>
+        <p class="what">Google Cloud Run — one scale-to-zero container.</p>
+        <p class="so">The real pipeline + 1.5&nbsp;GB of data baked into a ~3&nbsp;GB image. $0/mo at expected traffic; 5–20&nbsp;s cold start after idle; capped so it cannot run up a bill.</p>
+      </div>
+      <div class="decision">
+        <p class="eyebrow">Bulk format</p>
+        <p class="what">NetCDF files as-is, plus manifest, checksums, caveats, attribution.</p>
+        <p class="so">Zero conversion risk; each file's global attributes stay the single source of truth. Other formats only when a customer asks.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">One factory, three counters</p>
+    <h2 class="col">Architecture</h2>
+    <figure>
+      <div class="diagram-wrap">
+      <svg viewBox="0 0 960 470" role="img" aria-label="The laptop publishes releases and map slices to Cloudflare R2, deploys a container image to Cloud Run, and the static site lives on Cloudflare Pages. Bulk customers download NetCDF releases from R2 with a key at zero egress cost; map visitors get the app from Pages and hazard slices from R2 via CDN; self-serve users send sites to Cloud Run — a free lane capped at 3 location-asset pairs, a keyed paid lane up to 1,000 — and receive a zip of CSVs, dashboard, and caveats.">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1 L 9 5 L 0 9 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g fill="none" stroke="currentColor" stroke-width="1.4">
+          <!-- laptop / factory -->
+          <rect x="18" y="120" width="196" height="220" rx="10"/>
+          <!-- cloud boundary -->
+          <rect x="300" y="18" width="378" height="434" rx="12" stroke-dasharray="6 5" opacity="0.55"/>
+          <!-- cloud nodes -->
+          <rect x="330" y="52" width="318" height="106" rx="8"/>
+          <rect x="330" y="192" width="318" height="92" rx="8"/>
+          <rect x="330" y="318" width="318" height="106" rx="8"/>
+          <!-- users -->
+          <rect x="770" y="66" width="172" height="66" rx="8"/>
+          <rect x="770" y="208" width="172" height="66" rx="8"/>
+          <rect x="770" y="342" width="172" height="66" rx="8"/>
+        </g>
+        <!-- arrows -->
+        <g fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#arr)">
+          <path d="M 214 176 C 258 176, 262 105, 326 105"/>
+          <path d="M 214 300 C 258 300, 262 371, 326 371"/>
+          <line x1="648" y1="99" x2="766" y2="99"/>
+          <line x1="648" y1="241" x2="766" y2="241"/>
+          <line x1="648" y1="375" x2="766" y2="375"/>
+          <path d="M 856 208 C 856 168, 760 140, 652 132" opacity="0.55" stroke-dasharray="4 4"/>
+        </g>
+        <g font-family="'Source Sans 3', system-ui, sans-serif" font-size="12.5" fill="currentColor">
+          <!-- laptop -->
+          <text x="30" y="143" font-weight="700" font-size="13.5">Laptop — the factory</text>
+          <text x="30" y="166" opacity="0.75">raw ISIMIP (51 GB) · processing</text>
+          <text x="30" y="184" opacity="0.75">QA sign-off · 1.5 GB processed</text>
+          <text x="30" y="216" font-weight="600">publishes, on your command:</text>
+          <text x="30" y="236" font-family="'IBM Plex Mono', monospace" font-size="11">publish_release.py</text>
+          <text x="30" y="254" font-family="'IBM Plex Mono', monospace" font-size="11">publish_map_assets.py</text>
+          <text x="30" y="272" font-family="'IBM Plex Mono', monospace" font-size="11">deploy container image</text>
+          <text x="30" y="304" opacity="0.75">nothing else ever leaves</text>
+          <text x="30" y="322" opacity="0.75">the machine</text>
+          <!-- cloud label -->
+          <text x="312" y="40" font-weight="700" letter-spacing="1.5" font-size="11.5" opacity="0.7">CLOUD — THE STOREFRONT</text>
+          <!-- R2 -->
+          <text x="344" y="75" font-weight="700" font-size="13.5">Cloudflare R2 — object storage</text>
+          <text x="344" y="96" opacity="0.75">releases/2026-…/  NetCDF + manifest + checksums</text>
+          <text x="344" y="114" opacity="0.75">map slices (~2,000 small rasters) · layers.json</text>
+          <text x="344" y="140" font-family="'IBM Plex Mono', monospace" font-size="11" fill="var(--accent-ink)">$0 egress, always · free ≤10 GB</text>
+          <!-- Pages -->
+          <text x="344" y="215" font-weight="700" font-size="13.5">Cloudflare Pages — static site</text>
+          <text x="344" y="236" opacity="0.75">map explorer (MapLibre) · docs · downloads page</text>
+          <text x="344" y="262" font-family="'IBM Plex Mono', monospace" font-size="11" fill="var(--accent-ink)">$0 · unlimited static bandwidth</text>
+          <!-- Cloud Run -->
+          <text x="344" y="341" font-weight="700" font-size="13.5">Cloud Run — extraction container</text>
+          <text x="344" y="362" opacity="0.75">FastAPI over build_plan / run_delivery</text>
+          <text x="344" y="380" opacity="0.75">env + 1.5 GB data baked in (~3 GB image)</text>
+          <text x="344" y="406" font-family="'IBM Plex Mono', monospace" font-size="11" fill="var(--accent-ink)">scales to zero · ≈3,000 free runs/mo</text>
+          <!-- users -->
+          <text x="782" y="89" font-weight="700" font-size="13">Bulk customer</text>
+          <text x="782" y="108" opacity="0.75">full dataset, key</text>
+          <text x="782" y="123" opacity="0.75">issued by hand</text>
+          <text x="782" y="231" font-weight="700" font-size="13">Map visitor</text>
+          <text x="782" y="250" opacity="0.75">free, public</text>
+          <text x="782" y="265" opacity="0.75">rate-capped CDN</text>
+          <text x="782" y="365" font-weight="700" font-size="13">Self-serve user</text>
+          <text x="782" y="384" opacity="0.75">free: ≤3 pairs, capped</text>
+          <text x="782" y="399" opacity="0.75">paid key: ≤1,000 pairs</text>
+          <!-- arrow labels -->
+          <text x="222" y="128" font-size="11" opacity="0.8">versioned releases</text>
+          <text x="222" y="143" font-size="11" opacity="0.8">+ map slices</text>
+          <text x="224" y="333" font-size="11" opacity="0.8">image per release</text>
+          <text x="656" y="88" font-size="11" opacity="0.8">download</text>
+          <text x="656" y="230" font-size="11" opacity="0.8">app shell</text>
+          <text x="656" y="364" font-size="11" opacity="0.8">plan → confirm</text>
+          <text x="656" y="392" font-size="11" opacity="0.8">→ zip</text>
+          <text x="700" y="158" font-size="11" opacity="0.7">hazard slices, CDN-cached</text>
+        </g>
+      </svg>
+      </div>
+      <figcaption>Everything flows one way: the laptop publishes finished artifacts; the cloud serves them. The only compute anywhere is the extraction container, and it exists only while a request is running. The dashed arrow: the map page fetches hazard slices straight from R2 through Cloudflare's CDN.</figcaption>
+    </figure>
+    <div class="col">
+      <p><strong>Use case 2 — bulk.</strong> Just the data plane plus a download page. Immutable versioned releases (<code>releases/2026-08-20/</code> + a <code>latest</code> alias) each carry the NetCDF files, checksums, a machine-readable <code>layers.json</code> generated from the registry + file attributes + caveat texts, and the docs. A release id travels into every CSV and map view, so anything a customer quotes in a filing is reproducible against a frozen release.</p>
+      <p><strong>Use case 3 — map explorer.</strong> Fully static. Per-slice rasters pre-rendered on the laptop (~2,000 assets, well under 1&nbsp;GB); the browser fetches only the selected slice, reads true cell values on hover, and pulls the 8-decade stack on click for a mini time series. Basemap from a free vector source (e.g. OpenFreeMap); MapLibre GL renders.</p>
+      <p><strong>Use case 1 — self-serve extraction.</strong> The web flow preserves the pipeline's two-step contract: submit sites + asset types (dropdown from the catalog; an absent type is an error, never a default) → server returns the resolved plan and warnings → user confirms → run → zip of <strong>CSVs + dashboard.html + caveats + README</strong>. The delivery verifier runs before the zip ships. Two lanes share this one flow: the free lane accepts up to 3 location-asset combinations under aggressive rate caps; a hand-issued paid key lifts the cap to 1,000 — same code path, one check on the key. At the paid ceiling the run is minutes, not seconds, and the bundle is tens of MB, so the paid lane likely delivers asynchronously (a link when ready) rather than over a held-open request — an implementation choice, still open.</p>
+    </div>
+  </section>
+
+  <section class="col">
+    <p class="eyebrow">Non-negotiables</p>
+    <h2>Product semantics that must survive the web</h2>
+    <ul class="semantics">
+      <li><strong>"Skip the reports" ≠ "skip the caveats."</strong> Stage 4 is deterministic — no LLM — so the self-serve bundle always includes the caveat set. Serving CSVs to strangers without it hands them exactly the misreadings the repo machine-enforces against (Iowa outranking the Sahel on <code>cropfailure-3b</code>; quayside = hillside on <code>sealevel-2b</code>).</li>
+      <li><strong>Map cells render as discrete 0.5° rectangles, never interpolated.</strong> The blockiness is the honest statement of regional support. Max zoom capped; resolution caveats shown in the layer panel.</li>
+      <li><strong>Must-disclose text renders wherever a number renders.</strong> <code>READ AS RELATIVE</code>, resolution screening, and reference-population notes appear in the map layer panel, the bulk manifest, and the delivery bundle — mechanically, from one exported <code>layers.json</code>, never re-typed.</li>
+      <li><strong>Off-mask is "unobserved," never a low score.</strong> <code>OFF_LAYER_MASK</code> keeps its meaning in every surface, including map hover.</li>
+      <li><strong>Privacy default: uploaded coordinates are processed in memory and never persisted</strong> — site lists are commercially sensitive. Say so on the page.</li>
+      <li><strong>Cost circuit-breakers, not trust:</strong> Cloud Run <code>max-instances=2</code>, Cloudflare rate limits in front of everything, billing alerts on day one.</li>
+    </ul>
+  </section>
+
+  <section>
+    <p class="eyebrow">Out of pocket</p>
+    <h2 class="col">Cost picture</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Component</th><th class="num">Launch → low traffic</th><th class="num">~10× traffic</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Cloudflare R2 — data + map assets + releases</td><td class="num">$0</td><td class="num">~$0–1/mo</td><td>free ≤10 GB stored; <span class="chip">$0 egress, always</span></td></tr>
+          <tr><td>Bulk downloads, any volume</td><td class="num">$0</td><td class="num">$0</td><td>egress is free — the decisive R2 property</td></tr>
+          <tr><td>Cloud Run extraction</td><td class="num">$0</td><td class="num">~$5–15/mo</td><td>free tier ≈ 3,000 one-minute runs/mo; then ~$0.002/run</td></tr>
+          <tr><td>Cloudflare Pages + CDN + rate limiting</td><td class="num">$0</td><td class="num">$0</td><td>unlimited static bandwidth; commercial use allowed</td></tr>
+          <tr><td>Domain</td><td class="num">~$1/mo</td><td class="num">~$1/mo</td><td>~$10–12/yr, at-cost registrar</td></tr>
+          <tr class="total"><td>Total</td><td class="num">~$1/mo</td><td class="num">~$7–17/mo</td><td>the domain is the only unavoidable spend</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="col" style="margin-top:10px; font-size:14px; color:var(--muted);">Assumes roughly tens of analyses/day and hundreds of map sessions/day early on. The architecture holds at 100× — only the Cloud Run line grows, and linearly.</p>
+  </section>
+
+  <section class="col">
+    <p class="eyebrow">In order</p>
+    <h2>Build plan</h2>
+    <ol class="plan">
+      <li><span class="who you">Arik</span><h3>Accounts and name</h3>
+        <p>Open a Cloudflare account; open a Google Cloud account with a card + billing alert; pick the product/domain name. Vercel stays optional (Hobby plan excludes commercial use — verified 2026-08-20).</p></li>
+      <li><span class="who">build</span><h3>License & attribution audit, per layer</h3>
+        <p>Before anything is public. ISIMIP output is generally CC BY 4.0, but the non-ISIMIP layers (landslide-arup, hail-vlh, GEBCO inside sealevel-2b, the tornado source) each carry their own terms, possibly including commercial-use restrictions. Adds <code>license</code>/<code>attribution</code> to the registry so every surface carries it mechanically.</p></li>
+      <li><span class="who">build</span><h3><code>publish_release.py</code> + first gated release</h3>
+        <p>Verify contracts → export <code>layers.json</code> + caveats → checksum → sync to R2 → changelog from QA sign-off commits. Doubles as the first off-site backup of the processed layers.</p></li>
+      <li><span class="who">build</span><h3><code>publish_map_assets.py</code> + the static site</h3>
+        <p>NetCDF → per-slice rasters + manifest, reusing <code>viz_common</code> conventions; then the MapLibre explorer, docs, and downloads page on Pages. The largest genuinely new build. The verified 10-site test delivery (<code>deliveries/storefront-test/</code>) seeds the site's demo dataset.</p></li>
+      <li><span class="who">build</span><h3>Extraction service on Cloud Run</h3>
+        <p>FastAPI over the existing delivery functions, Dockerfile, deploy. Mostly glue — the pipeline is already importable and deterministic.</p></li>
+      <li><span class="who">later</span><h3>On demand</h3>
+        <p>Keys beyond hand-issued — bulk and paid self-serve (Cloudflare Access, free ≤50 users) · payments · LLM reports — the service already produces the exact delivery directory stage 3 consumes, so reports bolt on as an async job with no re-architecture.</p></li>
+    </ol>
+  </section>
+
+  <section class="col">
+    <p class="eyebrow">Considered and rejected</p>
+    <h2>Ruled out, and why</h2>
+    <dl class="ruled">
+      <dt>Vercel serverless functions for extraction</dt>
+      <dd>Re-verified 2026-08-21: Python functions now allow 500 MB, and beta "Large Functions" 5 GB uncompressed — but the processed corpus is 3.1 GB and near-doubled in the past week, the scientific stack adds ~1 GB, and responses cap at 4.5 MB (today's 10-site bundle is already 2.9 MB; the paid lane's 1,000-pair bundles are orders of magnitude past it). Ruled out on trajectory now rather than impossibility.</dd>
+      <dt>Vercel Hobby as the site host</dt>
+      <dd>Terms, not tech: Hobby prohibits commercial use, explicitly including advertising a service or being paid for the work. Pro is $20/mo — the largest avoidable cost in this plan; Cloudflare Pages is the free, commercial-friendly twin.</dd>
+      <dt>S3 / GCS for the data plane</dt>
+      <dd>Egress fees (~$0.09–0.12/GB) tax exactly the highest-volume paths: bulk downloads and map traffic.</dd>
+      <dt>An always-on VM (~€4/mo Hetzner)</dt>
+      <dd>The respectable runner-up: always warm, one comprehensible machine — but a fixed bill plus a server to patch. The container is portable, so switching to this later is an afternoon.</dd>
+      <dt>Client-side-only extraction</dt>
+      <dd>$0 forever, but re-implements caveats/masks/schema in JavaScript beside the Python source of truth — the second-source-of-truth failure this repo guards against. Revisit only if traffic ever makes it matter.</dd>
+      <dt>A cloud VM for processing</dt>
+      <dd>Unnecessary: raw data and human-in-the-loop QA keep processing on the laptop. If that changes, rent a big spot instance per campaign and destroy it.</dd>
+    </dl>
+  </section>
+
+  <section class="col">
+    <p class="eyebrow">Still open</p>
+    <h2>Open items</h2>
+    <ul class="open">
+      <li><strong>Water Risk Index:</strong> out of scope for v1 — its outputs aren't on disk today and it's a different contract (monthly, 20 value types). Revisit after launch.</li>
+      <li><strong>Hosting fit with <code>ensembleintel.com</code>:</strong> the name question is closed — the domain (registered 2026-08-19, Porkbun) and a preview-walled Next.js app on Vercel already exist. The 2026-08-21 revisit — R2-hybrid vs Vercel-primary — is reviewed and undecided; it turns partly on what that app is meant to become.</li>
+      <li><strong>Paid self-serve lane:</strong> the lane and its 1,000-pair cap are decided (2026-08-21); its price and key ceremony are not. Hand-issued like bulk at launch. Two consequences of the cap need a design: scaling today's measured 10-site delivery, a 1,000-pair <code>values.csv</code> is ~90 MB and the run is minutes — so the paid lane wants async delivery, and the dashboard (built for ~10 sites) needs a strategy at that scale: per-site pages, an aggregate view, or CSV-only with map links.</li>
+      <li><strong>Traffic assumption:</strong> free-tier math assumed tens of runs/day; re-check if expectations are 100×.</li>
+      <li><strong>Key mechanics:</strong> hand-issued at launch, for bulk and the paid self-serve lane; formalize (Cloudflare Access or signed URLs) when customer count warrants.</li>
+    </ul>
+  </section>
+
+  <footer class="doc">
+    Pricing and terms verified 2026-08-20:
+    <a href="https://www.cloudflare.com/products/r2/">Cloudflare R2</a> (zero egress; free ≤10 GB) ·
+    <a href="https://egresscost.com/cloudflare/">R2 pricing detail</a> ·
+    Cloud Run always-free tier (2M requests, 180k vCPU-s, 360k GiB-s/mo — <a href="https://agentdeals.dev/gcp-free-tier-2026">GCP free-tier guide</a>) ·
+    <a href="https://vercel.com/docs/plans/hobby">Vercel Hobby plan</a> + <a href="https://vercel.com/docs/limits/fair-use-guidelines">fair-use guidelines</a> (non-commercial only) ·
+    <a href="https://vercel.com/docs/functions/limitations">Vercel Functions limits</a> (re-verified 2026-08-21).
+    Repo measurements taken 2026-08-20 on <span class="mono">main @ b50af28</span>.
+  </footer>
+</div>
+</body>
+</html>

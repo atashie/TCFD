@@ -1,0 +1,21 @@
+# TCFD repo dependencies — the scripts/ toolchain, installed in .venv (Python 3.9.6).
+# (Until 2026-08-21 the archived isimip-pipeline package's pyproject doubled as the
+# de-facto manifest; this file replaces that role.)
+numpy
+scipy
+pandas
+xarray
+netCDF4
+plotly
+PyYAML
+shapely
+rasterio
+py7zr          # scripts/measure_hail_nature2026.py — reads the 7z hail deposit archive
+pytest         # scripts/tests/ (run `pytest` from the repo root; see pytest.ini)
+
+# --- Water Risk Index download path — NOT installed in this venv ---
+# Required only by scripts/download_water_*.py via the vendored
+# scripts/utils/isimip_api/ client. Install before any water re-ingest:
+# httpx
+# rich
+# isimip-client

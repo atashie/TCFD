@@ -61,3 +61,10 @@ nul
 .pytest_cache/
 .coverage
 htmlcov/
+
+# A stray venv named `nc` has appeared in local tooling before
+nc/
+
+# docs/ top level never holds rendered HTML — a stale render twin of a .md shipped once.
+# (docs/storefront/ is deeper and unaffected.)
+docs/*.html
