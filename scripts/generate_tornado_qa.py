@@ -107,6 +107,16 @@ def build(window: str) -> Path | None:
         print(f"  no layers found for window={window!r}")
         return None
 
+    # CONUS crop. The fields are NaN outside the domain, and on a go.Heatmap every global
+    # NaN row still costs bytes in the base64 payload -- measured 153.7 MB/page uncropped
+    # float64 vs ~4 MB cropped float32 (the same dtype/crop rules as the landslide page).
+    with xr.open_dataset(layers[0][1]) as ds0:
+        fin0 = np.isfinite(ds0[METRICS[0][0]].values)
+        rows = np.where(fin0.any(axis=1))[0]
+        cols = np.where(fin0.any(axis=0))[0]
+        r0, r1 = max(rows.min() - 2, 0), min(rows.max() + 3, fin0.shape[0])
+        c0, c1 = max(cols.min() - 2, 0), min(cols.max() + 3, fin0.shape[1])
+
     scale_rate = vc.plotly_colorscale(vc.SEQUENTIAL_RED)
     scale_pct = vc.plotly_colorscale(vc.ORDINAL_RISK)
 
@@ -151,8 +161,8 @@ def build(window: str) -> Path | None:
 
     for r, (rung, f) in enumerate(layers, start=1):
         ds = xr.open_dataset(f)
-        lat = ds.lat.values
-        lon = ds.lon.values
+        lat = ds.lat.values[r0:r1]
+        lon = ds.lon.values[c0:c1]
         if not caveats:
             caveats = {k: ds.attrs.get(k, "") for k in
                        ("statistic", "statistic_rationale", "resolution_caveat",
@@ -160,10 +170,12 @@ def build(window: str) -> Path | None:
                         "unrated_handling", "output_contract")}
 
         for c, (key, label, units, kind) in enumerate(METRICS, start=1):
-            z = ds[key].values.astype(float)
+            # float32, not round: plotly>=6 serialises numpy as base64 typed arrays, so
+            # rounding changes the payload by exactly zero and dtype is the whole term.
+            z = ds[key].values[r0:r1, c0:c1].astype(np.float32)
             fig.add_trace(
                 go.Heatmap(
-                    z=np.round(z, 3), x=lon, y=lat,
+                    z=z, x=lon, y=lat,
                     colorscale=scale_pct if kind == "pct" else scale_rate,
                     zmin=1 if kind == "pct" else 0,
                     zmax=100 if kind == "pct" else caps[key],
