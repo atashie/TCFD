@@ -89,7 +89,10 @@ def layer_dirs(window: str):
     out = []
     for rung in RUNGS:
         d = PROCESSED / f"tornado-spc_{rung}_{window}"
-        f = d / f"tornado-{rung}_historical_processed.nc"
+        # Scenario token is `observed` (observational-historical-v1 contract), renamed from
+        # `historical` on 2026-08-18 minutes after this page was last rendered -- the stale
+        # token left this renderer silently finding nothing (caught at QA review 2026-08-20).
+        f = d / f"tornado-{rung}_observed_processed.nc"
         if f.exists():
             out.append((rung, f))
     return out
