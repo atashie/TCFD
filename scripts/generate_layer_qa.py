@@ -1,7 +1,7 @@
 """QA/QC report for a processed TCFD layer, read from the files themselves.
 
-WHY THIS EXISTS. The pipeline's documented QA command, `isimip-pipeline report`, predates
-OUTPUT-SPEC.md: it derives a variable name from the filename and calls `ds[that_name]`, so on
+WHY THIS EXISTS. The old CLI's QA command, `isimip-pipeline report` (package archived from
+HEAD 2026-08-21), predated OUTPUT-SPEC.md: it derives a variable name from the filename and calls `ds[that_name]`, so on
 a contract file -- which carries `median`, `lower_ci`, ... and no variable of its own name --
 it raises `KeyError: 'thawfrac_ssp126'`. Verified 2026-08-14; it fails the same way on every
 layer built to the current contract. (`generate_qa_report.py`, hardcoded for the retired

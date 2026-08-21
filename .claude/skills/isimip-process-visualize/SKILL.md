@@ -6,23 +6,22 @@ description: Process annualized ISIMIP NetCDF into the TCFD value-class format, 
 # Process & Visualize (TCFD/CDP product)
 
 **This skill is for the TCFD/CDP product only** — annualized decadal statistics. It is NOT
-for the Water Risk Index (20 value types, monthly, standalone scripts, no `isimip-pipeline`
-CLI). Never mix the two. See CLAUDE.md.
+for the Water Risk Index (20 value types, monthly, standalone scripts). Never mix the two.
+See CLAUDE.md.
 
 ## Recommended Workflow
 
 ```bash
-# 1. Search and download data
-isimip-pipeline run "groundwater runoff" --name gw-runoff --keep-raw
+# 1. Search and download data — /isimip-search-download owns this step
+#    (per-hazard scripts/download_*.py: deterministic URLs, sha512 sidecars, resumable)
 
-# 2. Review QA report in browser
-#    Open: ./data/processed/ outputs
+# 2. Process with a dedicated scripts/process_*.py, then verify the contract
+python scripts/test_shared_baseline.py data/processed/{layer_dir}
 
 # 3. Generate visualization maps
 python scripts/generate_maps.py {variable} {processed_dir} {output_dir}
 
-# 4. After verifying processed data is correct, delete raw files
-isimip-pipeline cleanup ./data/raw
+# 4. Only after the user has reviewed the maps: delete raw files (keep the sidecars)
 ```
 
 ## Data Processing Parameters
@@ -99,9 +98,10 @@ A one-off renderer is exactly where this slips: `generate_maps.py` already write
 folder (`reports/landslide-qa/`, `reports/tornado-qa/`) and both had to be moved on 2026-08-19.
 **Set `OUT_DIR` to `reports/maps/{hazard}` when you create the script, not after.**
 
-**CLI workflow**: Always use `isimip-pipeline run` for downloading data. It handles
-multi-scenario downloads into a single output directory. Avoid manual `search` + `download`
-workflows that may fragment scenarios into separate folders.
+**Download workflow**: downloads belong to `/isimip-search-download` — a per-hazard
+`scripts/download_*.py` writing every scenario into a single `data/raw/{layer_id}/`
+directory. Keep all of a layer's scenarios in one folder; fragmenting them into separate
+folders has broken processing before.
 
 ## Non-negotiables
 
@@ -430,8 +430,8 @@ class so the next layer fails loudly.
 
 ## Only then clean up raw
 
-`isimip-pipeline cleanup ./data/raw` — never before the user has reviewed the maps, and
-never before every input's `source_url` and checksum are recorded.
+Delete `data/raw/{layer_id}` **only after** the user has reviewed the maps, and
+never before every input's `source_url` and checksum are recorded (the sidecars stay).
 
 ## The output contract
 
@@ -498,9 +498,12 @@ agreement and dilutes the Sen zero-share. On `let` the two views read 3.0%/97.0%
 ## Tooling status
 
 `utils/contact_sheet.py`, `utils/trend_significance.py`, `utils/finalize.py` and
-`utils/layer_publish.py` exist only on `origin/main` and are S3-coupled. The *lessons*
-above apply now; the *tooling* is pending port. Do not reference these modules until they
-land locally. (`trend_significance.py` is superseded by the dual-slope contract.)
+`utils/layer_publish.py` exist only on the orphaned `backup/origin-main-pre-force` branch
+(`main` was force-pushed past them — see WORKFLOW-ISSUES.md, `git merge-base` rule) and are
+S3-coupled. The *lessons* above apply now; the tooling was never ported.
+`scripts/render_contact_sheet.py` covers the contact-sheet role, and
+`trend_significance.py` is superseded by the dual-slope contract. Do not reference the
+other two until someone ports them deliberately.
 
 ---
 

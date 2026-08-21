@@ -785,7 +785,7 @@ tropical-cyclone product sits in `InputData/climate/tropical_cyclones/`, outside
 # Product 2 — Water Risk Index
 
 Monthly ISIMIP data for 6 water variables → per-month ensemble means plus annual quantile
-breakpoints. **Standalone scripts only — not the `isimip-pipeline` CLI**, and none of the
+breakpoints. **Standalone scripts only** (the CLI package was archived from HEAD 2026-08-21), and none of the
 TCFD contract applies: no trends, no percentile scoring, no kernel smoothing.
 
 - **Output**: `C:\Cai_data\WaterIndex\waterIndexUnderlyingData_{var}_ssp.nc` — dims

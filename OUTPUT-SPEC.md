@@ -2,7 +2,7 @@
 
 The contract every hazard layer must satisfy, so layers are mutually comparable.
 Implemented by `scripts/utils/decadal_stats.py`; tested in
-`isimip-pipeline/tests/test_decadal_stats.py`.
+`scripts/tests/test_decadal_stats.py`.
 
 Supersedes the two divergent families that grew up in this codebase (see
 [Appendix: what changed](#appendix-what-changed)).

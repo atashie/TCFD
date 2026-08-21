@@ -516,9 +516,11 @@ anything:
 Raw goes to `data/raw/{layer_id}/`, where `layer_id` is `{hazard}_{variable}_{cadence}` and
 **must match the processed layer's name**.
 
-**Prefer the CLI**: `isimip-pipeline run` handles multi-scenario downloads into a single
-output directory. Avoid manual `search` + `download` workflows that fragment scenarios into
-separate folders.
+**Write a per-hazard download script** (`scripts/download_*.py` — house pattern:
+deterministic URL construction, sha512 sidecar verification, resumable fetch) and land every
+scenario in the same `data/raw/{layer_id}/` directory — fragmenting a layer's scenarios into
+separate folders has broken processing before. (The former `isimip-pipeline run` CLI was
+archived from HEAD 2026-08-21.)
 
 - Verify each download against its sidecar `size` and `sha512` before use.
 - Make the downloader resumable — skip a file already present and matching.

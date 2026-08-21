@@ -19,14 +19,17 @@ from typing import Dict, List, Tuple
 
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "isimip-pipeline" / "src"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from config_water_tws import (
     VARIABLE, SECTOR, SIMULATION_ROUND, TIMESTEP, SOCIAL_FORCING,
     IMPACT_MODELS, GCMS, SCENARIOS, DOWNLOAD_BASE_DIR, get_download_subdir,
 )
-from isimip_pipeline.search.isimip_query import ISIMIPQuery, SearchFilters, DatasetInfo
-from isimip_pipeline.download.downloader import Downloader
+# NOTE (2026-08-21): the isimip-pipeline package was archived from HEAD; its API client
+# is vendored at scripts/utils/isimip_api/ (needs httpx, rich, isimip-client -- not in the
+# 3.9 venv; install them before running this script).
+from utils.isimip_api.isimip_query import ISIMIPQuery, SearchFilters, DatasetInfo
+from utils.isimip_api.downloader import Downloader
 
 
 def log(msg: str):

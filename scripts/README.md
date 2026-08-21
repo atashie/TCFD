@@ -412,8 +412,8 @@ python scripts/test_shared_baseline.py data/processed/{layer_dir}
 
 ## Dependencies
 
-Same as the `isimip-pipeline` package: xarray, plotly, numpy, pandas, pyyaml.
-Install with `pip install -e isimip-pipeline/`.
+Core: numpy, scipy, pandas, xarray, netCDF4, plotly, pyyaml — installed in the repo venv
+(`.venv`, Python 3.9).
 
 **Not present on this machine, and the report tooling is built around their absence**: no
 pandoc, weasyprint, wkhtmltopdf, kaleido, node or headless Chrome. Report figures are

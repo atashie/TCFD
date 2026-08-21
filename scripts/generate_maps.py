@@ -65,7 +65,8 @@ SCENARIO_LABELS = SSP_SCENARIO_LABELS
 
 ANOMALY_SIGMA = 6  # Flag values > 6σ from 2020s mean
 
-# Value class mapping for pipeline output format (from isimip-pipeline/processing/output.py)
+# Value class mapping for the LEGACY value_class output format (from the archived
+# isimip-pipeline package, processing/output.py; package removed from HEAD 2026-08-21)
 # Maps value_class indices to generate_maps.py variable names
 VALUE_CLASS_MAP = {
     0: "median",        # smoothed_median in pipeline

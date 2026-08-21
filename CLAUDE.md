@@ -24,7 +24,7 @@ Processes ISIMIP data into annualized decadal statistics for physical climate ri
 - **A caveat attribute is promoted on being NON-EMPTY, not on saying anything — so never write a negative one.** `LAYER_ATTRS_EXPORTED` decides whether a caveat *can* be delivered; `generate_delivery_caveats.layer_caveats()` decides whether it *will* be, and its test is `if note and note.lower() != "nan"`. Writing `saturation_caveat: "none — 0.69% at the ceiling"` therefore publishes a **must_disclose caveat whose body reads "none"** into both reports — the same defect `load_registry()` already refuses for a blank `relative_baseline_note`. Set the attribute only where it applies (`heatwave-3b` carries `saturation_caveat`; `cropfailure-3b` carries none of the three) and park the negative measurement under a name that is **not** on the allowlist — the threshold rungs use `saturation_measured` / `sparsity_measured`, auditable in the file and invisible to a filing. When adding any caveat, read the **promotion condition**, not just the allowlist. (Added 2026-08-16.)
 - **State the MASK with every share-of-cells statistic.** A percentage whose denominator is unnamed is not a measurement, and two masks that both call themselves "the ISIMIP3b landseamask" differ by 29%. Measured 2026-08-16: `FD` reads 30.25% of observations pinned at the calendar ceiling on the full 92,889-cell mask and **2.01%** on `landseamask_no-ant.nc`, because Antarctica — 27,092 cells that no asset occupies — carries 98.85% of that censoring. The mask is a framing decision with the same weight as the statistic branch: it decided which end of this ladder was censored, and an early report of that result was wrong in exactly that way. Also: a masked array's `.data` still holds `_FillValue`, so `np.asarray(mask) > 0.5` marked all 259,200 cells as land; fill through `.filled(np.nan)` before any comparison.
 - **Hazard coverage is declared, positively and negatively.** `config/hazard_taxonomy.yaml` names the physical hazards a disclosure is expected to address and records which are covered — read it rather than restating a count here, which goes stale the moment a layer ships. A report that lists what it assessed and stops reads as though the rest was found immaterial, so a "hazards not assessed" section is mandatory in every report. **The family list is OURS, not a standard's** — only the acute/chronic split is standards-derived — so reports name hazards covered and not covered and **never quote a fraction**, which would be a ratio against a denominator we chose. The file splits `customer_note` (rendered) from `materiality_note` / `blocker` / `isimip_candidate` (internal — they carry repo paths, dataset defects and the word UNVERIFIED). Do not swap them. Shared chart vocabulary (validated palette, scenario→forcing-tier colour mapping, symmetric-limit helper) lives in `scripts/utils/viz_common.py`; `generate_maps.py` stays the tool for **gridded** layers and the two are deliberately not merged — opposite payload profiles. `scripts/generate_customer_delivery.py` + `config/asset_catalog.yaml` (asset type → **0/1 hazard-family score weights** — since 2026-08-20 every delivery carries the full standard set of signed deliverable layers, and the catalog weights only the Climate Score; weights are set with the user in a walk-through, never pre-assigned) + `config/layer_registry.yaml` (layer → disk location and which slope to read). Output is a normalized star schema in gitignored `deliveries/{customer}/{date}/`; the Looker 28-column `Export-Key.csv` contract is **retired** (user decision 2026-08-12). Planning is the default and extraction needs `--run`, because the resolved standard set and score weights must be shown to the user before any run. An asset type absent from the catalog is an **error, never a default** — and so is one whose weights walk-through has not happened.
-- **Tooling**: `isimip-pipeline` CLI + `scripts/process_*.py`
+- **Tooling**: per-layer `scripts/process_*.py` + `scripts/utils/` (shared statistics, extraction, delivery, viz)
 - **Skills**: `/isimip-search-download`, `/isimip-process-visualize`, `/isimip-extract-aggregate`. **Invoke the skill before improvising.** Any question of the form "what data exists for X / what could we process / is X available" is `/isimip-search-download` — load it *first*. It carries the enumeration mechanics (serial harvest, `.nc4?` matching, `DerivedOutputData/`) and coverage facts that this file does not, and it is **authoritative over this file** where they disagree. Hand-rolled `curl` sweeps that skip it have re-derived documented findings and drawn absence conclusions from rate-limited empty listings. **Start from the skill's publication map, not from a variable name** — derived publications are named after first authors and identified only by their files, and entering a path we already know the name of is retrieval, not a search. That distinction hid the CaMa-Flood inundation suite for three weeks behind a path we had already walked (GUARDRAILS §13).
 - **Visualization**: `scripts/generate_maps.py` — six tabs (`Median | Percentile | Trend | Confidence | Anomaly | Members`); diverging slope/change panels are zero-centred on the 95th percentile of |value| and auto-reverse to red=worse when a file sets `percentile_direction: higher_is_worse`. **Every QA/QC map goes in `reports/maps/{hazard}/`**, whatever renders it — `generate_maps.py` covers decadal layers, and an `observational-historical-v1` layer needs its own narrow renderer because `generate_maps.py`, `generate_layer_qa.py` and `test_shared_baseline.py` all key on `decade`. Conventions, the renderer roster and the browser-payload limits live in the `/isimip-process-visualize` skill — read it before changing a dashboard or writing a new renderer. On a raster `go.Heatmap` the payload term is **dtype, not decimal places**: plotly encodes numpy arrays as base64, so rounding does nothing and `float32` halves the page.
 - **Key concepts**: Shared 2020s baseline, adaptive windowing, pooled (year × member) decadal statistics, dual OLS + Theil-Sen slopes on an expanding window, percentile-of-score ranking
@@ -42,7 +42,7 @@ Processes ISIMIP data into annualized decadal statistics for physical climate ri
 Processes monthly ISIMIP data for 6 water variables into per-month ensemble means plus annual quantile breakpoints, feeding a dedicated Water Risk Index product.
 
 - **Purpose**: Water risk scoring (total water storage, discharge, runoff, evapotranspiration, soil moisture, precipitation)
-- **Tooling**: Standalone scripts only (NOT the `isimip-pipeline` CLI)
+- **Tooling**: Standalone scripts only
 - **None of the TCFD contract applies here** — no trends, no percentile scoring, no kernel smoothing, no shared baseline. Never carry a decision across the two products.
 - **Per-variable attributes** — output path and dims, the 20 value types, the normalization rule, aggregation and units per variable — are in **[DATASET-ATTRIBUTES.md](DATASET-ATTRIBUTES.md)**, with `config_water_variables.py` authoritative for `unit_conversion_factor`.
 - **QA/QC**: `validate_water_tws.py` (quantile ordering, annual mean consistency, seasonal sanity, cross-scenario checks); `compare_water_index.py` (trend-focused RCP vs SSP HTML comparison with Theil-Sen slope maps and spatial Spearman R²)
@@ -51,12 +51,9 @@ Processes monthly ISIMIP data for 6 water variables into per-month ensemble mean
 
 ```
 TCFD/
-├── isimip-pipeline/          # Python package (CLI) — TCFD/CDP workflow
-│   ├── src/isimip_pipeline/  # cli, search, download, processing, visualization
-│   └── tests/                # 299 tests
-│
 ├── scripts/                  # Standalone scripts — both workflows
-│   ├── utils/                # Shared utilities (land_mask, water_index_compare)
+│   ├── utils/                # Shared utilities (decadal_stats, delivery, land_mask, isimip_api, …)
+│   ├── tests/                # Contract tests (test_decadal_stats.py)
 │   ├── process_csoil_soilcarbon.py  # TCFD: reference processor (OUTPUT-SPEC contract)
 │   ├── generate_maps.py      # TCFD: interactive Plotly maps
 │   ├── config_water_*.py     # Water: variable configuration
@@ -70,19 +67,6 @@ TCFD/
 ├── data/                     # Raw + processed data (gitignored)
 ├── reports/                  # Generated reports (gitignored)
 └── _deprecated/              # Archived legacy R code
-```
-
-## CLI Quick Reference (TCFD/CDP only)
-
-```bash
-isimip-pipeline search         # Search ISIMIP repository
-isimip-pipeline download       # Batch download
-isimip-pipeline process        # Process raw data
-isimip-pipeline report         # Generate QA report
-isimip-pipeline run            # Complete pipeline
-isimip-pipeline find           # Search local processed datasets
-isimip-pipeline catalog        # Manage ISIMIP catalog
-isimip-pipeline cleanup        # Delete raw data after verification
 ```
 
 ## Skills

@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import httpx
 from rich.progress import Progress, TaskID
 
-from isimip_pipeline.search.isimip_query import DatasetInfo
+from .isimip_query import DatasetInfo
 
 # Default temp directory base for downloads
 DEFAULT_TEMP_BASE = Path.home() / "Downloads"

@@ -11,13 +11,11 @@ They must not be mixed — see [CLAUDE.md](CLAUDE.md).
    [OUTPUT-SPEC.md](OUTPUT-SPEC.md), then extracted per customer site into a CSV star schema,
    a QA dashboard, and two client-facing reports.
 2. **Water Risk Index** — monthly processing of six water variables into 20 value types.
-   Standalone scripts only; it does **not** use the `isimip-pipeline` CLI.
+   Standalone scripts only.
 
-And two **layers of tooling**:
-
-- **Python pipeline** (`isimip-pipeline/`) — CLI for searching, downloading and processing.
-- **Standalone scripts** (`scripts/`) — per-layer processors, map generation, and the whole
-  customer-delivery workflow.
+All tooling lives in **`scripts/`** — per-layer processors, map generation, and the whole
+customer-delivery workflow. (The former `isimip-pipeline` CLI package was archived from
+HEAD on 2026-08-21; recover it via git history if ever needed.)
 
 ## Customer delivery
 
@@ -47,28 +45,18 @@ is [ASSET-CATALOG.md](ASSET-CATALOG.md) for stages 1–2 and
 
 ## Quick Start
 
-### Installation
-
 ```bash
-# Install the pipeline package
-cd isimip-pipeline
-pip install -e .
+# Repo venv (Python 3.9) already carries the scientific stack
+source .venv/bin/activate
 
-# Configure (optional - create config file)
-cp config.example.yaml ~/.isimip-pipeline/config.yaml
-```
+# Process a layer (per-layer processors are indexed in scripts/README.md)
+python scripts/process_csoil_soilcarbon.py
 
-### Basic Usage
-
-```bash
-# Run complete pipeline
-isimip-pipeline run "groundwater runoff" --name gw-runoff --keep-raw
+# Verify it against the output contract
+python scripts/test_shared_baseline.py data/processed/soilcarbon_csoil_annual
 
 # Generate visualization maps
-python scripts/generate_maps.py
-
-# Clean up raw data after verification
-isimip-pipeline cleanup ./data/raw
+python scripts/generate_maps.py {variable} {processed_dir} {output_dir}
 ```
 
 ## Project Structure
@@ -77,11 +65,6 @@ isimip-pipeline cleanup ./data/raw
 TCFD/
 ├── README.md                 # This file
 ├── CLAUDE.md                 # Development guide (for Claude Code)
-│
-├── isimip-pipeline/          # Python package
-│   ├── src/isimip_pipeline/  # Source code
-│   ├── tests/                # Test suite (299 tests, 100% passing)
-│   └── docs/                 # Documentation
 │
 ├── scripts/                  # Standalone scripts — both products
 │   ├── process_*.py          # Per-layer processors (one per shipped layer)
@@ -110,19 +93,6 @@ TCFD/
 └── _deprecated/              # Archived legacy code
 ```
 
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `isimip-pipeline search` | Search ISIMIP repository |
-| `isimip-pipeline download` | Download datasets |
-| `isimip-pipeline process` | Process raw data |
-| `isimip-pipeline report` | Generate QA report |
-| `isimip-pipeline run` | Complete pipeline |
-| `isimip-pipeline cleanup` | Delete raw data after verification |
-| `isimip-pipeline find` | Search local datasets |
-| `isimip-pipeline catalog` | Manage ISIMIP catalog |
-
 ## Data Sources
 
 This project uses data from ISIMIP (Inter-Sectoral Impact Model Intercomparison Project):
@@ -142,7 +112,6 @@ This project uses data from ISIMIP (Inter-Sectoral Impact Model Intercomparison 
 | [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) | Incident log — what went wrong and what it cost |
 | [ASSET-CATALOG.md](ASSET-CATALOG.md) | Customer delivery, stages 1–2 |
 | [docs/reporting/](docs/reporting/README.md) | Customer delivery, stages 3–4 |
-| [Pipeline README](isimip-pipeline/README.md) | CLI package documentation |
 | [Scripts README](scripts/README.md) | Standalone scripts |
 
 ## License
