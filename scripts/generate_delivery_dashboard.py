@@ -182,9 +182,8 @@ def render(delivery: Path, payload: dict, manifest: dict, warnings: list) -> Pat
     if unreviewed:
         banner = (
             '<div class="banner">'
-            f'<strong>QA review not confirmed for {esc(", ".join(unreviewed))}.</strong> '
-            'Passing the output contract means a file is shaped right, not that its input '
-            'is about what its name says. Treat these numbers as provisional.'
+            f'<strong>Not yet quality-reviewed: {esc(", ".join(unreviewed))}.</strong> '
+            'Treat these numbers as provisional.'
             '</div>'
         )
     # Build warnings are OPERATOR-facing and are printed to the terminal at build time;
@@ -299,7 +298,7 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
   <div><label for="f-asset">Asset type</label><select id="f-asset"></select></div>
   <div><label for="f-decade">Decade</label><select id="f-decade"></select></div>
   <div style="color:var(--text-muted);font-size:12px;max-width:330px">
-    Scopes every view. Time series shows all decades; summaries show all hazards.
+    These filters apply to every panel, except where a panel says otherwise.
   </div>
 </div>
 
@@ -317,12 +316,13 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
     <div id="map" style="height:520px"></div>
   </div>
 
-  <div class="card"><h2>Mean risk percentile by hazard</h2>
-    <div class="note">All hazards, ignoring the hazard filter. Selected decade and tier.</div>
+  <div class="card"><h2>Average risk percentile by hazard</h2>
+    <div class="note">Average across all sites for the selected decade and pathway.
+        Green = low risk, red = high. Shows every hazard, whatever the hazard filter.</div>
     <div id="bar-hazard" style="height:300px"></div></div>
 
-  <div class="card"><h2>Mean risk percentile by asset class</h2>
-    <div class="note">Averaged over each asset's own hazards.</div>
+  <div class="card"><h2>Average risk percentile by asset type</h2>
+    <div class="note">Average across each asset type's relevant hazards.</div>
     <div id="bar-asset" style="height:300px"></div></div>
 
   <div class="card"><h2>Portfolio risk distribution</h2>
@@ -340,14 +340,9 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
 
   <div class="card full">
     <h2>Time series by location</h2>
-    <div class="note">One location at a time. The <strong>Climate Score</strong> panel
-        comes first, then one panel per hazard — the Score is the mean of those hazard
-        percentiles, so they read together. The toggle switches the hazard panels only;
-        the Score is a 1–100 score by construction.
-        <strong>All decades and all scenarios are always shown</strong> — neither the
-        decade nor the forcing-tier filter applies here, because seeing the full spread is
-        the point of the chart. Hidden by default — this grid draws one panel per layer
-        and is heavy; toggle it on when you want it.</div>
+    <div class="note">One location at a time: one small chart per hazard, plus the
+        Climate Score. Lines are emissions pathways (low / medium / high). All decades
+        are always shown. Hidden by default — this section draws 30+ charts.</div>
     <div style="margin-bottom:10px">
       <button id="series-show" class="showbtn" aria-pressed="false">Show plots</button>
       <label for="f-loc" style="font-size:11px;text-transform:uppercase;
@@ -453,6 +448,11 @@ function isDark() {
   return matchMedia("(prefers-color-scheme: dark)").matches;
 }
 const riskScale = () => isDark() ? SEQ_RISK_DARK : SEQ_RISK;
+// Percentile ramp: green -> yellow -> orange -> red, continuous over 1-100 (user call,
+// 2026-08-21). Used wherever a raw risk PERCENTILE is colour-coded (percentile map view
+// and the percentile bar charts); the Climate Score map keeps its blue-white-red ramp.
+const PCT_RAMP = [[0, "#1a9850"], [0.25, "#91cf60"], [0.5, "#fee08b"],
+                  [0.75, "#f46d43"], [1, "#d73027"]];
 const divScale  = () => isDark() ? DIV_DARK : DIV;
 const ordScale  = () => isDark() ? ORD_DARK : ORD;
 const tierColor = t => (isDark() ? TIER_COLOR_DARK : TIER_COLOR)[t]
@@ -598,7 +598,8 @@ function initControls() {
     b.textContent = state.seriesVisible ? "Hide plots" : "Show plots";
     renderSeries();
   };
-  $("f-search").oninput  = e => { state.search = e.target.value.toLowerCase(); renderTable(); };
+  $("f-search").oninput  = e => { state.search = e.target.value.toLowerCase();
+                                  updateFilterOptions(-1); renderTable(); };
 
   buildToggle("metric-toggle",
     [["climate_score","Climate Score"],["value","Value"],["percentile","Percentile"],
@@ -701,24 +702,23 @@ function renderMap() {
     // Red always means WORSE. On a higher_is_better layer (stored carbon, productivity)
     // an increase is an improvement, so the scale reverses.
     rev = lay.direction === "higher_is_better";
-    note = `Diverging scale centred on zero, ±${fmt(L)} (${rule})` +
-           (clamped ? `, ${clamped} site(s) clamped` : "") +
-           ` · ${lay.slope_units || "per decade"} · red = worsening` +
-           (rev ? " (scale reversed: this layer is higher_is_better)" : "") +
-           ` · recommended slope for this layer: ${lay.recommended}`;
+    note = `Trend per decade. Red = worsening, blue = improving. Colour scale capped at ` +
+           `±${fmt(L)} so a few extreme sites don't wash out the rest` +
+           (clamped ? ` (${clamped} site(s) at the cap)` : "") + ".";
   } else if (state.metric === "percentile") {
-    cs = riskScale(); cmin = 1; cmax = 100;
-    note = "Percentile 1–100 against the shared 2020s baseline. Already oriented for " +
-           "risk — 100 is worst on every layer, including higher_is_better ones. Darker = worse.";
+    cs = PCT_RAMP; cmin = 1; cmax = 100;
+    note = "Risk percentile: how this site compares with the rest of the world on this " +
+           "hazard, from 1 (lowest risk) to 100 (highest). Green = low, red = high.";
   } else {
     cs = SEQ_VALUE; cmin = null; cmax = null;
-    note = `${lay.measure} [${lay.units || "—"}] · statistic: ${lay.statistic} · darker = larger`;
+    note = `${lay.measure} [${lay.units || "—"}] · darker = larger`;
   }
 
   const nonRobust = pts.filter(r => r.ag === false).length;
   if (isSlope && nonRobust)
-    note += ` · ${nonRobust}/${pts.length} site(s) have non-robust trends (slopes disagree)`;
-  $("map-note").textContent = note + (lay.note ? " — " + lay.note : "");
+    note += ` ${nonRobust} of ${pts.length} sites: the two trend methods disagree — ` +
+            `treat those trends as uncertain.`;
+  $("map-note").textContent = note;
 
   const trace = {
     type: "scattergeo", mode: "markers",
@@ -765,14 +765,13 @@ function renderScoreMap() {
   }));
 
   $("map-note").textContent =
-    `Mean risk percentile across a location's weighted hazard families, ${state.decade}s` +
-    (state.tier === "__all" ? ", averaged over all forcing tiers" :
-       ` under ${TIER_LABELS[state.tier].toLowerCase()}`) +
-    ". Higher = higher aggregate physical risk: blue = low, white = middling, red = high. " +
-    "The hazard filter does not apply to this metric. " +
-    "Families absent at a site (off-footprint, or publishing no scenario in the tier) " +
-    "renormalize out — the hover shows families present of families weighted. " +
-    "Keyed on forcing tier, not a native scenario code — no ISIMIP code spans both rounds.";
+    `Overall climate risk per location: the average risk percentile across the hazards ` +
+    `relevant to its asset type, ${state.decade}s` +
+    (state.tier === "__all" ? ", all pathways" :
+       `, ${TIER_LABELS[state.tier].toLowerCase()} pathway`) +
+    ". Blue = low, white = middle, red = high. Hazards with no data at a site are left " +
+    "out of its average — hover shows how many were included. The hazard filter does " +
+    "not apply here.";
 
   const trace = {
     type: "scattergeo", mode: "markers",
@@ -833,13 +832,11 @@ function renderTiles() {
 
   const gaps = tierGaps();
   $("tiles-note").textContent =
-    `Mean of risk percentile over each asset type's weighted hazard families present at ` +
-    `the site (families absent at a site renormalize out and are disclosed per row). ` +
-    `Scoped by the asset-type, forcing-tier and decade filters; the hazard filter does ` +
-    `not apply. The change tile compares decades on assets with an identical family set ` +
-    `in both.` +
-    (gaps.length ? ` Note: ${gaps.join("; ")} — those families drop out of the affected ` +
-      `tier for every asset.` : "");
+    `The Climate Score is the average risk percentile (1 = lowest risk, 100 = highest) ` +
+    `across the hazards relevant to each asset type. Hazards with no data at a site are ` +
+    `left out of its average. Uses the pathway, asset-type and decade filters.` +
+    (gaps.length ? ` Note: some hazards have no data for some pathways (${gaps.join("; ")}).`
+                 : "");
   $("tiles").innerHTML = [
     tile("Portfolio Climate Score", score === null ? "—" : score.toFixed(1),
          `${state.decade}s · ` + (state.tier === "__all" ? "all tiers"
@@ -847,13 +844,13 @@ function renderTiles() {
          ` · ${new Set(cur.map(r => r.a)).size} assets`),
     tile("Change vs " + baseDec + "s", delta === null ? "—" :
          (delta >= 0 ? "+" : "") + delta.toFixed(1),
-         delta === null ? "insufficient common coverage"
-            : `${deltaPanel.size} assets on a common basis · ` +
+         delta === null ? "not enough overlap to compare"
+            : `same ${deltaPanel.size} assets in both decades · ` +
               (delta > 0 ? "rising risk" : delta < 0 ? "falling risk" : "flat")),
     tile("Highest-risk location", worst ? worst[1].toFixed(1) : "—",
          worst ? locById[worst[0]].name : ""),
     tile("Coverage", nAssets + " assets",
-         nHaz + " hazard families (max present) · " + cur.length + " score rows"),
+         nHaz + " hazards (most included at any site) · " + cur.length + " score rows"),
   ].join("");
 }
 function tile(k, v, s) {
@@ -899,30 +896,19 @@ function renderScoreSeries() {
   // could infer, so say it outright rather than rendering empty axes.
   if (!panel.size) {
     Plotly.purge("score-series");
-    const perDecade = decades.map(d =>
-      `${d}s: ${balancedAssets(tiers, [d]).length}`).join(", ");
     $("score-note").textContent =
-      `No asset keeps an identical hazard-family set across all decades shown, so there ` +
-      `is no common basis to plot over time. Assets qualifying in individual decades — ` +
-      `${perDecade || "none"}. Averaging those would compare different family mixes ` +
-      `across time. Narrow the asset-type filter.` +
-      (gaps.length ? ` Structural gaps: ${gaps.join("; ")}.` : "");
+      `No group of assets keeps the same hazard coverage across all decades, so a ` +
+      `consistent line can't be drawn. Try narrowing the asset-type filter.`;
     $("score-series").innerHTML = "";
     return;
   }
 
   $("score-note").textContent =
-    `Portfolio mean over a BALANCED PANEL of ${panel.size} of ${candidates} asset(s) — ` +
-    `those whose hazard-family set is identical across every decade shown, within each ` +
-    `tier, so each line describes one portfolio over time. Family sets can still differ ` +
-    `BETWEEN tiers` +
-    (gaps.length ? ` (${gaps.join("; ")} — those families are absent from the affected ` +
-      `tier's line)` : "") +
-    `, so read cross-tier gaps with that in mind. Scoped by the asset-type filter only; ` +
-    `the forcing-tier and decade filters do not apply, because varying them is what this ` +
-    `chart shows.` +
-    (droppedDec.length ? ` ${droppedDec.map(d=>d+"s").join(", ")} omitted (no asset has ` +
-      `a stable family set there — ISIMIP3b layers have no 2010s panel).` : "");
+    `Portfolio average over time, one line per emissions pathway. Averages only the ` +
+    `${panel.size} of ${candidates} asset(s) whose hazard coverage stays the same across ` +
+    `these decades, so each line tracks one consistent set of assets.` +
+    (gaps.length ? ` Some hazards have no data for some pathways, so the pathway lines ` +
+      `cover slightly different hazard mixes.` : "");
 
   Plotly.react("score-series", traces, baseLayout({
     showlegend: true,
@@ -968,14 +954,10 @@ function renderHazardScoreSeries() {
 
   const missing = TIER_ORDER.filter(t => !tiers.includes(t));
   $("score-note").textContent =
-    `${lay.hazard} — portfolio mean risk percentile across ${locs.size} site(s) ` +
-    `carrying this hazard. Same 1–100 axis as the Climate Score, which is the mean of ` +
-    `these across an asset's hazards. Scoped by the asset-type filter only.` +
-    (missing.length ? ` No ${missing.join("/")}-tier line: this layer publishes no such ` +
-      `scenario (${lay.scenarios.join(", ")}).` : "") +
-    (lay.direction === "higher_is_better"
-      ? " This layer is higher_is_better — the percentile is already inverted, so a rising"
-      + " line still means rising risk." : "");
+    `${lay.hazard}: average risk percentile across ${locs.size} site(s), one line per ` +
+    `emissions pathway.` +
+    (missing.length ? ` No ${missing.join("/")} line — this hazard's data does not ` +
+      `cover that pathway.` : "");
 
   Plotly.react("score-series", traces, baseLayout({
     showlegend: true,
@@ -1017,7 +999,9 @@ function barTrace(pairs, hover) {
   return {
     type: "bar", orientation: "h",
     y: pairs.map(p => p[0]), x: pairs.map(p => p[1]),
-    marker: {color: tierColor('low')},  // one series -> one colour; never a ramp on nominal bars
+    // Bars encode a risk PERCENTILE, so they take the same green-to-red ramp as the
+    // percentile map (user call, 2026-08-21).
+    marker: {color: pairs.map(p => p[1]), colorscale: PCT_RAMP, cmin: 0, cmax: 100},
     text: pairs.map(p => p[1].toFixed(0)), textposition: "outside",
     customdata: pairs.map(p => p[2]),
     hovertemplate: hover + "<extra></extra>",
@@ -1058,9 +1042,8 @@ function renderBars() {
   let n = 0;
   for (const x of byType) { const b = band(x.p); if (b) { counts[b]++; n++; } }
   $("band-note").textContent =
-    `${n} asset-hazard-scenario combinations in the ${state.decade}s, binned from ` +
-    `percentile. Bands are a DISPLAY derivation — they are deliberately not stored in ` +
-    `values.csv, which carries the percentile they come from.`;
+    `${n} asset-hazard combinations in the ${state.decade}s, grouped into five risk ` +
+    `bands by their percentile.`;
   Plotly.react("bar-band", [{
     type: "bar", x: BANDS, y: BANDS.map(b => counts[b]),
     marker: {color: ordScale()},
@@ -1286,8 +1269,8 @@ function renderSeries() {
 // event was still dispatching, which is the likeliest culprit for the reported
 // filter-resets, and it re-created every dropdown on every keystroke besides.
 //
-// [label, getter, numeric, filterable]. "Agree" dropped 2026-08-21 (user call); the
-// slopes it summarised remain as OLS and Sen columns.
+// [label, getter, numeric, filterable]. "Agree" and "Status" dropped 2026-08-21 (user
+// calls); both remain in values.csv. Decade, Percentile and Members render as integers.
 const COLS = [
   ["Location", r => locById[r.loc].name, false, true],
   ["Hazard", r => DATA.layers[r.lay].hazard, false, true],
@@ -1301,20 +1284,49 @@ const COLS = [
   ["OLS", r => r.ols, true, false],
   ["Sen", r => r.sen, true, false],
   ["Members", r => r.nm, true, false],
-  ["Status", r => r.st, false, true],
 ];
+const INT_COLS = new Set(["Decade", "Percentile", "Members"]);
 
-function tableRows() {
+// Rows passing the search plus every column filter EXCEPT skipIdx (pass -1 for all).
+function rowsPassing(skipIdx) {
   let base = DATA.values;
   if (state.search) {
     base = base.filter(r => (locById[r.loc].name + " " + DATA.layers[r.lay].hazard + " " +
-        r.lay + " " + r.scn + " " + r.st).toLowerCase().includes(state.search));
+        r.lay + " " + r.scn).toLowerCase().includes(state.search));
   }
   return base.filter(r => COLS.every((c, i) => {
-    if (!c[3]) return true;
+    if (i === skipIdx || !c[3]) return true;
     const f = state.colFilters[i];
     return f === undefined || f === "__all" || String(c[1](r)) === f;
   }));
+}
+const tableRows = () => rowsPassing(-1);
+
+const optSort = (a, b) => {
+  const na = Number(a), nb = Number(b);
+  const an = isFinite(na), bn = isFinite(nb);
+  if (an && bn) return na - nb;
+  if (an !== bn) return an ? -1 : 1;
+  return a.localeCompare(b);
+};
+
+// CASCADING COLUMN FILTERS (user call, 2026-08-21): picking in one dropdown narrows the
+// OPTIONS of the others to values that still have rows (each list is computed ignoring
+// only its own filter, so a choice never deletes its own alternatives). The select being
+// changed is never rebuilt mid-event; a pick invalidated upstream resets to All.
+function updateFilterOptions(changedIdx) {
+  const t = $("table");
+  COLS.forEach((c, i) => {
+    if (!c[3] || i === changedIdx) return;
+    const sel = t.querySelector(`select[data-f="${i}"]`);
+    if (!sel) return;
+    const vals = [...new Set(rowsPassing(i).map(r => String(c[1](r))))].sort(optSort);
+    let cur = state.colFilters[i] ?? "__all";
+    if (cur !== "__all" && !vals.includes(cur)) { cur = "__all"; state.colFilters[i] = cur; }
+    sel.innerHTML = `<option value="__all">All</option>` +
+      vals.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+    sel.value = cur;
+  });
 }
 
 function initTable() {
@@ -1326,14 +1338,7 @@ function initTable() {
       // Options come from the FULL dataset, once. A static list can produce an honest
       // "0 rows" for an unusual combination, which beats options that churn under the
       // user's pointer.
-      const vals = [...new Set(DATA.values.map(r => String(c[1](r))))];
-      vals.sort((a, b) => {
-        const na = Number(a), nb = Number(b);
-        const an = isFinite(na), bn = isFinite(nb);
-        if (an && bn) return na - nb;
-        if (an !== bn) return an ? -1 : 1;
-        return a.localeCompare(b);
-      });
+      const vals = [...new Set(DATA.values.map(r => String(c[1](r))))].sort(optSort);
       return `<th><select data-f="${i}"><option value="__all">All</option>` +
         vals.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("") +
         `</select></th>`;
@@ -1350,7 +1355,9 @@ function initTable() {
   t.onchange = e => {
     const sel = e.target.closest("select[data-f]");
     if (!sel || !t.contains(sel)) return;
-    state.colFilters[+sel.dataset.f] = sel.value;
+    const i = +sel.dataset.f;
+    state.colFilters[i] = sel.value;
+    updateFilterOptions(i);
     renderTable();
   };
 }
@@ -1383,7 +1390,11 @@ function renderTable() {
     : "";
   t.tBodies[0].innerHTML = shown.map(r => "<tr>" + COLS.map(c => {
       const v = c[1](r);
-      const txt = c[2] ? (typeof v === "number" ? fmt(v) : (v ?? "—")) : (v ?? "—");
+      const txt = c[2]
+        ? (typeof v === "number"
+            ? (INT_COLS.has(c[0]) ? String(Math.round(v)) : fmt(v))
+            : (v ?? "—"))
+        : (v ?? "—");
       return `<td class="${c[2] ? "num" : ""}">${esc(txt)}</td>`;
     }).join("") + "</tr>").join("") + trunc;
 }
@@ -1396,10 +1407,9 @@ function renderAll() {
 initControls();
 renderAll();
 $("foot").textContent =
-  "Percentiles are delivered already oriented for risk (100 = worst) — higher_is_better " +
-  "layers were inverted at processing time and are NOT re-inverted here. Slopes are per " +
-  "decade as stored. Read the slope named in each layer's recommended_slope; disagreement " +
-  "between the two is the robustness signal, and there is no p-value under this contract.";
+  "Risk percentiles run 1–100, and 100 is always the highest risk. OLS and Sen are two " +
+  "ways of estimating a trend; where they disagree, treat the trend as uncertain. Full " +
+  "guidance on reading this delivery is in README.md, alongside the CSVs.";
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
 """
 

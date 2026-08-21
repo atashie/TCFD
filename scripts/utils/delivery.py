@@ -1695,6 +1695,30 @@ Ensemble composition can vary by scenario, so `layers.csv` reports
   single observed historical window (scenario `observed`) is filed under the 2020s label
   and reads as **current conditions**; its true observed window is in `layers.csv`
   (`temporal_window`). Projected layers simply omit their pre-2020 panels.
+
+## Reading the dashboard
+
+The page keeps its explanations short; the detail lives here.
+
+- **Percentile** means: how this site compares with the rest of the world on that hazard,
+  from 1 (lowest risk) to 100 (highest). Every layer is already oriented so 100 is worst.
+- **Pathway** (low / medium / high) is the emissions scenario tier. RCP and SSP scenario
+  families are grouped into these tiers because no single scenario code spans both model
+  generations; the two families are only approximately comparable.
+- **The Climate Score** is the average percentile across the hazard families relevant to
+  the asset type (0/1 weights per family, set per asset type). A family with no data at a
+  site is left out of that site's average, and the row's `n_hazards` /
+  `n_hazards_expected` disclose the count. Observed hazards (tornado, landslide, hail)
+  enter as the same value in every decade and pathway — they are measured history, not
+  projections — which damps how much the score moves between pathways.
+- **Comparisons over time** (the score-over-time chart, the change tile) only average
+  assets whose hazard coverage is identical in every decade compared, so a change in
+  coverage can never read as a change in risk.
+- **OLS and Sen** are two trend-estimation methods; each layer's `recommended_slope` in
+  `layers.csv` says which to read, and where the two disagree the trend is not robust.
+- **The Values table** on the dashboard answers to its own column filters and search
+  only, shows at most 800 rows at a time, and states any truncation. The CSVs carry
+  every row, including the `data_status` and `slopes_agree` columns the table omits.
 - `data_status`: `OK`; `OFF_LAYER_MASK` = the site is on modelled land but this layer does
   not cover it (e.g. no conifer stand present); `OUTSIDE_DOMAIN` = offshore or off-grid.
 
