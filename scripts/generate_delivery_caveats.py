@@ -96,7 +96,7 @@ def hazard_coverage(delivery: Delivery, taxonomy: dict) -> List[dict]:
             "HAZARD-COVERAGE",
             SEVERITY_MUST,
             "delivery",
-            "This assessment covers three hazard families, not all of them",
+            "This assessment covers a defined set of hazard families, not all of them",
             f"""
             The hazards assessed for this portfolio are: {', '.join(covered)}. Every other
             physical hazard was NOT assessed, and its absence from this report is not a
@@ -464,7 +464,16 @@ def score_caveats(delivery: Delivery, taxonomy: dict) -> List[dict]:
         return out
     s = delivery.climate_score
 
-    non_hazard = [l for l in delivery.layer_ids if l in (taxonomy.get("non_hazard_layers") or {})]
+    # Layers that actually contributed to any score row (v2: the `layers` column carries
+    # them). A non-hazard layer delivered via an override sits in no score family and so
+    # never reaches the score -- this caveat fires only if one somehow does.
+    scored_layers: set = set()
+    if "layers" in s.columns:
+        for cell in s["layers"].dropna():
+            scored_layers.update(x for x in str(cell).split(";") if x)
+
+    non_hazard = [l for l in delivery.layer_ids
+                  if l in (taxonomy.get("non_hazard_layers") or {}) and l in scored_layers]
     if non_hazard:
         out.append(
             _cav(
@@ -473,18 +482,46 @@ def score_caveats(delivery: Delivery, taxonomy: dict) -> List[dict]:
                 "delivery",
                 "The Climate Score averages a hazard-exposure axis with an asset-condition axis",
                 f"""
-                The Climate Score is the unweighted mean of the risk percentiles of an
-                asset's layers. For this portfolio that average includes
-                {', '.join(non_hazard)}, which measures the asset's own productivity rather
-                than a hazard acting on it. Its percentile is inverted at processing time so
-                that low productivity reads as high risk, which puts it on the same 1-100
-                axis -- but a productivity response and a cyclone exposure are different
-                kinds of quantity, and averaging them is a presentational choice, not a
-                measurement. Hazard counts elsewhere in this report exclude it; the Climate
-                Score does not.
+                The Climate Score aggregates risk percentiles by hazard family. For this
+                portfolio that aggregate includes {', '.join(non_hazard)}, which measures
+                the asset's own productivity rather than a hazard acting on it. Its
+                percentile is inverted at processing time so that low productivity reads
+                as high risk, which puts it on the same 1-100 axis -- but a productivity
+                response and a cyclone exposure are different kinds of quantity, and
+                averaging them is a presentational choice, not a measurement. Hazard
+                counts elsewhere in this report exclude it; the Climate Score does not.
                 """,
-                evidence="config/hazard_taxonomy.yaml non_hazard_layers; manifest.json climate_score",
+                evidence="config/hazard_taxonomy.yaml non_hazard_layers; climate_score.csv layers column",
                 affects=non_hazard,
+            )
+        )
+
+    # v2 (2026-08-20): observed families enter the score as constants across every decade
+    # and tier -- the user's decision, superseding the former observational exclusion. A
+    # reader comparing tier lines or decades will see contrast damped by exactly those
+    # constant terms, so the presence of any observed contribution is must-disclose.
+    obs_rows = int(s["scenarios"].astype(str).str.contains("observed").sum()) \
+        if "scenarios" in s.columns else 0
+    if obs_rows:
+        out.append(
+            _cav(
+                "SCORE-OBSERVED-CONSTANT",
+                SEVERITY_MUST,
+                "delivery",
+                "Observed hazards enter the Climate Score as constants across scenarios and decades",
+                f"""
+                {obs_rows} of {len(s)} Climate Score rows include at least one OBSERVED
+                hazard family (landslide, storm-convective). An observed layer summarises
+                a measured historical window and has no forcing pathway, so its value is
+                identical in every scenario tier and every decade of the score. The
+                consequence reverses a reading a reader will otherwise make: where tier
+                lines or decade trajectories look flat, part of that flatness is these
+                constant terms, in proportion to their weight share -- it is not evidence
+                that the projected hazards are scenario-insensitive. The per-family
+                contributions are auditable via the layers column of climate_score.csv
+                and score_config.json.
+                """,
+                evidence="score_config.json observed families; climate_score.csv scenarios column",
             )
         )
 
@@ -495,14 +532,15 @@ def score_caveats(delivery: Delivery, taxonomy: dict) -> List[dict]:
                 "SCORE-INCOMPLETE-ROWS",
                 SEVERITY_SHOULD,
                 "delivery",
-                "Some Climate Score rows average fewer layers than the asset carries",
+                "Some Climate Score rows average fewer hazard families than the asset type weights",
                 f"""
-                {incomplete} of {len(s)} Climate Score rows were computed over fewer layers
-                than the asset is mapped to, because a layer publishes no scenario in that
-                forcing tier or no value in that decade. Those rows are not comparable with
-                complete ones: an average over two layers and an average over four are
-                different quantities with the same name. The n_hazards and
-                n_hazards_expected columns in climate_score.csv distinguish them.
+                {incomplete} of {len(s)} Climate Score rows were computed over fewer
+                hazard families than the asset type weights, because a family is absent
+                at the site (off its layers' footprint) or none of its layers publishes
+                that forcing tier or decade. Those rows are not comparable with complete
+                ones: an average over two families and an average over ten are different
+                quantities with the same name. The n_hazards and n_hazards_expected
+                columns in climate_score.csv distinguish them.
                 """,
                 evidence=f"manifest.json climate_score.incomplete_rows = {incomplete}",
             )

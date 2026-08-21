@@ -252,8 +252,11 @@ def check_reports(delivery: Path, manifest: dict, values, assets, layers) -> Non
     taxonomy = yaml.safe_load((PROJECT_ROOT / "config" / "hazard_taxonomy.yaml").read_text())
     non_hazard = set(taxonomy.get("non_hazard_layers") or {})
     hazard_layers = [l for l in layers.index if l not in non_hazard]  # layers is indexed by layer_id
-    check(len(hazard_layers) < len(layers) or not non_hazard,
-          "no layer was excluded as a non-hazard, but the taxonomy declares some")
+    # v2 (2026-08-20): non-hazard layers (conifer-npp, csoil) sit outside the standard set,
+    # so a delivery legitimately carries none of them. The invariant is that any that ARE
+    # delivered (via override) never count among the hazard layers.
+    check(set(hazard_layers).isdisjoint(non_hazard),
+          "a taxonomy-declared non-hazard layer is counted among hazard layers")
 
     for path in (compliance, bespoke):
         if not path.exists():
@@ -654,33 +657,88 @@ def main(delivery: Path) -> int:
           "a row with a value is not marked OK")
 
     # 8. Climate Score recomputed independently ------------------------------------------
+    # v2 model (user determinations 2026-08-20): a THREE-stage family-weighted mean --
+    # codes within a layer, layers within their family, weight-1 families within the
+    # asset -- with observed families entering as constants in every tier x decade cell.
+    # Family definitions and weights come from the delivery's own score_config.json (the
+    # delivery is self-contained and stays checkable after the live catalog moves on);
+    # the tier map and the non-forcing set remain THIS FILE'S independent restatement.
     score_path = delivery / "climate_score.csv"
+    cfg_path = delivery / "score_config.json"
     if score_path.exists():
         scores = pd.read_csv(score_path)
-        asset_layers = {
-            r["asset_id"]: {x for x in str(r["layer_ids"]).split(";") if x}
-            for _, r in assets.iterrows()
-        }
-        vv = values[values["percentile"].notna()].copy()
-        # Observational scenarios have no forcing tier by design and are excluded from the
-        # Climate Score. Assert that separation rather than tolerating it: every remaining
-        # scenario must map, and no non-forcing scenario may appear in the score.
-        vv = vv[~vv["scenario"].isin(NON_FORCING)]
-        vv["tier"] = vv["scenario"].map(TIER)
-        check(vv["tier"].notna().all(),
-              "a scenario in values.csv has no forcing tier mapping")
+        check(cfg_path.exists(),
+              "climate_score.csv without score_config.json -- the score is unverifiable")
+    if score_path.exists() and cfg_path.exists():
+        cfg = json.loads(cfg_path.read_text())
+        families = cfg.get("families") or {}
+        asset_weights = cfg.get("asset_weights") or {}
+
+        # Config sanity before any arithmetic: weights are 0/1 over exactly the declared
+        # families; no layer sits in two families; and each family's declared observedness
+        # matches what values.csv actually delivered for its members.
+        fam_of: dict = {}
+        for fam, spec in families.items():
+            for lid in (spec.get("layers") or []):
+                check(lid not in fam_of,
+                      f"score_config: layer {lid} appears in two families "
+                      f"({fam_of.get(lid)}, {fam})")
+                fam_of[lid] = fam
+        for aid, w in asset_weights.items():
+            if w is None:
+                continue
+            check(set(w) == set(families),
+                  f"score_config: asset {aid} weights do not cover exactly the declared "
+                  f"families")
+            check(all(v in (0, 1) for v in w.values()),
+                  f"score_config: asset {aid} carries a non-0/1 weight")
+        vv_all = values[values["percentile"].notna()].copy()
+        for fam, spec in families.items():
+            fam_scen = set(
+                vv_all[vv_all["layer_id"].isin(spec.get("layers") or [])]["scenario"])
+            if not fam_scen:
+                continue
+            declared = bool(spec.get("observed"))
+            measured = fam_scen <= NON_FORCING
+            check(declared == measured,
+                  f"score_config: family {fam} declares observed={declared} but its "
+                  f"delivered scenarios are {sorted(fam_scen)}")
+
         check(not set(scores["scenario_tier"]) & NON_FORCING,
               "climate_score.csv contains a non-forcing scenario tier")
 
-        # Two-stage mean, written from the spec rather than imported: average scenario
-        # codes WITHIN a hazard, then average the hazards. A flat one-stage mean would
-        # double-weight any hazard contributing two codes to one tier.
-        stage1 = (vv.groupby(["asset_id", "layer_id", "tier", "decade"])["percentile"]
-                  .mean().reset_index())
-        stage2 = (stage1.groupby(["asset_id", "tier", "decade"])["percentile"]
-                  .agg(["mean", "count"]).reset_index())
-        expect = {(r["asset_id"], r["tier"], int(r["decade"])): (r["mean"], int(r["count"]))
-                  for _, r in stage2.iterrows()}
+        # Independent three-stage recompute, written from the spec rather than imported.
+        vv = vv_all.copy()
+        vv["family"] = vv["layer_id"].map(fam_of)
+        vv = vv[vv["family"].notna()]
+        keep = [(asset_weights.get(a) or {}).get(f, 0) == 1
+                for a, f in zip(vv["asset_id"], vv["family"])]
+        vv = vv[pd.Series(keep, index=vv.index)]
+        ob = vv[vv["scenario"].isin(NON_FORCING)]
+        fcv = vv[~vv["scenario"].isin(NON_FORCING)].copy()
+        fcv["tier"] = fcv["scenario"].map(TIER)
+        check(fcv["tier"].notna().all(),
+              "a scenario in values.csv has no forcing tier mapping")
+
+        obs_pct = (
+            ob.groupby(["asset_id", "family", "layer_id"])["percentile"].mean()
+              .groupby(level=[0, 1]).mean()
+        ) if len(ob) else pd.Series(dtype=float)
+
+        l1 = (fcv.groupby(["asset_id", "family", "layer_id", "tier", "decade"])
+                 ["percentile"].mean().reset_index())
+        f1 = (l1.groupby(["asset_id", "family", "tier", "decade"])["percentile"]
+                .mean().reset_index())
+        expect = {}
+        for (aid, tier, dec), grp in f1.groupby(["asset_id", "tier", "decade"]):
+            vals = list(grp["percentile"])
+            fams = set(grp["family"])
+            if len(obs_pct):
+                for (a2, fam), p in obs_pct.items():
+                    if a2 == aid:
+                        vals.append(float(p))
+                        fams.add(fam)
+            expect[(aid, tier, int(dec))] = (sum(vals) / len(vals), len(vals), fams)
 
         check(len(scores) == len(expect),
               f"climate_score.csv has {len(scores)} rows, independent recompute has "
@@ -691,7 +749,7 @@ def main(delivery: Path) -> int:
             if k not in expect:
                 failures.append(f"climate_score row {k} has no counterpart in values.csv")
                 continue
-            exp_mean, exp_n = expect[k]
+            exp_mean, exp_n, exp_fams = expect[k]
             if abs(float(r["climate_score"]) - exp_mean) > 0.005:
                 failures.append(
                     f"climate_score {k}: stored {r['climate_score']}, recomputed "
@@ -699,22 +757,28 @@ def main(delivery: Path) -> int:
             if int(r["n_hazards"]) != exp_n:
                 failures.append(
                     f"climate_score {k}: n_hazards {r['n_hazards']}, recomputed {exp_n}")
-            # An asset must never be scored on a hazard outside its catalog set.
             listed = {x for x in str(r["hazards"]).split(";") if x}
-            if not listed <= asset_layers.get(r["asset_id"], set()):
+            if listed != exp_fams:
                 failures.append(
-                    f"climate_score {k} names hazard(s) not in the asset's set: "
-                    f"{listed - asset_layers.get(r['asset_id'], set())}")
+                    f"climate_score {k}: families {sorted(listed)} != recomputed "
+                    f"{sorted(exp_fams)}")
+            w = asset_weights.get(r["asset_id"]) or {}
+            exp_weighted = sum(1 for v in w.values() if v == 1)
+            if int(r["n_hazards_expected"]) != exp_weighted:
+                failures.append(
+                    f"climate_score {k}: n_hazards_expected {r['n_hazards_expected']} "
+                    f"!= weighted family count {exp_weighted}")
         s = scores["climate_score"]
         check(s.between(1, 100).all(),
               f"climate_score outside [1,100]: min {s.min()}, max {s.max()}")
         check((scores["n_hazards"] >= 1).all(), "a climate_score row rests on 0 hazards")
 
-        # BASELINE INVARIANT. The shared 2020s panel is bit-identical across scenarios, so
-        # a given asset's baseline Climate Score MUST be the same in every tier where it
-        # has the same hazard set. A difference means composition changed, not risk --
-        # which is precisely the artifact that made a portfolio's high-tier 2020s mean read
-        # 39.9 against 42.1 for low and medium before the balanced panel landed.
+        # BASELINE INVARIANT. The shared 2020s panel is bit-identical across scenarios and
+        # observed constants do not vary by tier, so a given asset's baseline Climate
+        # Score MUST be the same in every tier where it has the same family set. A
+        # difference means composition changed, not risk -- the artifact that made a
+        # portfolio's high-tier 2020s mean read 39.9 against 42.1 before the balanced
+        # panel landed.
         base_dec = int(layers["baseline_decade"].dropna().astype(int).max())
         base = scores[scores["decade"] == base_dec]
         for (asset_id, n_haz), grp in base.groupby(["asset_id", "n_hazards"]):
@@ -725,23 +789,19 @@ def main(delivery: Path) -> int:
             if spread > 0.02:
                 failures.append(
                     f"{asset_id}: baseline ({base_dec}s) climate_score differs across "
-                    f"tiers on the same {n_haz}-hazard set "
+                    f"tiers on the same {n_haz}-family set "
                     f"({grp['climate_score'].tolist()}) -- the shared 2020s panel is "
                     f"bit-identical across scenarios, so this is a composition artifact")
-        # BALANCED-PANEL INVARIANT, the aggregation form of the check above.
-        #
-        # The dashboard averages Climate Scores up to a location and to the portfolio. Any
-        # such rollup must first restrict to assets present in every tier being compared,
-        # or an asset dropping out of one tier reads as a risk difference. This has bitten
-        # twice: once at portfolio level (high 39.9 vs low 42.1) and once per location
-        # (Shasta high 62.3 vs low 51.7), both at the BASELINE decade where the tiers are
-        # required to be identical. The guard is that equality, evaluated on the same
-        # balanced panels the dashboard builds.
-        nexp = {r["asset_id"]: len([x for x in str(r["layer_ids"]).split(";") if x])
-                for _, r in assets.iterrows()}
+        # BALANCED-PANEL INVARIANT, the aggregation form of the check above. Any rollup
+        # must first restrict to assets present in every tier being compared, or an asset
+        # dropping out of one tier reads as a risk difference. Bit twice: portfolio level
+        # (high 39.9 vs low 42.1) and per location (Shasta high 62.3 vs low 51.7), both
+        # at the baseline decade where tiers are required to be identical.
+        # v2: "complete" is judged against the row's own n_hazards_expected -- the
+        # weighted family count -- rather than a layer count from assets.csv.
         complete = {(r["asset_id"], r["scenario_tier"], int(r["decade"]))
                     for _, r in scores.iterrows()
-                    if int(r["n_hazards"]) >= nexp.get(r["asset_id"], 0)}
+                    if int(r["n_hazards"]) >= int(r["n_hazards_expected"])}
         all_tiers = sorted(scores["scenario_tier"].unique())
         all_decs = sorted(scores["decade"].unique())
         loc_of = dict(zip(assets["asset_id"], assets["location_id"]))
@@ -768,7 +828,8 @@ def main(delivery: Path) -> int:
                     f"{gname}: {by_tier.round(2).to_dict()} on a panel of {len(panel)} "
                     f"asset(s) -- a rollup is mixing different asset sets across tiers")
 
-        print(f"  climate_score.csv: {len(scores)} rows recomputed independently")
+        print(f"  climate_score.csv: {len(scores)} rows recomputed independently "
+              f"(family-weighted, observed constants)")
     else:
         print("  no climate_score.csv")
 

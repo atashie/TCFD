@@ -1,131 +1,264 @@
-# Asset -> layer catalog for customer deliveries.
+# Asset catalog for customer deliveries -- catalog_version 2.
 #
-# Maps a customer's asset type onto the hazard layers that get extracted for it. This is a
-# LIVING file: it is expected to grow and to be corrected as we learn what a given asset
-# class is actually exposed to. See ASSET-CATALOG.md for the maintenance protocol.
+# THE DELIVERY MODEL CHANGED 2026-08-20 (user determination, recorded in the walk-through
+# that session). Under catalog_version 1 this file mapped asset type -> layers and acted as
+# an EXTRACTION FILTER. It no longer does:
 #
-# Three rules govern its use, and the delivery driver enforces the first one in code:
+#   1. EVERY location receives EVERY standard-set layer. The standard set is computed from
+#      config/layer_registry.yaml at plan time by the rule under `standard_set:` below --
+#      never enumerated here, so a newly signed layer joins without a catalog edit.
+#   2. Asset-type relevance enters ONLY as a 0/1 weight on a hazard FAMILY in the Climate
+#      Score. An irrelevant hazard is still delivered and visible; it just does not move
+#      that asset's score. Family value = mean of its scored layers' percentiles; the
+#      score = mean over weighted families PRESENT at the site (renormalizing, with
+#      "n of m" disclosed in climate_score.csv).
+#   3. OBSERVED families (landslide, storm-convective) enter the score as CONSTANTS across
+#      every decade and tier -- user decision 2026-08-20, superseding the 2026-08-18
+#      observational exclusion. A constant term damps the score's scenario/time contrast in
+#      proportion to its weight share; the caveat machinery must say so wherever the score
+#      travels.
 #
-#   1. A run NEVER extracts silently. `generate_customer_delivery.py` prints the resolved
-#      asset -> layer mapping and stops; extraction requires an explicit --run.
-#   2. An asset type absent from this catalog is an ERROR, not a default. Work out the
-#      right layers with the user, then add the entry here.
-#   3. Anything learned in a run -- a layer that should not have been there, one that was
-#      missing, a user preference -- is written back to this file, dated, in the same
-#      session it was learned.
+# Three rules survive from v1 unchanged:
+#   1. A run NEVER extracts silently -- the plan prints and stops; extraction needs --run.
+#   2. An asset type absent from this catalog is an ERROR, not a default.
+#   3. Anything learned in a run is written back here, dated, in the same session.
 #
-# `layers:` entries are layer_ids from config/layer_registry.yaml. Matching on `Asset_Type`
-# is case-insensitive and checks `aliases` too.
-#
-# STATUS: seeded 2026-08-12. Every entry below is a DRAFT pending user sign-off, and the
-# catalog is narrow because only five layers are shipped. `confirmed_on` records when a user
-# actually approved an entry; entries without it have not been reviewed.
+# A fourth rule is new with the model:
+#   4. FAMILY WEIGHTS ARE SET WITH THE USER, HAZARD BY HAZARD, NEVER PRE-ASSIGNED. An
+#      entry without `family_weights` cannot be used -- the plan fails with instructions
+#      to run the weights walk-through. Every entry with weights must name EVERY family in
+#      `score_families` explicitly (0 or 1), so a newly added family cannot silently
+#      default into or out of anyone's score.
 
-catalog_version: 1
+catalog_version: 2
 seeded_on: "2026-08-12"
+model_changed_on: "2026-08-20"
+
+standard_set:
+  rule: >-
+    All layers carrying a human QA date (qa_reviewed_on set) with a deliverable status
+    (preferred or alternate), minus the explicit exclusions below. Computed from
+    config/layer_registry.yaml at plan time.
+  excluded:
+    drought-2b: "removed from the general list (user, 2026-08-20); available on request via a Layers override"
+    conifer-npp: "removed from the general list (user, 2026-08-20); available on request via a Layers override"
+    tornado-all: "comparison-only per its registry delivery note; never deliverable"
+
+# Hazard families for the Climate Score. `layers` lists the members whose percentiles are
+# averaged into the family value (members absent at a site -- OFF_LAYER_MASK / no tier --
+# drop out of the family mean). A standard-set layer appearing in NO family's `layers` is
+# DELIVERED UNSCORED: today that is flood-3b-40yr and flood-3b-none (the two counterfactual
+# protection variants; user decision 2026-08-20 scores flopros only).
+# `observed: true` marks a family whose members carry scenario `observed`; its value is a
+# constant folded into every tier x decade cell of the asset's score grid.
+score_families:
+  chronic-heat:
+    layers: [heatdays-hd30, heatdays-hd35, heatdays-hd40, heatdays-hd45,
+             tropicalnights-tr20, tropicalnights-tr25]
+  cold-frost:
+    layers: [frostdays-fd, frostdays-fdm10, icedays-id]
+  heatwave:
+    layers: [heatwave-3b]
+  precip-absolute:
+    layers: [pluvial-r10mm, pluvial-r20mm, pluvial-r50mm, pluvial-r100mm,
+             pluvial-wetdays, pluvial-rx1day, pluvial-rx5day, pluvial-prcptot]
+  precip-local-extreme:
+    layers: [pluvial-r95pd, pluvial-r99pd]
+    note: >-
+      Split from precip-absolute (user, 2026-08-20) because the relative rungs' rankings
+      invert against the absolute ones; each family carries its own weight.
+  drought:
+    layers: [drought-3b]
+  flood-riverine:
+    layers: [flood-3b-flopros]
+    note: "Scores on flopros only (user, 2026-08-20); 40yr and none are delivered unscored."
+  wildfire:
+    layers: [wildfire]
+  tropical-cyclone:
+    layers: [cyclone]
+  crop-failure:
+    layers: [cropfailure-3b]
+  permafrost-thaw:
+    layers: [permafrost-3b]
+  sea-level:
+    layers: [sealevel-2b]
+  landslide:
+    layers: [landslide-arup]
+    observed: true
+  storm-convective:
+    layers: [hail-vlh, tornado-f2plus, tornado-f1plus, tornado-f3plus]
+    observed: true
+    note: >-
+      Inside CONUS the family mean holds one hail and three tornado members (tornado 3:1);
+      outside CONUS the tornado rungs are off-domain and the family is hail alone. Stated
+      in the 2026-08-20 walk-through question the user approved.
 
 assets:
 
+  # -------------------------------------------------------------------------------------
+  # WALKED ENTRIES -- family weights set with the user in the 2026-08-20 hazard-by-hazard
+  # walk-through. confirmed_on records that determination.
+  # -------------------------------------------------------------------------------------
+
+  warehouse:
+    aliases: [distribution center, distribution centre, logistics facility, depot]
+    scope: "Storage/distribution buildings; exposure is physical damage and access interruption."
+    family_weights:
+      chronic-heat: 1
+      cold-frost: 1
+      heatwave: 1
+      precip-absolute: 1
+      precip-local-extreme: 1
+      drought: 0
+      flood-riverine: 1
+      wildfire: 1
+      tropical-cyclone: 1
+      crop-failure: 0
+      permafrost-thaw: 1
+      sea-level: 1
+      landslide: 1
+      storm-convective: 1
+    rationale: >-
+      Weights set in the 2026-08-20 walk-through (user determinations). Drought excluded --
+      water is not a process input for this class, consistent with the v1 reasoning.
+      Crop failure delivered but never scored for this type.
+    confirmed_on: "2026-08-20"
+
+  power plant:
+    aliases: [power station, generating station, powerplant, generation facility]
+    scope: "Utility-scale electricity generation sites."
+    family_weights:
+      chronic-heat: 1
+      cold-frost: 1
+      heatwave: 1
+      precip-absolute: 1
+      precip-local-extreme: 0
+      drought: 1
+      flood-riverine: 1
+      wildfire: 1
+      tropical-cyclone: 1
+      crop-failure: 0
+      permafrost-thaw: 1
+      sea-level: 1
+      landslide: 1
+      storm-convective: 1
+    rationale: >-
+      Weights set in the 2026-08-20 walk-through (user determinations). The only walked
+      type that weights drought (1) and the only one that zeroes precip-local-extreme.
+    confirmed_on: "2026-08-20"
+
+  retail:
+    aliases: [retail location, store, shopping center, shopping centre]
+    scope: "Customer-facing commercial premises."
+    family_weights:
+      chronic-heat: 1
+      cold-frost: 1
+      heatwave: 1
+      precip-absolute: 1
+      precip-local-extreme: 1
+      drought: 0
+      flood-riverine: 1
+      wildfire: 1
+      tropical-cyclone: 1
+      crop-failure: 0
+      permafrost-thaw: 1
+      sea-level: 1
+      landslide: 1
+      storm-convective: 1
+    rationale: "Weights set in the 2026-08-20 walk-through (user determinations)."
+    confirmed_on: "2026-08-20"
+
+  apartment complex:
+    aliases: [apartment, apartments, multifamily, multi-family, residential complex]
+    scope: "Multi-family residential holdings."
+    family_weights:
+      chronic-heat: 1
+      cold-frost: 1
+      heatwave: 1
+      precip-absolute: 1
+      precip-local-extreme: 1
+      drought: 0
+      flood-riverine: 1
+      wildfire: 1
+      tropical-cyclone: 1
+      crop-failure: 0
+      permafrost-thaw: 1
+      sea-level: 1
+      landslide: 1
+      storm-convective: 1
+    rationale: "Weights set in the 2026-08-20 walk-through (user determinations)."
+    confirmed_on: "2026-08-20"
+
+  # -------------------------------------------------------------------------------------
+  # LEGACY ENTRIES -- seeded 2026-08-12 under the v1 filter model and NEVER through a
+  # weights walk-through. They cannot be used until their family_weights are set with the
+  # user; the plan fails with that instruction. `legacy_layers` preserves the v1 bundle
+  # and its recorded reasoning as history, nothing reads it.
+  # -------------------------------------------------------------------------------------
+
   timber land:
     aliases: [timberland, forestry, forest, plantation, managed forest]
-    layers: [conifer-npp, wildfire, drought-3b]
+    family_weights: null
+    weights_note: >-
+      PENDING the weights walk-through -- the delivery model changed 2026-08-20. Note when
+      walking this type: conifer-npp is out of the general standard set (user, 2026-08-20)
+      and would need a Layers override plus a family decision to score timber productivity.
+    legacy_layers: [conifer-npp, wildfire, drought-3b]
     rationale: >-
-      Productivity is the asset's yield; wildfire is the dominant acute loss mechanism for
-      standing timber; drought drives both growth loss and fire preconditioning.
+      (v1, 2026-08-12) Productivity is the asset's yield; wildfire is the dominant acute
+      loss mechanism for standing timber; drought drives both growth loss and fire
+      preconditioning.
     caveats: >-
       conifer-npp covers TEMPERATE NEEDLELEAF EVERGREEN stands only (Douglas-fir, loblolly
       and ponderosa pine, Norway spruce, radiata pine). A broadleaf or boreal holding will
       return OFF_LAYER_MASK and needs a different productivity layer that is not yet shipped.
     tornado_caveat: >-
-      TORNADO IS DELIBERATELY NOT IN THIS BUNDLE (decided 2026-08-18) -- recorded so the
-      omission reads as a decision rather than an oversight. Tornado blowdown is real for
-      standing timber but affects a path ~100 m wide, which against a holding measured in
-      thousands of hectares is immaterial beside wildfire and drought, the two loss
-      mechanisms already carried. Add tornado-f2plus if a customer's holding is small,
-      concentrated and inside the CONUS tornado maximum.
+      (v1, 2026-08-18) Tornado was deliberately NOT in this bundle: blowdown affects a path
+      ~100 m wide, immaterial against a holding measured in thousands of hectares beside
+      wildfire and drought. Under the v2 model tornado arrives via the standard set anyway;
+      the walk-through should decide the storm-convective WEIGHT with that history in view.
     confirmed_on: null
 
   data center:
     aliases: [datacenter, data centre, colocation facility, server farm]
-    layers: [drought-3b, cyclone, wildfire, tornado-f2plus]
+    family_weights: null
+    weights_note: "PENDING the weights walk-through -- the delivery model changed 2026-08-20."
+    legacy_layers: [drought-3b, cyclone, wildfire, tornado-f2plus]
     rationale: >-
-      Drought is a genuine process input here rather than a generic hazard -- evaporative
-      cooling and the local grid both depend on water availability. Cyclone, wildfire and
-      tornado are direct physical-damage and outage risks; for tornado the transmission
-      channel is usually the grid connection and rooftop plant rather than the hall itself.
-    tornado_caveat: >-
-      ADDED 2026-08-18. tornado-f2plus is CONUS-ONLY and SCREENING-ONLY. It is built from
-      the NOAA SPC observational record, not from a climate model, so it carries no scenario
-      and no trend: it describes 1950-2025 as observed and says nothing about how tornado
-      risk changes with warming. A site outside the United States returns OFF_LAYER_MASK or
-      OUTSIDE_DOMAIN, NEVER a low score -- no global tornado record with comparable
-      detection exists, so outside CONUS "no data" must not be read as "no hazard". At
-      ~28 km cells against a ~100 m damage path it ranks which sites merit investigation
-      and cannot support a design wind load or a strike probability.
-    confirmed_on: null
-
-  warehouse:
-    aliases: [distribution center, distribution centre, logistics facility, depot]
-    layers: [cyclone, wildfire, tornado-f2plus]
-    rationale: >-
-      Built asset whose exposure is physical damage and access interruption. Drought is
-      deliberately EXCLUDED -- water is not a process input and including it would report a
-      hazard with no transmission channel to the asset. Tornado is the archetypal severe
-      convective loss for this class: large low-rise envelopes, long roof spans and
-      cladding are what tornadic and downburst winds take first.
-    tornado_caveat: >-
-      ADDED 2026-08-18. tornado-f2plus is CONUS-ONLY and SCREENING-ONLY. It is built from
-      the NOAA SPC observational record, not from a climate model, so it carries no scenario
-      and no trend: it describes 1950-2025 as observed and says nothing about how tornado
-      risk changes with warming. A site outside the United States returns OFF_LAYER_MASK or
-      OUTSIDE_DOMAIN, NEVER a low score -- no global tornado record with comparable
-      detection exists, so outside CONUS "no data" must not be read as "no hazard". At
-      ~28 km cells against a ~100 m damage path it ranks which sites merit investigation
-      and cannot support a design wind load or a strike probability.
+      (v1, 2026-08-12) Drought is a genuine process input -- evaporative cooling and the
+      local grid both depend on water availability. Cyclone, wildfire and tornado are
+      direct physical-damage and outage risks; for tornado the transmission channel is
+      usually the grid connection and rooftop plant rather than the hall itself.
     confirmed_on: null
 
   office:
-    aliases: [commercial building, office building, corporate campus, retail]
-    layers: [cyclone, wildfire, tornado-f2plus]
+    # `retail` REMOVED from these aliases 2026-08-20 -- it is its own walked entry above,
+    # and a duplicate alias would make resolution order-dependent.
+    aliases: [commercial building, office building, corporate campus]
+    family_weights: null
+    weights_note: "PENDING the weights walk-through -- the delivery model changed 2026-08-20."
+    legacy_layers: [cyclone, wildfire, tornado-f2plus]
     rationale: >-
-      Same reasoning as warehouse -- physical damage and business interruption, tornado
-      included for the same wind-damage channel.
-    tornado_caveat: >-
-      ADDED 2026-08-18. tornado-f2plus is CONUS-ONLY and SCREENING-ONLY. It is built from
-      the NOAA SPC observational record, not from a climate model, so it carries no scenario
-      and no trend: it describes 1950-2025 as observed and says nothing about how tornado
-      risk changes with warming. A site outside the United States returns OFF_LAYER_MASK or
-      OUTSIDE_DOMAIN, NEVER a low score -- no global tornado record with comparable
-      detection exists, so outside CONUS "no data" must not be read as "no hazard". At
-      ~28 km cells against a ~100 m damage path it ranks which sites merit investigation
-      and cannot support a design wind load or a strike probability.
+      (v1, 2026-08-12) Physical damage and business interruption, tornado included for the
+      wind-damage channel.
     confirmed_on: null
 
   agricultural land:
     aliases: [farmland, cropland, agriculture, farm]
-    layers: [cropfailure-3b, drought-3b, wildfire, tornado-f2plus]
+    family_weights: null
+    weights_note: >-
+      PENDING the weights walk-through -- the delivery model changed 2026-08-20. Note when
+      walking this type: crop-failure exists as a family (weighted 0 by all four walked
+      types) and this is the class it was built for.
+    legacy_layers: [cropfailure-3b, drought-3b, wildfire, tornado-f2plus]
     rationale: >-
-      Crop failure is the crop-specific exposure and is listed first; drought is the primary
-      underlying yield driver and is retained because it covers the site whether or not it
-      is inside the crop models' cropland footprint; wildfire is the acute loss mechanism.
+      (v1, 2026-08-13) Crop failure is the crop-specific exposure; drought is the primary
+      underlying yield driver and covers the site whether or not it is inside the crop
+      models' cropland footprint; wildfire is the acute loss mechanism.
     caveats: >-
-      ADDED cropfailure-3b 2026-08-13, and it changes what this bundle can claim -- but
-      only so far. It is an EXPOSURE index (how often conditions cross an unprecedentedness
-      threshold), NOT a yield response: it does not say how much yield is lost, so this
-      bundle still returns no modelled yield loss. It is published on a CROPLAND footprint,
-      so a site outside the crop models' cropland returns OFF_LAYER_MASK rather than zero --
-      which is why drought-3b stays in the bundle. Its scores are RELATIVE TO EACH SITE'S
-      OWN HISTORY (see the must-disclose RELATIVE-BASELINE caveat), and which crops it
-      aggregates is undocumented by the publisher, so for a specific crop treat it as a
-      regional signal. The sugarcane layers were withdrawn 2026-08-11 for an upstream data
+      cropfailure-3b is an EXPOSURE index (how often conditions cross an unprecedentedness
+      threshold), NOT a yield response, published on a CROPLAND footprint with
+      relative-baseline scoring; which crops it aggregates is undocumented by the
+      publisher. The sugarcane layers were withdrawn 2026-08-11 for an upstream data
       defect and must not be substituted.
-    tornado_caveat: >-
-      ADDED 2026-08-18. tornado-f2plus is CONUS-ONLY and SCREENING-ONLY. It is built from
-      the NOAA SPC observational record, not from a climate model, so it carries no scenario
-      and no trend: it describes 1950-2025 as observed and says nothing about how tornado
-      risk changes with warming. A site outside the United States returns OFF_LAYER_MASK or
-      OUTSIDE_DOMAIN, NEVER a low score -- no global tornado record with comparable
-      detection exists, so outside CONUS "no data" must not be read as "no hazard". At
-      ~28 km cells against a ~100 m damage path it ranks which sites merit investigation
-      and cannot support a design wind load or a strike probability.
     confirmed_on: null

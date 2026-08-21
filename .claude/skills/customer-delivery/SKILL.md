@@ -19,7 +19,7 @@ restate them, read them.
 | [docs/reporting/profiles/README.md](../../../docs/reporting/profiles/README.md) | before writing or editing a facet profile |
 | [OUTPUT-SPEC.md](../../../OUTPUT-SPEC.md) | What the underlying layers guarantee |
 | [GUARDRAILS.md](../../../GUARDRAILS.md) | §3 dynamic scenario discovery, §12 reference sites |
-| `config/asset_catalog.yaml` | asset type → hazard layers |
+| `config/asset_catalog.yaml` | asset type → 0/1 hazard-family score weights (v2, 2026-08-20 — every delivery carries the full standard set; the catalog weights only the Climate Score) |
 | `config/layer_registry.yaml` | layer → disk location, status, which slope to read |
 | `config/hazard_taxonomy.yaml` | which hazard families exist, which we cover, and what each gap would take |
 
@@ -99,9 +99,11 @@ masking is uncertain, check `data_status` and the coastal caveat in ASSET-CATALO
 
 ### Catalog maintenance is part of this stage
 
-- An unknown asset type → work out which hazards genuinely reach it, add the entry to
-  `config/asset_catalog.yaml` with a `rationale`, set `confirmed_on` to today.
-- A bundle that proved wrong in use → fix `layers:` and date it.
+- An unknown asset type → run the **weights walk-through with the user** (hazard family by
+  hazard family, 0/1 each — never pre-assigned), add the entry to
+  `config/asset_catalog.yaml` with `family_weights`, `scope`, a `rationale`, and
+  `confirmed_on` set to the walk-through date.
+- Weights that proved wrong in use → fix `family_weights` and date it.
 - A user approving an existing entry → set its `confirmed_on`.
 
 `confirmed_on: null` means **nobody has ever reviewed that entry**. Everything seeded

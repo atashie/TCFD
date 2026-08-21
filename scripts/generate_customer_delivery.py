@@ -66,11 +66,19 @@ def cmd_list_layers(registry, catalog) -> int:
         print(f"  {'':<14} read slope: {spec.recommended_slope}")
         print()
 
-    print("ASSET CATALOG")
+    print("ASSET CATALOG (v2 -- family weights, not extraction filters)")
     print("-" * 78)
     for name, entry in sorted(catalog.entries.items()):
         confirmed = entry.get("confirmed_on") or "UNCONFIRMED -- needs user sign-off"
-        print(f"  {name:<20} -> {', '.join(entry.get('layers') or [])}")
+        weights = entry.get("family_weights")
+        if isinstance(weights, dict):
+            on = sorted(f for f, v in weights.items() if v == 1)
+            off = sorted(f for f, v in weights.items() if v != 1)
+            print(f"  {name:<20} weights 1: {', '.join(on) or '-'}")
+            if off:
+                print(f"  {'':<20} weights 0: {', '.join(off)}")
+        else:
+            print(f"  {name:<20} NO WEIGHTS -- pending its walk-through; unusable")
         print(f"  {'':<20}    aliases: {', '.join(entry.get('aliases') or []) or '-'}")
         print(f"  {'':<20}    {confirmed}")
         print()
@@ -118,23 +126,46 @@ def cmd_measure_slopes(registry) -> int:
     return 0
 
 
-def print_plan(customer, input_path, locations_df, assets_df, work, registry) -> None:
+def print_plan(customer, input_path, locations_df, assets_df, work, registry,
+               catalog) -> None:
     print(f"\nDELIVERY PLAN -- {customer}")
     print("=" * 78)
     print(f"input     {input_path}")
     print(f"output    {delivery_dir(customer)}")
     print(f"locations {len(locations_df)}    assets {len(assets_df)}")
 
-    print("\nRESOLVED ASSET -> LAYERS")
+    # v2 model: every standard-set asset receives the same layers, so the set prints ONCE,
+    # followed by the per-asset-type score weights -- which is what the user is agreeing
+    # to. Assets on an override still print their explicit list.
+    standard = [a for _, a in assets_df.iterrows() if a["layer_source"] == "standard-set"]
+    if standard:
+        layer_ids = standard[0]["layer_ids"]
+        scored = {lid for fam in catalog.families.values() for lid in fam["layers"]}
+        print(f"\nSTANDARD SET -- every asset below receives all {len(layer_ids)} layers")
+        print("-" * 78)
+        for layer_id in layer_ids:
+            spec = registry.get(layer_id)
+            unscored = "" if layer_id in scored else "  [delivered UNSCORED]"
+            print(f"  - {layer_id:<22} {spec.hazard_measure}{unscored}")
+        for lid, reason in sorted(catalog.standard_excluded.items()):
+            print(f"  x {lid:<22} EXCLUDED: {reason}")
+
+    print("\nASSETS AND SCORE WEIGHTS (0/1 per hazard family; family = mean of its layers)")
     print("-" * 78)
     loc_names = locations_df.set_index("location_id")["name"].to_dict()
     for _, a in assets_df.iterrows():
         sub = f" / {a['sub_asset_unit']}" if a["sub_asset_unit"] else ""
         print(f"  {a['asset_id']}  {loc_names[a['location_id']]}")
         print(f"           {a['asset_type']}{sub}  [{a['layer_source']}]")
-        for layer_id in a["layer_ids"]:
-            spec = registry.get(layer_id)
-            print(f"             - {layer_id:<14} {spec.hazard_measure}")
+        if a["layer_source"] == "standard-set":
+            weights = catalog.weights_for(a["catalog_entry"])
+            zeros = sorted(f for f, v in weights.items() if v != 1)
+            print(f"           weight 0: {', '.join(zeros) if zeros else '(none)'} ; "
+                  f"all {sum(1 for v in weights.values() if v == 1)} other families weight 1")
+        else:
+            for layer_id in a["layer_ids"]:
+                spec = registry.get(layer_id)
+                print(f"             - {layer_id:<14} {spec.hazard_measure}")
 
     print("\nLAYERS TO READ")
     print("-" * 78)
@@ -216,7 +247,8 @@ def main() -> int:
         locations_df, assets_df, work = build_plan(df, catalog, registry, override)
 
         if not args.run:
-            print_plan(args.customer, args.input, locations_df, assets_df, work, registry)
+            print_plan(args.customer, args.input, locations_df, assets_df, work, registry,
+                       catalog)
             return 0
 
         out_dir = args.out or delivery_dir(args.customer)
@@ -228,6 +260,7 @@ def main() -> int:
             assets_df=assets_df,
             work=work,
             registry=registry,
+            catalog=catalog,
             out_dir=out_dir,
         )
         counts = manifest["counts"]

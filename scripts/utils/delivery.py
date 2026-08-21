@@ -300,16 +300,43 @@ def load_registry(path: Path = LAYER_REGISTRY_PATH) -> Registry:
 
 @dataclass
 class AssetCatalog:
-    """asset type -> layer ids. Absence is an error, never a default."""
+    """Asset types, hazard families and Climate Score weights. Absence is an error.
+
+    catalog_version 2 (model change 2026-08-20): entries carry `family_weights`
+    (family -> 0/1) instead of a `layers` extraction filter; `families` holds the
+    score-family definitions (family -> {"layers": [...], "observed": bool}); and
+    `standard_excluded` maps layer_ids excluded from the standard set to their reasons.
+    """
 
     entries: Dict[str, dict]
+    families: Dict[str, dict] = field(default_factory=dict)
+    standard_excluded: Dict[str, str] = field(default_factory=dict)
     _index: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for name, entry in self.entries.items():
-            self._index[name.strip().lower()] = name
-            for alias in entry.get("aliases") or []:
-                self._index[str(alias).strip().lower()] = name
+            for key in [name] + list(entry.get("aliases") or []):
+                k = str(key).strip().lower()
+                if k in self._index and self._index[k] != name:
+                    raise DeliveryError(
+                        f"Asset catalog alias {key!r} resolves to both "
+                        f"{self._index[k]!r} and {name!r} -- resolution would be "
+                        f"order-dependent. Remove one of them."
+                    )
+                self._index[k] = name
+
+    def weights_for(self, canonical: str) -> Dict[str, int]:
+        """The 0/1 family weights for a catalog entry; error if never walked through."""
+        weights = self.entries[canonical].get("family_weights")
+        if not isinstance(weights, dict):
+            raise DeliveryError(
+                f"Catalog entry {canonical!r} has no family_weights. The delivery model "
+                f"changed 2026-08-20 (deliver-all + 0/1 family weights in the Climate "
+                f"Score) and this entry has not been through its weights walk-through "
+                f"with the user. Set family_weights -- every family in score_families, "
+                f"each 0 or 1 -- and confirmed_on, then re-run."
+            )
+        return {str(k): int(v) for k, v in weights.items()}
 
     def resolve(self, asset_type: str) -> Tuple[str, dict]:
         key = str(asset_type).strip().lower()
@@ -327,7 +354,45 @@ class AssetCatalog:
 
 def load_asset_catalog(path: Path = ASSET_CATALOG_PATH) -> AssetCatalog:
     raw = yaml.safe_load(path.read_text())
-    return AssetCatalog(entries=raw.get("assets") or {})
+
+    families: Dict[str, dict] = {}
+    for name, spec in (raw.get("score_families") or {}).items():
+        layers = list((spec or {}).get("layers") or [])
+        if not layers:
+            raise DeliveryError(f"score_families entry {name!r} lists no layers")
+        families[name] = {"layers": layers, "observed": bool((spec or {}).get("observed"))}
+    seen: Dict[str, str] = {}
+    for fam, spec in families.items():
+        for lid in spec["layers"]:
+            if lid in seen:
+                raise DeliveryError(
+                    f"layer {lid!r} appears in two score families ({seen[lid]!r} and "
+                    f"{fam!r}) -- it would be double-counted in the Climate Score")
+            seen[lid] = fam
+
+    excluded = {str(k): str(v) for k, v in
+                ((raw.get("standard_set") or {}).get("excluded") or {}).items()}
+
+    catalog = AssetCatalog(entries=raw.get("assets") or {}, families=families,
+                           standard_excluded=excluded)
+
+    # An entry WITH weights must name every family explicitly, each 0 or 1 -- a newly
+    # added family must never default into or out of anyone's score. `null` weights mark
+    # a legacy entry pending its walk-through; using one fails in weights_for().
+    for name, entry in catalog.entries.items():
+        w = entry.get("family_weights")
+        if w is None:
+            continue
+        if not isinstance(w, dict):
+            raise DeliveryError(f"asset {name!r}: family_weights must be a mapping or null")
+        missing = set(families) - {str(k) for k in w}
+        extra = {str(k) for k in w} - set(families)
+        bad = {str(k): v for k, v in w.items() if v not in (0, 1)}
+        if missing or extra or bad:
+            raise DeliveryError(
+                f"asset {name!r} family_weights invalid -- missing {sorted(missing)}, "
+                f"unknown {sorted(extra)}, non-0/1 {bad}")
+    return catalog
 
 
 # ---------------------------------------------------------------------------------------
@@ -782,6 +847,30 @@ def load_input(path: Path) -> pd.DataFrame:
     return df
 
 
+#: Statuses a layer may carry and still be delivered. `blocked`, `superseded`,
+#: `development` and `diagnostic` are all outside the standard set by construction.
+DELIVERABLE_STATUSES = ("preferred", "alternate")
+
+
+def standard_layer_ids(registry: Registry, catalog: AssetCatalog) -> List[str]:
+    """The standard delivered set (delivery model of 2026-08-20).
+
+    Every layer carrying a human QA date with a deliverable status, minus the catalog's
+    explicit exclusions. COMPUTED, never enumerated, so a newly signed layer joins the
+    standard set without a catalog edit -- and an unsigned or blocked layer can never
+    slip into a delivery through this path.
+    """
+    out = sorted(
+        lid for lid, spec in registry.layers.items()
+        if spec.qa_reviewed_on
+        and spec.status in DELIVERABLE_STATUSES
+        and lid not in catalog.standard_excluded
+    )
+    if not out:
+        raise DeliveryError("standard set is empty -- no QA-signed deliverable layers")
+    return out
+
+
 def build_plan(
     df: pd.DataFrame,
     catalog: AssetCatalog,
@@ -835,12 +924,13 @@ def build_plan(
             source = "row-override"
         else:
             canonical, entry = catalog.resolve(asset_type_raw)
-            layer_ids = list(entry.get("layers") or [])
-            source = "catalog"
-            if not layer_ids:
-                raise DeliveryError(
-                    f"Catalog entry {canonical!r} lists no layers."
-                )
+            # v2 model (2026-08-20): the catalog no longer filters extraction -- every
+            # asset receives the standard set. Resolving still validates the asset type
+            # and that its family weights exist (weights_for raises on a legacy entry
+            # that has not been through its walk-through).
+            catalog.weights_for(canonical)
+            layer_ids = standard_layer_ids(registry, catalog)
+            source = "standard-set"
 
         for layer_id in layer_ids:
             registry.get(layer_id)  # fail fast on a typo, before any I/O
@@ -877,6 +967,12 @@ def build_plan(
         {"layer_id": lid, "asset_ids": ids, "n_assets": len(ids)}
         for lid, ids in sorted(by_layer.items())
     ]
+
+    # Fail fast on a typo in the score-family definitions, before any I/O.
+    for fam, spec in catalog.families.items():
+        for lid in spec["layers"]:
+            registry.get(lid)
+
     return locations_df, assets_df, work
 
 
@@ -886,6 +982,11 @@ def build_plan(
 
 #: Columns of climate_score.csv. Grain is (asset_id, scenario_tier, decade) -- a DIFFERENT
 #: grain from values.csv, which is why it is its own table rather than extra columns there.
+#:
+#: v2 (2026-08-20): the score aggregates hazard FAMILIES, not layers. `hazards` names the
+#: families that contributed, `layers` the member layers behind them, and the two n_hazards
+#: columns count families (present vs weighted). The v1 column NAMES survive so downstream
+#: readers keep working; ASSET-CATALOG.md documents the semantics.
 CLIMATE_SCORE_COLUMNS = (
     "asset_id",
     "scenario_tier",
@@ -894,118 +995,133 @@ CLIMATE_SCORE_COLUMNS = (
     "n_hazards",
     "n_hazards_expected",
     "hazards",
+    "layers",
     "scenarios",
 )
 
 
 def compute_climate_score(
-    values_df: pd.DataFrame, assets_df: pd.DataFrame
+    values_df: pd.DataFrame, assets_df: pd.DataFrame, catalog: AssetCatalog
 ) -> pd.DataFrame:
-    """Mean risk percentile across an asset's hazards, per forcing tier per decade.
+    """Family-weighted mean risk percentile, per forcing tier per decade.
 
-    WHY PERCENTILE AND NOTHING ELSE
-    -------------------------------
-    `percentile` is the only cross-hazard comparable axis in the contract. `value` is in
-    native units that differ per layer (g C m-2 yr-1, a dimensionless fraction, a percent),
-    so averaging values across hazards is meaningless arithmetic. Percentiles are also
-    already ORIENTED for risk -- a `higher_is_better` layer was inverted at processing time,
-    so 100 is worst on every layer -- which is exactly what makes the mean legitimate.
+    THE MODEL (user determinations, 2026-08-20)
+    -------------------------------------------
+    A THREE-stage mean. Native scenario codes are averaged WITHIN a layer for a tier;
+    layers are averaged WITHIN their hazard family; the score is the mean over the asset
+    type's weight-1 families PRESENT at the site. Weights are 0/1 per family per asset
+    type from config/asset_catalog.yaml -- an irrelevant hazard is still delivered, it
+    just carries no weight. Families absent at a site (off-footprint, or no member
+    publishing the tier) renormalize out: `n_hazards` / `n_hazards_expected` count
+    families present vs weighted, and two scores with different n_hazards are not like
+    for like, exactly as under v1.
 
-    WHY THE KEY IS A FORCING TIER, NOT A SCENARIO CODE
-    --------------------------------------------------
-    This is the load-bearing decision and it is forced by the data, not chosen for
-    convenience. ISIMIP2b layers publish rcp*, ISIMIP3b layers publish ssp*, and NO native
-    code spans both. Measured on the example delivery, a timber asset carrying three
-    hazards resolves as:
+    OBSERVED FAMILIES ENTER AS CONSTANTS -- superseding the 2026-08-18 exclusion (user
+    decision 2026-08-20). A family flagged `observed` has no forcing pathway; its value,
+    from the single observed period, is folded unchanged into EVERY tier x decade cell of
+    the asset's score grid. A constant term damps the score's scenario and time contrast
+    in proportion to its weight share, and the caveat machinery discloses that wherever
+    the score travels. Off-domain observed members (tornado outside CONUS) drop out of
+    the family mean like any absent member -- unobserved is never zero.
 
-        rcp26  -> 1 of 3 hazards (conifer-npp)
-        ssp126 -> 2 of 3 hazards (drought-3b, wildfire)
+    WHY PERCENTILE, AND WHY A FORCING TIER, ARE UNCHANGED FROM v1
+    -------------------------------------------------------------
+    `percentile` is the only cross-hazard comparable axis and is already oriented so 100
+    is worst on every layer. The tier keying is forced by the data: no native code spans
+    both ISIMIP rounds, so a score keyed on a native code would average a subset while
+    being labelled "across all hazards". RCP and SSP tiers are only APPROXIMATELY
+    comparable; any narrative must say so. The native codes that contributed are recorded
+    per row in `scenarios` (including `observed` where an observed family contributed).
 
-    So a score keyed on `ssp126` would average two hazards and be labelled "mean across all
-    hazards". Keying on the TIER (rcp26 + ssp126 = "low") is the only way to get a complete
-    cross-hazard set. The native codes that actually contributed are recorded per row in
-    `scenarios`, so the harmonization is visible rather than implied.
-
-    RCP and SSP tiers are only APPROXIMATELY comparable. Any narrative must say so.
-
-    TWO-STAGE MEAN
-    --------------
-    Scenario codes are averaged WITHIN a hazard first, then hazards are averaged. This keeps
-    every hazard equally weighted even where one contributes two codes to a tier (rcp45 and
-    rcp60 both map to 'medium'). A flat mean over rows would silently double that hazard.
-
-    MISSING HAZARDS REDUCE n_hazards, THEY DO NOT ZERO THE SCORE
-    ------------------------------------------------------------
-    A hazard that is OFF_LAYER_MASK at a site has a NaN percentile and is excluded. Decades
-    also differ by round -- ISIMIP3b layers start at 2020, so an ISIMIP2b-only 2010s panel
-    legitimately scores on fewer hazards. `n_hazards` is emitted for exactly this reason: a
-    1-hazard score must never be read as a 3-hazard one.
-
-    Hazards are weighted EQUALLY. That is an assumption, not a finding -- there is no
-    materiality weighting here, and a hazard with no transmission channel to the asset would
-    dilute the score just as much as the one that matters. The catalog is what keeps
-    irrelevant hazards out of an asset's set.
+    EDGES
+    -----
+    A layer in no score family (the flood counterfactuals 40yr/none) is delivered
+    unscored. An asset whose catalog entry has no family_weights (a legacy entry, or a
+    row override on an unknown type) produces NO score rows rather than a wrongly
+    weighted one. An asset with no forcing family present anywhere has no (tier, decade)
+    grid and likewise produces no rows -- data_status in values.csv tells that story.
     """
     from .viz_common import TIER_ORDER, is_forcing_scenario, tier_of
 
-    # `layer_ids` is a list in the in-memory frame and a ";"-joined string once written to
-    # assets.csv. Accept both so this works on a live run and on a re-read delivery.
-    def _layers(v) -> set:
-        if isinstance(v, (list, tuple, set)):
-            return {str(x) for x in v}
-        return {x for x in str(v).split(";") if x and x != "nan"}
+    layer_family = {lid: fam for fam, spec in catalog.families.items()
+                    for lid in spec["layers"]}
 
-    asset_layers = {
-        r["asset_id"]: _layers(r["layer_ids"]) for _, r in assets_df.iterrows()
-    }
+    weights: Dict[str, Optional[Dict[str, int]]] = {}
+    for _, a in assets_df.iterrows():
+        entry = catalog.entries.get(str(a.get("catalog_entry")))
+        w = entry.get("family_weights") if entry else None
+        weights[a["asset_id"]] = (
+            {str(k): int(v) for k, v in w.items()} if isinstance(w, dict) else None
+        )
 
     df = values_df[["asset_id", "layer_id", "scenario", "decade", "percentile"]].copy()
-    # Only an asset's OWN hazards count -- values.csv is already scoped that way, but a
-    # future caller could pass a wider frame.
-    df = df[df.apply(lambda r: r["layer_id"] in asset_layers.get(r["asset_id"], set()), axis=1)]
     df = df[df["percentile"].notna()]
-    # OBSERVATIONAL LAYERS ARE EXCLUDED FROM THE CLIMATE SCORE, DELIBERATELY. The score is
-    # a cross-FORCING comparison -- how an asset's risk differs between low, medium and high
-    # pathways. A layer with no forcing pathway cannot answer that question, and letting it
-    # default into one tier would raise that tier alone and read as a forcing effect. The
-    # hazard is still delivered in values.csv and still appears in the reports; it just does
-    # not enter an aggregate whose axis it does not have.
-    df = df[df["scenario"].map(is_forcing_scenario)]
+    df["family"] = df["layer_id"].map(layer_family)
+    df = df[df["family"].notna()]
+    keep = [
+        (weights.get(aid) or {}).get(fam, 0) == 1
+        for aid, fam in zip(df["asset_id"], df["family"])
+    ]
+    df = df[keep]
     if df.empty:
         return pd.DataFrame(columns=list(CLIMATE_SCORE_COLUMNS))
 
-    df["scenario_tier"] = df["scenario"].map(tier_of)
+    forcing = df["scenario"].map(is_forcing_scenario)
+    fc = df[forcing].copy()
+    ob = df[~forcing].copy()
 
-    # Stage 1: within (asset, hazard, tier, decade) average the native codes.
-    per_hazard = (
-        df.groupby(["asset_id", "layer_id", "scenario_tier", "decade"])
-        .agg(pct=("percentile", "mean"), codes=("scenario", lambda s: sorted(set(s))))
-        .reset_index()
-    )
+    # Observed constants: codes -> layer -> family, one value per (asset, family).
+    obs_by_asset: Dict[str, List[Tuple[str, float]]] = {}
+    obs_layers: Dict[Tuple[str, str], List[str]] = {}
+    obs_codes: Dict[str, set] = {}
+    if not ob.empty:
+        o1 = (ob.groupby(["asset_id", "family", "layer_id"])
+                .agg(pct=("percentile", "mean"),
+                     codes=("scenario", lambda s: set(s))).reset_index())
+        for (aid, fam), grp in o1.groupby(["asset_id", "family"]):
+            obs_by_asset.setdefault(aid, []).append((fam, float(grp["pct"].mean())))
+            obs_layers[(aid, fam)] = sorted(grp["layer_id"])
+            obs_codes.setdefault(aid, set()).update(*grp["codes"])
 
-    # Stage 2: average the hazards.
-    rows = []
-    for (asset_id, tier, decade), grp in per_hazard.groupby(
-        ["asset_id", "scenario_tier", "decade"]
-    ):
-        codes = sorted({c for lst in grp["codes"] for c in lst})
-        rows.append({
-            "asset_id": asset_id,
-            "scenario_tier": tier,
-            "decade": int(decade),
-            "climate_score": round(float(grp["pct"].mean()), 2),
-            "n_hazards": int(len(grp)),
-            # WITHOUT THIS COLUMN THE CSV IS UNSAFE TO SORT. `n_hazards` alone cannot say
-            # whether a score is complete: a 2-hazard warehouse and a 4-hazard timber asset
-            # can both read 2, one complete and one partial. Expected count lives in
-            # assets.csv, so a naive consumer of this file would have to join to find out.
-            # complete == (n_hazards == n_hazards_expected).
-            "n_hazards_expected": int(len(asset_layers.get(asset_id, set()))),
-            "hazards": ";".join(sorted(grp["layer_id"])),
-            "scenarios": ";".join(codes),
-        })
+    rows: List[dict] = []
+    if not fc.empty:
+        fc["scenario_tier"] = fc["scenario"].map(tier_of)
+        # Stage 1: native codes within a layer.
+        l1 = (fc.groupby(["asset_id", "family", "layer_id", "scenario_tier", "decade"])
+                .agg(pct=("percentile", "mean"),
+                     codes=("scenario", lambda s: set(s))).reset_index())
+        # Stage 2: layers within a family.
+        f1 = (l1.groupby(["asset_id", "family", "scenario_tier", "decade"])
+                .agg(fam_pct=("pct", "mean"),
+                     layers=("layer_id", lambda s: sorted(set(s))),
+                     codes=("codes", lambda s: set().union(*s))).reset_index())
+        # Stage 3: families within the asset; observed constants join every cell.
+        for (aid, tier, dec), grp in f1.groupby(["asset_id", "scenario_tier", "decade"]):
+            fams = list(zip(grp["family"], grp["fam_pct"]))
+            layer_ids = sorted({x for lst in grp["layers"] for x in lst})
+            codes = set().union(*grp["codes"])
+            for fam, pct in obs_by_asset.get(aid, []):
+                fams.append((fam, float(pct)))
+                layer_ids = sorted(set(layer_ids) | set(obs_layers.get((aid, fam), [])))
+                codes |= obs_codes.get(aid, set())
+            w = weights.get(aid) or {}
+            rows.append({
+                "asset_id": aid,
+                "scenario_tier": tier,
+                "decade": int(dec),
+                "climate_score": round(sum(p for _, p in fams) / len(fams), 2),
+                "n_hazards": int(len(fams)),
+                # WITHOUT THIS COLUMN THE CSV IS UNSAFE TO SORT: n_hazards alone cannot
+                # say whether a score is complete. complete == (n_hazards == expected).
+                "n_hazards_expected": int(sum(1 for v in w.values() if v == 1)),
+                "hazards": ";".join(sorted(f for f, _ in fams)),
+                "layers": ";".join(layer_ids),
+                "scenarios": ";".join(sorted(codes)),
+            })
 
     out = pd.DataFrame(rows, columns=list(CLIMATE_SCORE_COLUMNS))
+    if out.empty:
+        return out
     out["_t"] = out["scenario_tier"].map(lambda t: TIER_ORDER.index(t)
                                          if t in TIER_ORDER else 99)
     out = out.sort_values(["asset_id", "_t", "decade"]).drop(columns="_t")
@@ -1244,6 +1360,7 @@ def run_delivery(
     assets_df: pd.DataFrame,
     work: List[dict],
     registry: Registry,
+    catalog: AssetCatalog,
     out_dir: Path,
 ) -> dict:
     """Extract every work item and write the star schema. Returns the manifest."""
@@ -1308,8 +1425,32 @@ def run_delivery(
     pd.DataFrame(layer_rows).to_csv(out_dir / "layers.csv", index=False)
     values_df.to_csv(out_dir / "values.csv", index=False)
 
-    scores_df = compute_climate_score(values_df, assets_df)
+    scores_df = compute_climate_score(values_df, assets_df, catalog)
     scores_df.to_csv(out_dir / "climate_score.csv", index=False)
+
+    # The score's full configuration, self-contained in the delivery: the verifier and the
+    # caveat generator read THIS, not the live catalog, so a delivery stays checkable after
+    # the catalog moves on. `asset_weights: null` marks an asset scored on no weights (a
+    # legacy entry or an override on an unknown type) -- it has no climate_score rows.
+    score_config = {
+        "model": "family-weighted mean, v2 (user determinations 2026-08-20)",
+        "families": catalog.families,
+        "standard_excluded": catalog.standard_excluded,
+        "standard_layer_ids": standard_layer_ids(registry, catalog),
+        "asset_weights": {
+            a["asset_id"]: (
+                (catalog.entries.get(str(a.get("catalog_entry"))) or {}).get("family_weights")
+            )
+            for _, a in assets_df.iterrows()
+        },
+        "observed_families_note": (
+            "Families flagged observed enter the score as constants across every decade "
+            "and tier (user decision 2026-08-20, superseding the 2026-08-18 exclusion). "
+            "A constant term damps the score's scenario and time contrast in proportion "
+            "to its weight share."
+        ),
+    }
+    (out_dir / "score_config.json").write_text(json.dumps(score_config, indent=2) + "\n")
 
     status_counts = (
         values_df["data_status"].value_counts().to_dict() if not values_df.empty else {}
@@ -1371,9 +1512,14 @@ def run_delivery(
         },
         "climate_score": {
             "definition": (
-                "Unweighted mean of `percentile` across an asset's hazards, per forcing "
-                "tier per decade. Percentile is the only cross-hazard comparable axis and "
-                "is already oriented for risk (100 = worst on every layer)."
+                "Family-weighted mean of `percentile`, per forcing tier per decade "
+                "(model v2, user determinations 2026-08-20): codes average within a "
+                "layer, layers within their hazard family, and the score is the mean "
+                "over the asset type's weight-1 families present at the site. Observed "
+                "families enter as constants across every tier and decade. Percentile "
+                "is the only cross-hazard comparable axis and is already oriented for "
+                "risk (100 = worst on every layer). Full configuration in "
+                "score_config.json."
             ),
             "keyed_on": "forcing tier, NOT a native scenario code",
             "why": (
@@ -1382,7 +1528,11 @@ def run_delivery(
                 "code would average a subset and be labelled 'across all hazards'. "
                 "RCP and SSP tiers are only approximately comparable; say so in narrative."
             ),
-            "hazard_weighting": "equal; there is no materiality weighting",
+            "hazard_weighting": (
+                "0/1 per hazard family per asset type, set with the user in the "
+                "2026-08-20 walk-through; families weight equally among themselves and "
+                "absent families renormalize out (n_hazards discloses the count)"
+            ),
             # Compared per row against ITS OWN asset's expected count. Comparing against
             # the global maximum called every warehouse row incomplete in a portfolio that
             # also held timber.
@@ -1507,10 +1657,16 @@ Ensemble composition can vary by scenario, so `layers.csv` reports
 
 ## Reading `climate_score.csv`
 
-The **Climate Score** is the unweighted mean of `percentile` across an asset's hazards, for
-one forcing tier and one decade. Percentile is the only cross-hazard comparable axis, and it
-is already oriented so that 100 is worst on every layer — which is what makes the average
-meaningful. Higher score = higher aggregate physical climate risk.
+The **Climate Score** is a family-weighted mean of `percentile` (model v2, 2026-08-20):
+native codes average within a layer, layers average within their hazard family, and the
+score is the mean over the asset type's weight-1 families present at the site (weights are
+0/1 per family per asset type; full configuration in `score_config.json`). Families flagged
+*observed* (landslide, storm-convective) enter as constants across every decade and tier,
+which damps the score's scenario and time contrast in proportion to their weight share.
+Percentile is the only cross-hazard comparable axis, and it is already oriented so that 100
+is worst on every layer — which is what makes the average meaningful. Higher score = higher
+aggregate physical climate risk. `n_hazards` / `n_hazards_expected` count families present
+vs weighted — two scores with different `n_hazards` are not like for like.
 
 - **Keyed on a forcing tier (`low` / `medium` / `high`), not a scenario code.** No native
   ISIMIP code spans both rounds: an `rcp*` code sees only the ISIMIP2b layers and an `ssp*`

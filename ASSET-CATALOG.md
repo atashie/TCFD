@@ -27,9 +27,10 @@ reports, because the caveat set is an input to them.
 
 ### 1. A run never extracts silently
 
-Planning is the default. `generate_customer_delivery.py` resolves every asset to its layers,
-prints the mapping with each layer's units, scenarios, row count and caveats, and **stops**.
-Extraction requires `--run`.
+Planning is the default. `generate_customer_delivery.py` resolves the standard set and each
+asset type's score weights (model v2, 2026-08-20 — the catalog no longer filters
+extraction), prints them with each layer's units, scenarios, row count and caveats, and
+**stops**. Extraction requires `--run`.
 
 This is enforced in code rather than documented as a habit, because the requirement is that
 the specific variables resolved for an asset are shown to the user *before* the run — and a
@@ -105,6 +106,7 @@ says where its layer selection came from.
 | `layers.csv` | one row per hazard layer |
 | `values.csv` | `asset_id` × `layer_id` × `scenario` × `decade` |
 | `climate_score.csv` | `asset_id` × `scenario_tier` × `decade` |
+| `score_config.json` | the score's full configuration: family definitions, per-asset 0/1 weights, standard-set provenance |
 | `manifest.json` | source files with mtimes and sizes, extraction parameters, row counts |
 | `README.md` | how to read the delivery, generated per delivery |
 | `dashboard.html` | the QA dashboard — built by the same command; skipping it marks the delivery incomplete |
@@ -133,8 +135,14 @@ is modelled on perfectly good land.
 
 ## The Climate Score
 
-`climate_score.csv` — the unweighted mean of `percentile` across an asset's hazards, for one
-forcing tier and one decade. Higher = higher aggregate physical climate risk.
+`climate_score.csv` — a family-weighted mean of `percentile` (model v2, user determinations
+2026-08-20): native codes average within a layer, layers average within their hazard family,
+and the score is the mean over the asset type's weight-1 families present at the site, for
+one forcing tier and one decade. Higher = higher aggregate physical climate risk. The full
+configuration — family definitions, per-asset 0/1 weights, standard-set provenance —
+travels in `score_config.json`, so a delivery stays self-checkable after the catalog moves
+on. `n_hazards` / `n_hazards_expected` count families present vs weighted; the `hazards`
+column names the families and `layers` the member layers behind them.
 
 Percentile is the **only** cross-hazard comparable axis: `value` is in native units that
 differ per layer (g C m⁻² yr⁻¹, a dimensionless fraction, a percent), so averaging values
@@ -161,21 +169,25 @@ different scenario families from different CMIP generations — and any narrativ
 This is the one place harmonization enters the CSV; `values.csv` still carries native codes
 only.
 
-### A layer with no forcing pathway is excluded from it
+### An observed family enters as a constant
 
-Added 2026-08-18. An **observational** layer (scenario `observed`) summarises a measured
-historical window and has no radiative forcing, so it cannot answer the question the Climate
-Score asks — how an asset's risk differs between low, medium and high pathways.
+Changed 2026-08-20 (user decision, superseding the 2026-08-18 outright exclusion). An
+**observational** layer (scenario `observed`) summarises a measured historical window and
+has no radiative forcing, so it cannot vary across the tiers. Where its hazard family
+carries weight 1 for an asset type, the family's value — from the single observed period —
+is folded unchanged into **every** tier × decade cell of that asset's score. It is still
+never filed *under* a tier: `scenario_tier` holds forcing tiers only, and the `scenarios`
+column records `observed` where a constant contributed.
 
-It is therefore dropped from the score entirely rather than filed under a tier. Letting it
-default into `medium` would raise that one tier and read as a forcing effect produced by a
-layer that has no forcing at all. The hazard is still delivered in `values.csv` and still
-appears in the reports; it just does not enter an aggregate whose axis it lacks. The
-dashboard reports this as "OBSERVATIONAL … excluded from the Climate Score", not as a missing
-scenario, so nobody goes looking for files that do not exist.
+The consequence to disclose — and `SCORE-OBSERVED-CONSTANT` is a must-disclose caveat doing
+exactly that — is that a constant term damps the score's scenario and time contrast in
+proportion to its weight share: flat-looking tier lines are partly these constants, not
+evidence that the projected hazards are scenario-insensitive. Off-domain members (tornado
+outside CONUS) drop out of the family mean like any absent member — unobserved is never
+zero.
 
-`viz_common.is_forcing_scenario()` declares which codes these are; the delivery and its
-independent verifier apply it separately.
+`viz_common.is_forcing_scenario()` declares which codes are observational; the delivery and
+its independent verifier apply it separately.
 
 ### Two ways it can lie, and the guards
 
@@ -205,11 +217,18 @@ cyclone, so at the high tier only the timber asset survived — the 2020s read 6
 an independent two-stage mean, and asserts the baseline-decade score is identical across
 tiers for any asset with the same hazard set.
 
-### Hazards are weighted equally
+### Weights are 0/1 per hazard family per asset type
 
-There is no materiality weighting. What keeps an irrelevant hazard out of an asset's average
-is the **asset catalog**, not the arithmetic — which is another reason entry 2 of the three
-rules (an unknown asset is an error, never a default) matters.
+Set with the user in the 2026-08-20 hazard-by-hazard walk-through, recorded under each
+asset type's `family_weights` in `config/asset_catalog.yaml`, and never pre-assigned.
+Families weight equally among themselves — there is still no materiality weighting — and a
+family absent at a site (off its layers' footprint, or publishing nothing in a tier)
+renormalizes out, with `n_hazards` / `n_hazards_expected` counting families present vs
+weighted. What keeps an irrelevant hazard out of an asset's **score** is its weight; what
+keeps it in front of the reader is that it is **delivered regardless** — under the v2 model
+every asset receives the full standard set, and relevance is a score decision, not a
+delivery filter. A layer in no score family (the flood counterfactuals `40yr`/`none`) is
+delivered unscored.
 
 ## The QA/QC dashboard
 
@@ -403,35 +422,26 @@ looked at and a reviewed one must not produce indistinguishable deliverables.
 
 ---
 
-## Registered but unrouted — layers no asset type reaches yet
+## Outside the standard set — what registration does and does not imply
 
-A layer in `config/layer_registry.yaml` is **not** thereby in any delivery. It reaches a
-customer only when an asset type in `config/asset_catalog.yaml` names it, and that mapping is
-a user decision. Layers can sit registered, contract-passing and QA-signed-off while
-delivering nothing — deliberately, because declaring hazard coverage before the mapping exists
-produces a report that lists a hazard as assessed and carries no data for it.
+Since 2026-08-20 every QA-signed layer with a deliverable status is in the **standard set**
+and reaches every delivery — routing is no longer per asset type. A layer stays out of
+deliveries only three ways: no QA date yet (`csoil`), a non-deliverable status
+(`heatwave-2b` blocked; the four water-stress layers), or an explicit
+`standard_set.excluded` entry in the catalog (`drought-2b` and `conifer-npp`, removed from
+the general list by the user 2026-08-20 and available on request via a `Layers` override;
+`tornado-all`, comparison-only). A layer in the standard set but in no score family is
+delivered **unscored** (`flood-3b-40yr`, `flood-3b-none`).
 
-As of 2026-08-19 that applies to **twenty-one** layers: the ten precipitation metrics (`pluvial-*` — heavy rainfall, filed under `heavy-precipitation`, NOT under `flood-pluvial`, which they do not cover because drainage is absent from the data), the nine threshold rungs
-(`heatdays-hd30/hd35/hd40/hd45`, `tropicalnights-tr20/tr25`, `icedays-id`,
-`frostdays-fd/fdm10` — chronic heat and cold/frost), plus `heatwave-3b` and `permafrost-3b`.
-`hazard_taxonomy.yaml` keeps `covered_by: []` for all four families to match.
-
-**All ten `pluvial-*` layers also carry `qa_reviewed_on: null`** — they are built and contract-passing, and their dashboards are rendered at `reports/maps/{metric}/`, but nobody has confirmed reading them. Do not set the date on their behalf.
-
-**When routing any of them, three things need deciding with the user, not inferred:**
-
-1. **Which rung.** The ladder ships `hd35` and `FD` as `status: preferred` and the other seven
-   as `alternate`. A data centre may want `TR20` (overnight heat drives cooling load and is
-   the better mortality predictor) rather than the daytime headline; a desert asset may want
-   `hd45`, which is 70.8% zeros globally and *should* be, and reads all-zero for most
-   portfolios by design.
-2. **Whether the absolute or the relative heat layer, or both.** `heatdays-*` and `heatwave-3b`
-   answer different questions and agree on only **47.2%** of their worst-decile cells. Routing
-   one is a choice about the question, not a choice of source.
-3. **The direction of the cold rungs.** They are scored `higher_is_worse` on the frost COUNT,
-   so they report risk *falling*. For assets harmed by losing frost — vernalisation chill
-   hours, ice roads, pest overwintering kill — the risk runs the other way and these layers do
-   not carry it. See `hazard_taxonomy.yaml` `families.cold-frost.materiality_note`.
+The judgment that used to live in per-asset routing now lives in the **weights
+walk-through** for each new asset type, and the questions recorded here still apply there —
+which rung answers the customer's question (overnight `TR20` vs daytime `hd35`; sparse
+`hd45` reads all-zero for most portfolios *by design*), absolute vs relative heat
+(`heatdays-*` and `heatwave-3b` agree on only **47.2%** of their worst-decile cells), and
+the cold-count direction (scored so more frost is worse, so the hazard reads as *falling*;
+assets harmed by losing frost carry the opposite risk, which these layers do not represent —
+see `hazard_taxonomy.yaml` `families.cold-frost.materiality_note`). They are decided as
+family framing and weights now, never inferred.
 
 ## Maintaining the layer registry
 

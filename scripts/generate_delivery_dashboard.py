@@ -1226,8 +1226,11 @@ def build_dashboard(delivery: Path, quiet: bool = False):
         warnings.append(
             f"{lid} is OBSERVATIONAL (scenario "
             f"{'/'.join(sorted(payload['layers'][lid]['scenarios']))}): it carries no "
-            f"forcing pathway, so it is shown on its own and excluded from the Climate "
-            f"Score and from cross-tier panels. This is not a missing scenario.")
+            f"forcing pathway, so it is shown on its own and excluded from cross-tier "
+            f"panels. Where its hazard family is weighted for an asset, it enters the "
+            f"Climate Score as a CONSTANT across every decade and tier (user decision "
+            f"2026-08-20), which damps the score's scenario and time contrast in "
+            f"proportion to its weight share. This is not a missing scenario.")
     unknown = sorted(s for s in set(payload["tiers"]) - set(SCENARIO_TIER)
                      if is_forcing_scenario(s))
     if unknown:
