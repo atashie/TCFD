@@ -136,6 +136,10 @@ LAYER_ATTRS_EXPORTED = (
     "percentile_zero_fraction",
     "baseline_decade",
     "window_years",
+    #: The observational layers' true observed window (e.g. "1950-2025"). Exported since
+    #: 2026-08-21 because the decade policy files such a layer under the 2020s label in
+    #: values.csv -- this column is where the real window remains visible.
+    "temporal_window",
     "ensemble_uniform_across_scenarios",
     "members_by_scenario",
     "impact_models",
@@ -708,7 +712,9 @@ def _layer_metadata(spec: LayerSpec, ds: xr.Dataset, scenarios: Sequence[str]) -
         "relative_baseline_note": " ".join(spec.relative_baseline_note.split()),
         "qa_reviewed_on": spec.qa_reviewed_on or "NOT CONFIRMED",
         "scenarios": ";".join(scenarios),
-        "decades": ";".join(str(int(d)) for d in ds.decade.values),
+        # DELIVERED decades, after the decade policy -- the verifier crosses this column
+        # with values.csv, so it must describe what is delivered, not what the file holds.
+        "decades": ";".join(str(d) for d in policy_decades(ds.decade.values)),
         "source_folder": spec.folder,
     }
     for attr in LAYER_ATTRS_EXPORTED:
@@ -1353,6 +1359,38 @@ def delivery_dir(customer: str, run_date: Optional[str] = None) -> Path:
     return DELIVERIES_ROOT / slugify(customer) / run_date
 
 
+#: DELIVERY DECADE POLICY (user decision 2026-08-21): a delivery carries no pre-2020
+#: panels. Projected layers drop their pre-2020 decades (the ISIMIP2b 2010s). A layer
+#: with no panel at or after 2020 -- the observational layers, whose single window starts
+#: in 1950/1980 -- files its most recent panel under this label and reads as "current
+#: conditions"; the true window stays visible in layers.csv (`temporal_window`). The
+#: independent verifier RESTATES this policy rather than importing it, like the tier map.
+DELIVERY_BASELINE_DECADE = 2020
+
+
+def policy_decades(decades) -> List[int]:
+    """The decades a layer DELIVERS under the decade policy, given the file's own."""
+    ds = sorted(int(d) for d in decades)
+    kept = [d for d in ds if d >= DELIVERY_BASELINE_DECADE]
+    return kept if kept else [DELIVERY_BASELINE_DECADE]
+
+
+def apply_decade_policy(values_df: pd.DataFrame) -> pd.DataFrame:
+    """Apply the decade policy to assembled value rows (see DELIVERY_BASELINE_DECADE)."""
+    if values_df.empty:
+        return values_df
+    out = []
+    for _, grp in values_df.groupby("layer_id"):
+        decs = grp["decade"].astype(int)
+        if (decs >= DELIVERY_BASELINE_DECADE).any():
+            out.append(grp[decs >= DELIVERY_BASELINE_DECADE])
+        else:
+            g = grp[decs == decs.max()].copy()
+            g["decade"] = DELIVERY_BASELINE_DECADE
+            out.append(g)
+    return pd.concat(out, ignore_index=True)
+
+
 def run_delivery(
     customer: str,
     input_path: Path,
@@ -1409,6 +1447,7 @@ def run_delivery(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     values_df = pd.DataFrame(all_rows)
+    values_df = apply_decade_policy(values_df)
     if not values_df.empty:
         values_df = values_df[list(VALUES_COLUMNS)].sort_values(
             ["asset_id", "layer_id", "scenario", "decade"]
@@ -1652,6 +1691,10 @@ Ensemble composition can vary by scenario, so `layers.csv` reports
   p-value under this contract -- disagreement is what tells you a trend is not robust.
 - Slopes are **NaN in the baseline decade** by design; the expanding window has no span
   there. That is the contract working, not missing data.
+- **No pre-2020 rows are delivered** (decade policy, 2026-08-21). A layer whose data is a
+  single observed historical window (scenario `observed`) is filed under the 2020s label
+  and reads as **current conditions**; its true observed window is in `layers.csv`
+  (`temporal_window`). Projected layers simply omit their pre-2020 panels.
 - `data_status`: `OK`; `OFF_LAYER_MASK` = the site is on modelled land but this layer does
   not cover it (e.g. no conifer stand present); `OUTSIDE_DOMAIN` = offshore or off-grid.
 

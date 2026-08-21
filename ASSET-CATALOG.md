@@ -127,6 +127,13 @@ significance columns (no such statistic exists under this contract).
 site — e.g. no conifer stand present), or `OUTSIDE_DOMAIN` (offshore or off-grid). Rows are
 never dropped; a site with no data says so.
 
+**Decade policy (user decision 2026-08-21): a delivery carries no pre-2020 rows.** Projected
+layers omit their pre-2020 panels (the ISIMIP2b 2010s). A layer with no panel at or after
+2020 — the observational layers — files its most recent panel under the **2020s** label and
+reads as *current conditions*; the true observed window stays visible in `layers.csv`
+(`temporal_window`), and the rows keep scenario `observed`. The verifier restates and
+enforces the policy independently.
+
 The domain that separates those two is the union of finite cells across **every registry
 layer**, not across the delivery's layers. Scoping it to the delivery would make a status
 depend on what else the customer ordered: a conifer-only delivery for an Amazon site would

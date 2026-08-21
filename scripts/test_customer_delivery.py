@@ -130,6 +130,19 @@ def independent_point_extract(ds, var, lat, lon):
         decades = [int(window.split("-")[0])]
         block = block[None, ...]
 
+    # DECADE POLICY, restated (user decision 2026-08-21): a delivery carries no pre-2020
+    # panels, and a layer with none at or after 2020 files its most recent panel under
+    # 2020. Restated here rather than imported, like the tier map -- a test must say what
+    # it expects.
+    keep = [i for i, d in enumerate(decades) if int(d) >= 2020]
+    if keep:
+        decades = [int(decades[i]) for i in keep]
+        block = block[keep]
+    else:
+        i = int(np.argmax([int(d) for d in decades]))
+        decades = [2020]
+        block = block[[i]]
+
     out = {}
     for i, decade in enumerate(decades):
         panel = block[i]
@@ -507,6 +520,11 @@ def main(delivery: Path) -> int:
     check(not extra_keys,
           f"values.csv has {len(extra_keys)} row(s) that should not exist, e.g. "
           f"{sorted(extra_keys)[:3]}")
+    # Decade policy: nothing before 2020 is delivered, under any layer.
+    check(len(values) == 0 or int(values["decade"].astype(int).min()) >= 2020,
+          f"a pre-2020 decade was delivered (min "
+          f"{values['decade'].astype(int).min() if len(values) else '—'}) -- violates "
+          f"the 2026-08-21 decade policy")
     check(int(manifest.get("counts", {}).get("value_rows", -1)) == len(values),
           f"manifest says {manifest.get('counts', {}).get('value_rows')} value rows, "
           f"values.csv has {len(values)}")
