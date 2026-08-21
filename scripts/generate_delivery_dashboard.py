@@ -1283,10 +1283,15 @@ function renderSeries() {
     // yref "paper" they ran the full height of the grid, striking through every row
     // and its titles.
   });
+  // Every multi-decade panel gets an EXPLICIT x range pinned to the delivered decade
+  // span (2020s-2090s) with one tick per decade -- autorange let an axis wander far
+  // outside the data (reported 2026-08-21 as the score panel showing years 0-2100).
+  const allDecs = [...new Set(DATA.values.map(v => v.dec))].sort((a, b) => a - b);
+  const xr = [allDecs[0] - 5, allDecs[allDecs.length - 1] + 5];
   panels.forEach((pan, i) => {
     const ax = i === 0 ? "" : (i + 1);
     layout["xaxis" + ax] = {gridcolor: ink("--grid"), linecolor: ink("--axis"),
-                            zeroline: false, tickformat: "d"};
+                            zeroline: false, tickformat: "d", range: xr, dtick: 10};
     // A single-period (observational) hazard is one reading, not a series: one marker,
     // labelled "Current" rather than the window's start year (user call, 2026-08-21).
     // The true observed window is in layers.csv.
@@ -1294,6 +1299,7 @@ function renderSeries() {
       layout["xaxis" + ax].tickvals = layerDecs[pan.lid];
       layout["xaxis" + ax].ticktext = ["Current"];
       layout["xaxis" + ax].range = [layerDecs[pan.lid][0] - 6, layerDecs[pan.lid][0] + 6];
+      delete layout["xaxis" + ax].dtick;
     }
     layout["yaxis" + ax] = {gridcolor: ink("--grid"), linecolor: ink("--axis"),
                             zeroline: false};
