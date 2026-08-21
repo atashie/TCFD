@@ -760,7 +760,7 @@ review had in front of it.
 | `burntarea` (2b `biomes`, rcp26/60/85) | **SUPERSEDED 2026-08-10** by the 3b layer. |
 | `csoil-total` | **Rebuilt and registered 2026-08-15** — see the `csoil` rows above. The 2026-07-25 build's output had been lost from disk and its 12-member/3-model ensemble was wrong by omission (LPJmL missing). `process_csoil_soilcarbon.py` remains the OUTPUT-SPEC **reference implementation**. |
 | Hail severity (Nature 2026 trajectory deposit) | **EVALUATED 2026-08-18, NOT A LAYER.** Conditional severity under ssp245/370/585, but it cannot express frequency and 73% of its 0.5° cells hold one storm. Kept as research output at `reports/maps/hail-severity/`. |
-| Timber, fisheries, health, … | Various `process_*.py`, not registered. |
+| Timber, fisheries, health, … | Pre-contract `process_*.py`, never registered; **removed from HEAD 2026-08-21** (recoverable via git history — see the dated WORKFLOW-ISSUES.md entry). |
 
 ## Source families in the ISIMIP repository
 

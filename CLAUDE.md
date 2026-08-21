@@ -57,7 +57,7 @@ TCFD/
 │
 ├── scripts/                  # Standalone scripts — both workflows
 │   ├── utils/                # Shared utilities (land_mask, water_index_compare)
-│   ├── process_qg.py         # TCFD: example annualized processor
+│   ├── process_csoil_soilcarbon.py  # TCFD: reference processor (OUTPUT-SPEC contract)
 │   ├── generate_maps.py      # TCFD: interactive Plotly maps
 │   ├── config_water_*.py     # Water: variable configuration
 │   ├── process_water_*.py    # Water: processing scripts

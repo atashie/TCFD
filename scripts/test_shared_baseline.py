@@ -7,8 +7,8 @@ Restored and extended. The original checked only the shared 2020s baseline; it w
 dropped during the S3 era and no layer built since carried it, so the checks that had
 to be re-derived by hand each time are folded in here.
 
-Run this after every processing run. `generate_qa_report.py` re-checks some of the
-same invariants -- this script is the contract, that report is the safety net.
+Run this after every processing run -- this script is the contract;
+`scripts/generate_layer_qa.py` writes the human-readable QA record beside it.
 
 Exit code 0 = all checks passed, 1 = at least one failed.
 """

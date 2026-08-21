@@ -325,7 +325,8 @@ the map subtitle.
 
 **Risk bands are display-only.** The five bands (Very Low … Very High) are derived from
 `percentile` and therefore deliberately absent from `values.csv` under the no-derived-columns
-rule. Thresholds carry over from the retired `export_formatter.RELATIVE_HAZARD_THRESHOLDS` so
+rule. Thresholds carry over from the retired Export-Key formatter (now `RISK_BANDS` in
+`scripts/utils/viz_common.py`; the formatter itself was removed 2026-08-21) so
 a band means what it did in prior deliveries. Being *ordered* categories, they get the ordinal
 ramp. (The v1 rule that nominal bar charts never take a value-ramp was superseded 2026-08-21:
 the percentile bar charts colour each bar by its value on the percentile ramp, a user call.)
@@ -578,7 +579,7 @@ a loose phrase.
 3. **Longitude wraps the antimeridian.** It did not until 2026-08-12: the window was
    one-sided at the seam, so 180° E and 180° W returned different numbers — 0.775 against
    0.962 on `burntarea` ssp585 at 17° S, and 62× apart at 67° N. This was a defect in the
-   shared `extract_by_point`, so `extract_timber_locations.py` carried it too.
+   shared `extract_by_point`, so the since-removed `extract_timber_locations.py` carried it too.
 4. **NaN cells are dropped and weights renormalized**, so a site whose own cell is masked
    still returns a value built from its surviving neighbours. Marching west from the Oregon
    coast at 44° N the land weight goes 100% → 100% → 69% → 0%, and `data_status` reads `OK`

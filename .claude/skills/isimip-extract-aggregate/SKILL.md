@@ -53,25 +53,20 @@ normalizing.
 
 ## Output
 
-CSV via `scripts/utils/export_formatter.py`, with a metadata sidecar recording: the layer
-and its processed-file provenance, the extraction date, the mode (point vs polygon), the
-`percentile_direction` applied, and the units.
+Customer-facing extraction goes through the `/customer-delivery` skill, which writes the
+normalized star-schema CSVs. A direct extraction from this skill should record the same
+provenance in a metadata sidecar: the layer and its processed-file provenance, the
+extraction date, the mode (point vs polygon), the `percentile_direction` applied, and the
+units.
 
 **There is no significance statistic under the current contract**
 ([OUTPUT-SPEC.md](../../../OUTPUT-SPEC.md)). The dual-slope design replaced it: agreement
 between `ols_slope` and `sen_slope` is the robustness signal, and disagreement means a
-cell's trend is not robust.
+cell's trend is not robust. **Which slope a layer reads is measured per layer and recorded
+in `config/layer_registry.yaml` (`recommended_slope`) — never assume a default.**
 
-The legacy 28-column schema still carries `Decadal_Trend_Significance` /
-`Long_Term_Trend_Significance`. Write `export_formatter.SIGNIFICANCE_NOT_COMPUTED` into
-them — **never leave them NaN.** That distinction is not cosmetic: the retired schema
-declared a `significance` value class no processor ever emitted, so those columns silently
-resolved to NaN and every layer ever delivered read as *"not significant"* rather than
-*"not computed"*.
-
-`Decadal_Trend_Strength` takes `sen_slope` by default. On a **zero-inflated** layer
-`sen_slope` is exactly 0 almost everywhere and `ols_slope` is the correct source instead —
-`test_shared_baseline.py` prints the zero fraction, so check it before exporting.
+(The 28-column `Export-Key.csv` formatter this section used to describe was retired
+2026-08-12 — user decision — and its implementation removed 2026-08-21.)
 
 ## Scenario handling
 

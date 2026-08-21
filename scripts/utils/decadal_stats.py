@@ -3,7 +3,7 @@
 One contract for every hazard layer, so layers are mutually comparable. Replaces the
 two divergent families that grew up in this codebase:
 
-  * family A (``process_qg.py`` and scripts templated on it) -- mean over models then
+  * family A (the retired ``process_qg.py`` lineage, removed 2026-08-21) -- mean over models then
     MEDIAN over years; CI = interquartile range pooled over member x year; trend = an
     OLS slope fitted WITHIN each decade window.
   * family B (``process_csoil_soilcarbon.py``, ``process_burntarea_fire.py``,

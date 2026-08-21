@@ -56,8 +56,7 @@ to verify:
 3. Files carry `baseline_source: shared_across_all_scenarios`
 
 > This verification step was dropped during the S3 era and no layer built since carries it.
-> It is restored here as mandatory. `generate_qa_report.py` also checks baseline identity;
-> run both — the script is the contract, the QA check is the safety net.
+> It is restored here as mandatory — the script is the contract.
 
 **Caveat added since (additive, keeps the rule):** the shared baseline is correct **only
 when ensemble composition is uniform across scenarios.** Check first. If any member is
@@ -69,8 +68,9 @@ members, or the change map differences two different ensembles and manufactures 
 (member **identity**, not a count) so QA groups by composition instead of failing. Keep the
 percentile *reference* distribution global so percentiles stay comparable.
 
-**Reference implementations**: `scripts/process_qg.py` (groundwater runoff),
-`scripts/process_timber.py` (timber/wood carbon).
+**Reference implementations**: `scripts/process_csoil_soilcarbon.py` (projected decadal
+contract — copy its structure), `scripts/process_tornado_spc.py` (observational-historical
+contract).
 
 ## Output Organization
 
@@ -405,10 +405,11 @@ itself. Do not "fix" `test_shared_baseline.py` by relaxing it — its strictness
 
 ## Review the QA report before claiming success
 
-`generate_qa_report.py` checks: value classes present and shaped; `lower_ci ≤ median ≤
-upper_ci`; zero-width CIs isolated to all-zero or single-model cells; percentile in [1,100]
-and oriented to match the declared direction; shared baseline bit-identical across
-scenarios; coverage counts consistent; land coverage non-empty.
+The contract check (`scripts/test_shared_baseline.py`) and the markdown QA record
+(`scripts/generate_layer_qa.py`) cover: `lower_ci ≤ median ≤ upper_ci`; zero-width CIs
+isolated to all-zero or single-model cells; percentile in [1,100] and oriented to match the
+declared direction; shared baseline bit-identical across scenarios; coverage counts
+consistent; land coverage non-empty.
 
 Read the warnings, don't just check the verdict. If a check reports itself **skipped**,
 treat that as a failure to investigate — a silently skipped invariant is worse than a failed

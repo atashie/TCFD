@@ -4,7 +4,8 @@ WHY THIS EXISTS. The pipeline's documented QA command, `isimip-pipeline report`,
 OUTPUT-SPEC.md: it derives a variable name from the filename and calls `ds[that_name]`, so on
 a contract file -- which carries `median`, `lower_ci`, ... and no variable of its own name --
 it raises `KeyError: 'thawfrac_ssp126'`. Verified 2026-08-14; it fails the same way on every
-layer built to the current contract. `scripts/generate_qa_report.py` is hardcoded for `qg`.
+layer built to the current contract. (`generate_qa_report.py`, hardcoded for the retired
+`qg` layer, was removed 2026-08-21.)
 
 What this writes is a MARKDOWN QA/QC record, not a picture. The three QA artifacts are
 complementary and none replaces another:

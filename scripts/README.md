@@ -133,7 +133,7 @@ output contract never made one of them meaningful:
 |---|---|
 | `process_burntarea_fire.py` | **superseded 2026-08-10** by `process_burntarea_isimip3b.py` |
 | `process_sug_sugarcane.py` | **withdrawn** — LPJmL does not simulate cane in the cane belt; both layers passed every check and were meaningless |
-| `process_qg.py`, `process_evgndltr.py`, `process_tebrsu.py`, `process_timber.py`, `process_loblolly.py`, `process_loblolly_cveg.py`, `process_loblolly_npp.py`, `process_fish_tcb.py`, `process_fish_b30cm.py`, `process_health_mortality.py` | exploratory layers predating the current contract; none is in the registry, so none can reach a delivery |
+| 10 exploratory processors (qg, timber/loblolly, evgndltr, tebrsu, fish, health) | **removed 2026-08-21** — predated the current contract, never registered, so none could reach a delivery; recoverable via git history (see the dated WORKFLOW-ISSUES.md entry) |
 
 Water Risk Index — **a different product**; none of the TCFD contract applies (see
 [CLAUDE.md](../CLAUDE.md)):
@@ -215,17 +215,6 @@ Features:
 - Multiple metrics: median, percentile, trend, confidence, change, anomaly
 - Scientific notation on colorbars
 - Index page with navigation grid
-
-### process_qg.py
-
-Processes raw groundwater runoff (qg) data from ISIMIP.
-
-```bash
-python scripts/process_qg.py
-```
-
-**Input**: `data/raw/*.nc` (raw NetCDF files from ISIMIP)
-**Output**: `data/processed/qg_*.nc` (processed files by scenario)
 
 ### process_led_drought.py
 
@@ -411,16 +400,6 @@ exact percentiles: worst error 2.63% against a 2.7% bin width, i.e. at the resol
 
 **Input**: `data/interim/prthresh/{GCM}_{scenario}_pr.nc` (42 files, 7.1 GB)
 **Output**: `data/processed/pluvial-isimip3b_{metric}_annual/{metric}_{scenario}_processed.nc`
-
-### generate_qa_report.py
-
-Generates QA reports for processed data.
-
-```bash
-python scripts/generate_qa_report.py
-```
-
-**Output**: `reports/qg_qa_report.json`
 
 ### test_shared_baseline.py
 

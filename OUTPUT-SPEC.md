@@ -296,7 +296,7 @@ offset ratio a 100k cap costs ~15% of the slope, and the only tolerable cap buys
 
 ## Appendix: what changed
 
-| | family A (`process_qg.py`) | family B (2026 layers) | this spec |
+| | family A (the retired `process_qg.py` lineage, removed 2026-08-21) | family B (2026 layers) | this spec |
 |---|---|---|---|
 | `median` | mean over models, median over years | mean over years, mean over members | median over the pooled sample |
 | CI | IQR pooled over member × year | mean ± 1 SD across members | IQR (mean ± 1 SD if boolean) |
@@ -304,7 +304,7 @@ offset ratio a 100k cap costs ~15% of the slope, and the only tolerable cap buys
 | significance | declared in `CLAUDE.md`, never emitted | never emitted | superseded — read the two slopes |
 
 `CLAUDE.md` previously declared a 6th value class, `significance`, that no processor
-ever wrote; `export_formatter.py` resolved `Decadal_Trend_Significance` to NaN, which
+ever wrote; the since-removed `export_formatter.py` resolved `Decadal_Trend_Significance` to NaN, which
 read as "not significant" rather than "not computed." Carrying both slopes replaces it:
 disagreement between `ols_slope` and `sen_slope` is the signal that a cell's trend is
 not robust.

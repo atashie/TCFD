@@ -5,7 +5,7 @@ decisions and drifted:
 
     generate_maps.py        symmetric limit at the 95th percentile of |value|
     compare_water_index.py  the same idea at the 98th, written twice more inline
-    extract_timber_locations.py  its own scenario -> "Low/Middle/High" recoding
+    extract_timber_locations.py  its own scenario -> "Low/Middle/High" recoding (since removed)
 
 None of those are per-script taste. A diverging scale that is not centred on zero
 misreports the sign of a trend, and a scenario that reads "Low Emissions" in one
@@ -221,8 +221,9 @@ def check_tier_collisions(scenarios_by_layer: Dict[str, Sequence[str]]) -> List[
 #: deliberately absent from the delivery CSV under the no-derived-columns rule. It lives
 #: here because a rollup chart needs ordered classes; it is not a stored value class.
 #:
-#: Thresholds carried over from the retired `export_formatter.RELATIVE_HAZARD_THRESHOLDS`
-#: so a band means the same thing it did in prior deliveries.
+#: Thresholds carried over from the retired Export-Key formatter's
+#: `RELATIVE_HAZARD_THRESHOLDS` (removed 2026-08-21) so a band means the same thing it
+#: did in prior deliveries.
 RISK_BANDS = [
     (0, 20, "Very Low"),
     (20, 40, "Low"),

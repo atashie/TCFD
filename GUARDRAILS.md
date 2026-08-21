@@ -145,7 +145,7 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 
 **Required behavior**:
 - Water index scripts: `process_water_tws.py`, `process_water_variable.py`, `config_water_*.py`, `validate_water_tws.py`, `compare_water_index.py`, `download_water_*.py`, `diagnose_*_models.py`
-- Standard TCFD scripts: `process_qg.py`, `process_fish_*.py`, `process_health_*.py`, `generate_maps.py`, `isimip-pipeline` CLI
+- Standard TCFD scripts: `process_csoil_soilcarbon.py` (reference implementation), the `process_*_isimip3b.py` family, `generate_maps.py`
 - Never import functions from one workflow into the other
 - Never apply `/isimip-process-visualize` skill to water index processing
 
@@ -244,7 +244,7 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 **Original rule (retained for context)**: For a variable with high interannual variability (fire, precipitation extremes, floods), do **not** report the trend as the OLS slope of the *annual* series within a single decade. Use an across-decade signal so the trend is spatially coherent rather than dominated by interannual noise.
 
 **Why this matters**:
-- The legacy processors (`process_qg.py`, `process_led_drought.py`, `process_let_cyclone.py`) compute `trend[decade]` as the slope of the annual values *inside* that decade (10 points). For a noisy variable this slope is dominated by interannual noise → a spatially **spotty, sign-flipping** field, while the change map (a difference of two 10-year decadal means) is smooth. A user flagged exactly this for `burntarea` (2026-07-24).
+- The legacy processors (`process_qg.py` — removed 2026-08-21 — and the pre-contract revisions of `process_led_drought.py` / `process_let_cyclone.py`) computed `trend[decade]` as the slope of the annual values *inside* that decade (10 points). For a noisy variable this slope is dominated by interannual noise → a spatially **spotty, sign-flipping** field, while the change map (a difference of two 10-year decadal means) is smooth. A user flagged exactly this for `burntarea` (2026-07-24).
 - A "trend" that contradicts the change map is misleading — they should tell the same story.
 
 **Required behavior** (for high-variance variables):
