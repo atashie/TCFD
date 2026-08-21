@@ -1092,6 +1092,53 @@ What the review had in front of it:
 rebuild, an rcp85 addition) would not inherit this date — and a sub-metre DEM would
 specifically invalidate the quantization addendum, which should be re-measured then.
 
+### QA sign-off: the tornado ladder, 2026-08-20 — "for this iteration"
+
+**Signed off by the user on 2026-08-20 explicitly "for this iteration"**, covering all four
+rungs (`tornado-f2plus`, `tornado-f1plus`, `tornado-f3plus`, `tornado-all`), with the issues
+below recorded for a future revisit. Thirty-seven of thirty-nine layers now carry a human QA
+date; the two remaining nulls are decision-holds (`csoil` role question, blocked
+`heatwave-2b`), not unreviewed layers. `tornado-all`'s date does not change its
+comparison-only status — it remains undeliverable by its own note.
+
+What the review had in front of it:
+
+- **Contract**: `test_observational_baseline.py` — **22/22 checks on each rung**, run the
+  day of review.
+- **Receipts reproduced exactly**: Phoenix pct 64.4 → 45.0 → 1.0 across `all` → `f1plus` →
+  `f2plus` (the registry's documented contamination gradient, to the decimal); Moore OK
+  99.9–100 on every rung; Toronto off-domain NaN. The wider table shows the same structure:
+  metros deflate as detection-driven weak reports are excluded (Miami 99.6 → 2.0, Denver
+  99.3 → 29.0 from `all` to `f3plus`) while Dixie Alley holds (Birmingham ~99 on all rungs).
+- **QA pages regenerated the day of review**, both windows (`full` 1950–2025, the product;
+  `from1996` as modern-reporting-era sensitivity), 1.9 MB each, at
+  `reports/maps/tornado/`.
+
+**Issues found at review — recorded for the revisit (user instruction):**
+
+1. **The evidence pages had never been human-reviewable before this sign-off.** Two
+   renderer defects, both found and fixed at review: the `historical` → `observed`
+   scenario-token rename (2026-08-18, minutes after the pages were last rendered) left
+   `generate_tornado_qa.py` silently finding nothing (`aef11c0`); once revived, uncropped
+   global float64 Heatmap panels made each page 153.7 MB (`39db4ae` crops to CONUS and
+   casts float32 → 1.9 MB). Failure mode worth remembering: the renderer *printed* "no
+   layers found" instead of raising, so nothing flagged the orphaning.
+2. **Reporting contamination is structural, not fixable by rung choice alone.** The
+   weak-report record tracks population, roads and radar; `f2plus` is the
+   reporting-stable subset and still costs 82% of the records. Any revisit that wants
+   more signal should look at detection-bias-adjusted modelling, not at re-adding rungs.
+3. **`f3plus` is single-event thin** (69.6% of CONUS in the zero tier; many occupied
+   cells rest on one event) — retained as the violent-tail reference, weak as a ranking.
+4. **No trend by design** — a fitted slope would measure the observing system (reports
+   ×2.8 since the 1950s while F2+ fell 19%). A revisit wanting temporal signal needs a
+   detection-corrected series, not a slope on this one.
+5. **Open product question for the revisit**: whether a `from1996`-window variant (modern
+   reporting era only) should ship alongside or replace the full-window product; the
+   sensitivity page exists precisely to inform that decision.
+
+**The review is of the DATA, not of the processor**, and it is an iteration-scoped
+sign-off: the user's expectation of a future revisit is part of the record.
+
 
 ### The precipitation family: ten metrics, three questions, and why both an absolute and a relative framing ship
 
