@@ -59,8 +59,8 @@ WATER_VARIABLES: Dict[str, WaterVariableConfig] = {
         units_output="kg m-2",
         aggregation="mean",
         unit_conversion_factor=1.0,
-        models=["cwatm", "h08", "jules-w2", "miroc-integ-land"],
-        notes="5 GCMs, best coverage among water variables",
+        models=["cwatm", "h08", "jules-w2", "miroc-integ-land", "lpjml5-7-10-fire"],
+        notes="5 GCMs; lpjml5-7-10-fire added per WS1 Gate A1 (2026-08-21 enumeration receipt)",
     ),
     "dis": WaterVariableConfig(
         name="dis",
@@ -69,8 +69,8 @@ WATER_VARIABLES: Dict[str, WaterVariableConfig] = {
         units_output="m3 s-1",
         aggregation="mean",
         unit_conversion_factor=1.0,
-        models=["cwatm", "h08", "jules-w2", "miroc-integ-land", "watergap2-2e"],
-        notes="5 models, largest ensemble",
+        models=["cwatm", "h08", "jules-w2", "miroc-integ-land", "watergap2-2e", "lpjml5-7-10-fire"],
+        notes="6 models; lpjml5-7-10-fire added per WS1 Gate A1 (2026-08-21)",
     ),
     "potevap": WaterVariableConfig(
         name="potevap",
@@ -79,8 +79,8 @@ WATER_VARIABLES: Dict[str, WaterVariableConfig] = {
         units_output="kg m-2 s-1",
         aggregation="sum",
         unit_conversion_factor=1.0,
-        models=["cwatm", "h08", "miroc-integ-land", "watergap2-2e"],
-        notes="Flux variable, stored in raw ISIMIP units (kg/m2/s) to match original RCP file",
+        models=["cwatm", "h08", "miroc-integ-land", "watergap2-2e", "lpjml5-7-10-fire"],
+        notes="Flux variable, raw ISIMIP units (kg/m2/s); lpjml5-7-10-fire added per WS1 Gate A1 (2026-08-21)",
     ),
     "qr": WaterVariableConfig(
         name="qr",
@@ -89,8 +89,8 @@ WATER_VARIABLES: Dict[str, WaterVariableConfig] = {
         units_output="kg m-2 s-1",
         aggregation="sum",
         unit_conversion_factor=1.0,
-        models=["cwatm", "h08", "miroc-integ-land", "watergap2-2e"],
-        notes="Flux variable, stored in raw ISIMIP units (kg/m2/s) to match original RCP file",
+        models=["cwatm", "h08", "miroc-integ-land", "watergap2-2e", "lpjml5-7-10-fire"],
+        notes="Flux variable, raw ISIMIP units (kg/m2/s); lpjml5-7-10-fire added per WS1 Gate A1 (2026-08-21)",
     ),
     "rootmoist": WaterVariableConfig(
         name="rootmoist",
