@@ -249,6 +249,10 @@ select, input[type=search] {{ font:inherit; font-size:13px; padding:6px 8px;
 .toggle button {{ font:inherit; font-size:12px; padding:6px 12px; border:0;
     background: var(--surface); color: var(--text-secondary); cursor:pointer; }}
 .toggle button[aria-pressed=true] {{ background: var(--series-1); color:#fff; }}
+button.showbtn {{ font:inherit; font-size:12px; padding:6px 12px; margin-right:14px;
+    border:1px solid var(--axis); border-radius:6px; background:var(--surface);
+    color:var(--text-secondary); cursor:pointer; }}
+button.showbtn[aria-pressed=true] {{ background: var(--series-1); color:#fff; }}
 table {{ border-collapse:collapse; width:100%; font-size:12px;
         font-variant-numeric: tabular-nums; }}
 th, td {{ text-align:left; padding:5px 8px; border-bottom:1px solid var(--grid);
@@ -340,14 +344,16 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
         the Score is a 1–100 score by construction.
         <strong>All decades and all scenarios are always shown</strong> — neither the
         decade nor the forcing-tier filter applies here, because seeing the full spread is
-        the point of the chart.</div>
+        the point of the chart. Hidden by default — this grid draws one panel per layer
+        and is heavy; toggle it on when you want it.</div>
     <div style="margin-bottom:10px">
+      <button id="series-show" class="showbtn" aria-pressed="false">Show plots</button>
       <label for="f-loc" style="font-size:11px;text-transform:uppercase;
           letter-spacing:.04em;color:var(--text-muted)">Location</label>
       <select id="f-loc"></select>
       <span class="toggle" id="series-toggle" style="margin-left:10px"></span>
     </div>
-    <div id="series" style="height:420px"></div>
+    <div id="series" style="height:420px; display:none"></div>
   </div>
 
   <div class="card full">
@@ -452,13 +458,14 @@ function baseLayout(extra) {
 const CFG = {responsive: true, displaylogo: false,
              modeBarButtonsToRemove: ["select2d","lasso2d","autoScale2d"]};
 
-// Dark basemap in BOTH page themes (user call, 2026-08-21): the markers carry the data
-// colour plus a light ring, so they stand out against near-black land and ocean.
-const GEO = {showland: true, landcolor: "#2b2f33", showcountries: true,
-  countrycolor: "#454c53", showocean: true, oceancolor: "#101317",
-  showlakes: true, lakecolor: "#101317", coastlinecolor: "#4a5157", coastlinewidth: 0.5,
-  projection: {type: "natural earth"}, bgcolor: "rgba(0,0,0,0)"};
-const MARKER_RING = {width: 1.5, color: "#f2f2f2"};
+// Basemap follows the page theme (a fixed dark basemap was tried 2026-08-21 and reverted
+// the same day, both user calls); the marker ring is fixed DARK GREY so points read as
+// outlined against the light land.
+const geoLayout = () => ({showland: true, landcolor: ink("--grid"), showcountries: true,
+  countrycolor: ink("--surface"), showocean: true, oceancolor: ink("--plane"),
+  showlakes: true, lakecolor: ink("--plane"), coastlinecolor: ink("--axis"),
+  coastlinewidth: 0.5, projection: {type: "natural earth"}, bgcolor: "rgba(0,0,0,0)"});
+const MARKER_RING = {width: 1.5, color: "#444444"};
 
 // ---- filter state -------------------------------------------------------------------
 // Climate Score leads: it is the portfolio-level answer, and every other metric is a
@@ -466,7 +473,7 @@ const MARKER_RING = {width: 1.5, color: "#f2f2f2"};
 const state = {tier: "__all", hazard: null, asset: "__all", decade: null,
                metric: "climate_score", loc: null, seriesMetric: "percentile",
                scoreMetric: "__score", search: "", sortCol: null, sortDir: 1,
-               colFilters: {}};
+               colFilters: {}, seriesVisible: false};
 
 // --- Climate Score helpers ------------------------------------------------------------
 // v2 model (2026-08-20): a score row is the mean over the asset type's WEIGHTED hazard
@@ -561,6 +568,15 @@ function initControls() {
   $("f-asset").onchange  = e => { state.asset = e.target.value; renderAll(); };
   $("f-decade").onchange = e => { state.decade = +e.target.value; renderAll(); };
   $("f-loc").onchange    = e => { state.loc = e.target.value; renderSeries(); };
+  // The panel grid draws one panel per standard-set layer and is the heaviest thing on
+  // the page, so it renders only on demand (user call, 2026-08-21).
+  $("series-show").onclick = () => {
+    state.seriesVisible = !state.seriesVisible;
+    const b = $("series-show");
+    b.setAttribute("aria-pressed", String(state.seriesVisible));
+    b.textContent = state.seriesVisible ? "Hide plots" : "Show plots";
+    renderSeries();
+  };
   $("f-search").oninput  = e => { state.search = e.target.value.toLowerCase(); renderTable(); };
 
   buildToggle("metric-toggle",
@@ -704,7 +720,7 @@ function renderMap() {
   };
   Plotly.react("map", [trace], baseLayout({
     margin: {l: 0, r: 0, t: 0, b: 0},
-    geo: GEO,
+    geo: geoLayout(),
   }), CFG);
 }
 
@@ -748,10 +764,9 @@ function renderScoreMap() {
     hovertemplate: "%{text}<extra></extra>",
     marker: {
       // Diverging blue -> white -> red over the 1-100 score (user call, 2026-08-21):
-      // more colour variability than a one-hue ramp, and the white middle pops on the
-      // dark basemap. Always the light-theme diverging scale -- the basemap is fixed
-      // dark, so the marker palette must not follow the page theme.
-      size: 15, color: pts.map(p => p.s), colorscale: DIV, cmin: 1, cmax: 100,
+      // more colour variability than a one-hue ramp. Theme-dependent variant, since the
+      // basemap follows the page theme again.
+      size: 15, color: pts.map(p => p.s), colorscale: divScale(), cmin: 1, cmax: 100,
       line: MARKER_RING,
       colorbar: {thickness: 12, len: 0.7, outlinewidth: 0,
                  tickfont: {color: ink("--text-secondary")}},
@@ -759,7 +774,7 @@ function renderScoreMap() {
   };
   Plotly.react("map", [trace], baseLayout({
     margin: {l: 0, r: 0, t: 0, b: 0},
-    geo: GEO,
+    geo: geoLayout(),
   }), CFG);
 }
 
@@ -1084,6 +1099,14 @@ function locationScoreTraces() {
 }
 
 function renderSeries() {
+  const box = $("series");
+  if (!state.seriesVisible) {
+    Plotly.purge("series");            // free the traces when hidden, not just hide them
+    box.innerHTML = "";
+    box.style.display = "none";
+    return;
+  }
+  box.style.display = "";
   const ll = locLayers(state.asset);
   const have = ll[state.loc] ? [...ll[state.loc]] : [];
   if (!have.length) {
@@ -1202,11 +1225,9 @@ function renderSeries() {
     annotations: annos, showlegend: true,
     legend: {orientation: "h", y: -0.14, x: 0, font: {color: ink("--text-secondary")}},
     margin: {l: 56, r: 16, t: 34, b: 62},
-    shapes: panels.map((_, i) => ({
-      type: "line", xref: "x" + (i === 0 ? "" : i+1), yref: "paper",
-      x0: state.decade, x1: state.decade, y0: 0, y1: 1,
-      line: {color: ink("--axis"), width: 1},
-    })),
+    // No selected-decade marker lines here (removed 2026-08-21, user call): with
+    // yref "paper" they ran the full height of the grid, striking through every row
+    // and its titles.
   });
   panels.forEach((pan, i) => {
     const ax = i === 0 ? "" : (i + 1);
@@ -1273,8 +1294,16 @@ function renderTable() {
       return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir;
     });
   }
+  // ROW CAP. Rebuilding a full ~7,000-row table as one innerHTML string on every filter
+  // change is what crashed the tab (reported 2026-08-21 as "the page refreshes or
+  // crashes"); the cap keeps the DOM small and the truncation is stated in the table
+  // itself, never silent.
+  const CAP = 800;
+  const shown = data.slice(0, CAP);
+
   const head = "<tr>" + COLS.map((c,i) =>
-      `<th data-i="${i}">${esc(c[0])}${state.sortCol===i ? (state.sortDir>0?" ▲":" ▼") : ""}</th>`
+      `<th class="sorth" data-i="${i}">${esc(c[0])}` +
+      `${state.sortCol===i ? (state.sortDir>0?" ▲":" ▼") : ""}</th>`
     ).join("") + "</tr>";
   const filt = "<tr class='colf'>" + COLS.map((c,i) => {
       if (!c[3]) return "<th></th>";
@@ -1288,24 +1317,35 @@ function renderTable() {
         vals.map(v => `<option value="${esc(v)}"${v===cur ? " selected" : ""}>` +
                       `${esc(v)}</option>`).join("") + `</select></th>`;
     }).join("") + "</tr>";
-  const body = "<tbody>" + data.map(r => "<tr>" + COLS.map(c => {
+  const trunc = data.length > CAP
+    ? `<tr><td colspan="${COLS.length}" style="color:var(--text-muted)">Showing the ` +
+      `first ${CAP} of ${data.length} rows — narrow the filters or search to see the ` +
+      `rest. The CSVs carry every row.</td></tr>`
+    : "";
+  const body = "<tbody>" + shown.map(r => "<tr>" + COLS.map(c => {
       const v = c[1](r);
       const txt = c[2] ? (typeof v === "number" ? fmt(v) : (v ?? "—")) : (v ?? "—");
       return `<td class="${c[2] ? "num" : ""}">${esc(txt)}</td>`;
-    }).join("") + "</tr>").join("") + "</tbody>";
+    }).join("") + "</tr>").join("") + trunc + "</tbody>";
   const t = $("table");
   t.innerHTML = "<thead>" + head + filt + "</thead>" + body;
-  // Sort on the label row only -- a click inside the filter row must never re-sort.
-  t.querySelectorAll("thead tr:first-child th").forEach(th => th.onclick = () => {
+  // DELEGATED handlers, attached once per render to the table element itself -- they
+  // survive the innerHTML rebuild by construction. Sort listens on the label row only
+  // (th.sorth); a change inside the filter row must never re-sort.
+  t.onclick = e => {
+    const th = e.target.closest("th.sorth");
+    if (!th || !t.contains(th)) return;
     const i = +th.dataset.i;
     state.sortDir = state.sortCol === i ? -state.sortDir : 1;
     state.sortCol = i;
     renderTable();
-  });
-  t.querySelectorAll("thead select").forEach(sel => sel.onchange = e => {
-    state.colFilters[+sel.dataset.f] = e.target.value;
+  };
+  t.onchange = e => {
+    const sel = e.target.closest("select[data-f]");
+    if (!sel) return;
+    state.colFilters[+sel.dataset.f] = sel.value;
     renderTable();
-  });
+  };
 }
 
 function renderAll() {
