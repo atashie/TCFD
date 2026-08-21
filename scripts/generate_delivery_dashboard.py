@@ -452,6 +452,14 @@ function baseLayout(extra) {
 const CFG = {responsive: true, displaylogo: false,
              modeBarButtonsToRemove: ["select2d","lasso2d","autoScale2d"]};
 
+// Dark basemap in BOTH page themes (user call, 2026-08-21): the markers carry the data
+// colour plus a light ring, so they stand out against near-black land and ocean.
+const GEO = {showland: true, landcolor: "#2b2f33", showcountries: true,
+  countrycolor: "#454c53", showocean: true, oceancolor: "#101317",
+  showlakes: true, lakecolor: "#101317", coastlinecolor: "#4a5157", coastlinewidth: 0.5,
+  projection: {type: "natural earth"}, bgcolor: "rgba(0,0,0,0)"};
+const MARKER_RING = {width: 1.5, color: "#f2f2f2"};
+
 // ---- filter state -------------------------------------------------------------------
 // Climate Score leads: it is the portfolio-level answer, and every other metric is a
 // component of it. The hazard filter does not apply while it is selected.
@@ -538,19 +546,18 @@ function initControls() {
 
   fill($("f-tier"), [["__all","All tiers"]].concat(tiers.map(t => [t, TIER_LABELS[t]])));
   fill($("f-hazard"), layerIds.map(l => [l, DATA.layers[l].hazard + " (" + l + ")"]));
-  fill($("f-asset"), [["__all","All asset types"]].concat(assetTypes.map(a => [a,a])));
-  fill($("f-decade"), decades.map(d => [d, d + "s"]));
   fill($("f-loc"), DATA.locations.map(l => [l.id, l.name]));
 
   state.hazard = layerIds[0];
   state.decade = decades.includes(2050) ? 2050 : decades[decades.length-1];
   state.loc = DATA.locations[0].id;
   $("f-hazard").value = state.hazard;
-  $("f-decade").value = state.decade;
   $("f-loc").value = state.loc;
+  syncFilterOptions();
 
   $("f-tier").onchange   = e => { state.tier = e.target.value; renderAll(); };
-  $("f-hazard").onchange = e => { state.hazard = e.target.value; renderAll(); };
+  $("f-hazard").onchange = e => { state.hazard = e.target.value;
+                                  syncFilterOptions(); renderAll(); };
   $("f-asset").onchange  = e => { state.asset = e.target.value; renderAll(); };
   $("f-decade").onchange = e => { state.decade = +e.target.value; renderAll(); };
   $("f-loc").onchange    = e => { state.loc = e.target.value; renderSeries(); };
@@ -584,6 +591,28 @@ function initControls() {
 function fill(sel, pairs) {
   sel.innerHTML = pairs.map(([v,l]) =>
     `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+}
+
+// CASCADING FILTERS (user call, 2026-08-21): the hazard selection repopulates the Decade
+// and Asset-type options with only the choices that actually show data for that layer, so
+// a reader is never offered a decade an observational layer does not have, or an asset
+// type with no data anywhere on that layer. Invalid selections snap to a valid one.
+function syncFilterOptions() {
+  const lid = state.hazard;
+  const has = DATA.values.filter(v => v.lay === lid && (v.p !== null || v.v !== null));
+  const decs = [...new Set(has.map(v => v.dec))].sort((a,b) => a-b);
+  const single = decs.length === 1 && decs[0] === 2020;
+  fill($("f-decade"), decs.map(d => [d, single ? "Current" : d + "s"]));
+  if (!decs.includes(state.decade))
+    state.decade = decs.includes(2050) ? 2050 : decs[decs.length - 1];
+  $("f-decade").value = state.decade;
+
+  const locsWith = new Set(has.map(v => v.loc));
+  const types = [...new Set(DATA.assets.filter(a => locsWith.has(a.loc)).map(a => a.type))]
+      .sort();
+  fill($("f-asset"), [["__all","All asset types"]].concat(types.map(t => [t, t])));
+  if (state.asset !== "__all" && !types.includes(state.asset)) state.asset = "__all";
+  $("f-asset").value = state.asset;
 }
 function buildToggle(id, opts, get, set) {
   const el = $(id);
@@ -668,17 +697,14 @@ function renderMap() {
     marker: {
       size: 13, color: pts.map(r => r[key]), colorscale: cs, reversescale: rev,
       cmin: cmin === null ? undefined : cmin, cmax: cmax === null ? undefined : cmax,
-      line: {width: 2, color: ink("--surface")},   // 2px surface ring, not a border
+      line: MARKER_RING,
       colorbar: {thickness: 12, len: 0.7, outlinewidth: 0,
                  tickfont: {color: ink("--text-secondary")}},
     },
   };
   Plotly.react("map", [trace], baseLayout({
     margin: {l: 0, r: 0, t: 0, b: 0},
-    geo: {showland: true, landcolor: ink("--grid"), showcountries: true,
-          countrycolor: ink("--surface"), showocean: true, oceancolor: ink("--plane"),
-          coastlinecolor: ink("--axis"), coastlinewidth: 0.5,
-          projection: {type: "natural earth"}, bgcolor: "rgba(0,0,0,0)"},
+    geo: GEO,
   }), CFG);
 }
 
@@ -703,7 +729,7 @@ function renderScoreMap() {
     `Mean risk percentile across a location's weighted hazard families, ${state.decade}s` +
     (state.tier === "__all" ? ", averaged over all forcing tiers" :
        ` under ${TIER_LABELS[state.tier].toLowerCase()}`) +
-    ". Higher = higher aggregate physical risk. Darker = worse. " +
+    ". Higher = higher aggregate physical risk: blue = low, white = middling, red = high. " +
     "The hazard filter does not apply to this metric. " +
     "Families absent at a site (off-footprint, or publishing no scenario in the tier) " +
     "renormalize out — the hover shows families present of families weighted. " +
@@ -721,18 +747,19 @@ function renderScoreMap() {
     }),
     hovertemplate: "%{text}<extra></extra>",
     marker: {
-      size: 15, color: pts.map(p => p.s), colorscale: riskScale(), cmin: 1, cmax: 100,
-      line: {width: 2, color: ink("--surface")},
+      // Diverging blue -> white -> red over the 1-100 score (user call, 2026-08-21):
+      // more colour variability than a one-hue ramp, and the white middle pops on the
+      // dark basemap. Always the light-theme diverging scale -- the basemap is fixed
+      // dark, so the marker palette must not follow the page theme.
+      size: 15, color: pts.map(p => p.s), colorscale: DIV, cmin: 1, cmax: 100,
+      line: MARKER_RING,
       colorbar: {thickness: 12, len: 0.7, outlinewidth: 0,
                  tickfont: {color: ink("--text-secondary")}},
     },
   };
   Plotly.react("map", [trace], baseLayout({
     margin: {l: 0, r: 0, t: 0, b: 0},
-    geo: {showland: true, landcolor: ink("--grid"), showcountries: true,
-          countrycolor: ink("--surface"), showocean: true, oceancolor: ink("--plane"),
-          coastlinecolor: ink("--axis"), coastlinewidth: 0.5,
-          projection: {type: "natural earth"}, bgcolor: "rgba(0,0,0,0)"},
+    geo: GEO,
   }), CFG);
 }
 
@@ -1074,15 +1101,23 @@ function renderSeries() {
   // Panel 0 is the Climate Score when it can be computed; hazards follow, sorted by
   // hazard label so related panels sit together and a reader can scan for one.
   have.sort((a, b) => (DATA.layers[a].hazard + a).localeCompare(DATA.layers[b].hazard + b));
+  const layerDecs = {};
+  have.forEach(lid => {
+    layerDecs[lid] = [...new Set(DATA.values.filter(v => v.lay === lid).map(v => v.dec))]
+        .sort((a,b) => a-b);
+  });
   const panels = (hasScore ? [{kind: "score"}] : [])
-      .concat(have.map(lid => ({kind: "hazard", lid})));
+      .concat(have.map(lid => ({kind: "hazard", lid,
+                                single: layerDecs[lid].length === 1})));
 
   // With the v2 standard set this grid holds 30+ panels. Cramming them into a fixed-height
-  // box made every panel unreadable (user call, 2026-08-20): the height now scales with
-  // the row count -- each panel gets ~250px -- and the page simply scrolls.
+  // box made every panel unreadable (user call, 2026-08-20): the height scales with the
+  // row count -- ~290px per panel, with enough inter-row gap that one row's x labels
+  // never collide with the next row's title (user call, 2026-08-21) -- and the page
+  // simply scrolls.
   const cols = panels.length <= 2 ? panels.length : (panels.length <= 4 ? 2 : 3);
   const rowsN = Math.ceil(panels.length / cols);
-  $("series").style.height = (rowsN * 250 + 140) + "px";
+  $("series").style.height = (rowsN * 290 + 140) + "px";
   const traces = [], annos = [];
   let legendDone = false;
 
@@ -1103,37 +1138,58 @@ function renderSeries() {
       return;
     }
     const lay = DATA.layers[pan.lid];
+    const here = DATA.values.filter(v => v.loc === state.loc && v.lay === pan.lid);
+    const anyVal = here.some(v => v[key] !== null);
+    const statuses = [...new Set(here.map(v => v.st))];
+    // A hazard absent at the site (off its layer's footprint) plots as a flat zero series
+    // rather than an empty panel (user call, 2026-08-21) -- but labelled as ABSENT, so a
+    // shown-as-0 absence never reads as a measured zero. Offshore/off-grid stays an
+    // explicit "no data" note: there the value is unknown, not absent.
+    const offMask = !anyVal && statuses.length === 1 && statuses[0] === "OFF_LAYER_MASK";
+    const hover = pan.single ? "Current" : "%{x}s";
+
     // ALL scenarios, ALWAYS -- the forcing-tier filter never reaches a time series.
     const scns = [...new Set(DATA.values.filter(v => v.lay === pan.lid).map(v => v.scn))]
         .sort((a,b) => TIER_ORDER.indexOf(tierOf(a)) - TIER_ORDER.indexOf(tierOf(b)));
-    scns.forEach(scn => {
+    if (!offMask) scns.forEach(scn => {
       const pts = DATA.values
         .filter(v => v.loc === state.loc && v.lay === pan.lid && v.scn === scn)
         .sort((a,b) => a.dec - b.dec);
       traces.push({
-        type: "scatter", mode: "lines+markers", name: scn,
+        type: "scatter", mode: pan.single ? "markers" : "lines+markers", name: scn,
         x: pts.map(p => p.dec), y: pts.map(p => p[key]),
         xaxis: "x" + ax, yaxis: "y" + ax,
         // Colour follows the forcing TIER, so a scenario keeps its hue across panels even
         // though RCP and SSP layers use different codes.
         ...tierStyle(tierOf(scn)),
         legendgroup: tierOf(scn), showlegend: !legendDone,
-        hovertemplate: `${esc(scn)}<br>%{x}s: %{y:.4g}<extra></extra>`,
+        hovertemplate: `${esc(scn)}<br>${hover}: %{y:.4g}<extra></extra>`,
       });
     });
+    if (offMask) {
+      const decs = layerDecs[pan.lid];
+      traces.push({
+        type: "scatter", mode: decs.length > 1 ? "lines+markers" : "markers",
+        x: decs, y: decs.map(() => 0), xaxis: "x" + ax, yaxis: "y" + ax,
+        showlegend: false,
+        line: {color: ink("--text-muted"), width: 1.5, dash: "dot"},
+        marker: {size: 6, symbol: "circle-open", color: ink("--text-muted")},
+        hovertemplate: "hazard absent at this site (off footprint) — shown as 0<extra></extra>",
+      });
+    }
     legendDone = true;
     annos.push({text: lay.hazard + (state.seriesMetric === "value"
-                    ? (lay.units ? ` [${lay.units}]` : "") : " [percentile]"),
+                    ? (lay.units ? ` [${lay.units}]` : "") : " [percentile]") +
+                    (offMask ? " — absent here, shown as 0" : ""),
                 xref: "x" + ax + " domain", yref: "y" + ax + " domain",
                 x: 0, y: 1.14, showarrow: false, xanchor: "left",
-                font: {size: 12, color: ink("--text-primary")}});
+                font: {size: 12, color: offMask ? ink("--text-muted")
+                                               : ink("--text-primary")}});
 
-    // An off-mask or offshore site produces a panel with axes and no line, which looks
+    // An offshore/off-grid site still produces a panel with axes and no line, which looks
     // exactly like a rendering bug -- it has already been reported as one. Say why.
-    const here = DATA.values.filter(v => v.loc === state.loc && v.lay === pan.lid);
-    if (!here.some(v => v[key] !== null)) {
-      const statuses = esc([...new Set(here.map(v => v.st))].join(", ")) || "no rows";
-      annos.push({text: `No data at this site<br>(${statuses})`,
+    if (!anyVal && !offMask) {
+      annos.push({text: `No data at this site<br>(${esc(statuses.join(", ")) || "no rows"})`,
                   xref: "x" + ax + " domain", yref: "y" + ax + " domain",
                   x: 0.5, y: 0.5, showarrow: false, xanchor: "center", align: "center",
                   font: {size: 12, color: ink("--text-muted")}});
@@ -1142,7 +1198,7 @@ function renderSeries() {
 
   const layout = baseLayout({
     grid: {rows: rowsN, columns: cols, pattern: "independent",
-           roworder: "top to bottom", xgap: 0.14, ygap: rowsN > 4 ? 0.16 : 0.34},
+           roworder: "top to bottom", xgap: 0.14, ygap: rowsN > 4 ? 0.26 : 0.34},
     annotations: annos, showlegend: true,
     legend: {orientation: "h", y: -0.14, x: 0, font: {color: ink("--text-secondary")}},
     margin: {l: 56, r: 16, t: 34, b: 62},
@@ -1156,6 +1212,14 @@ function renderSeries() {
     const ax = i === 0 ? "" : (i + 1);
     layout["xaxis" + ax] = {gridcolor: ink("--grid"), linecolor: ink("--axis"),
                             zeroline: false, tickformat: "d"};
+    // A single-period (observational) hazard is one reading, not a series: one marker,
+    // labelled "Current" rather than the window's start year (user call, 2026-08-21).
+    // The true observed window is in layers.csv.
+    if (pan.kind === "hazard" && pan.single) {
+      layout["xaxis" + ax].tickvals = layerDecs[pan.lid];
+      layout["xaxis" + ax].ticktext = ["Current"];
+      layout["xaxis" + ax].range = [layerDecs[pan.lid][0] - 6, layerDecs[pan.lid][0] + 6];
+    }
     layout["yaxis" + ax] = {gridcolor: ink("--grid"), linecolor: ink("--axis"),
                             zeroline: false};
     // Score and percentile share the 1-100 risk axis, so pin both for comparability.
