@@ -1,7 +1,7 @@
 """ISIMIP API client, vendored 2026-08-21 from the archived isimip-pipeline package.
 
 Two modules, copied verbatim from ``isimip-pipeline/src/isimip_pipeline`` at commit
-164e9df's parent (the last commit carrying the package):
+164e9df (the last commit carrying the package):
 
     isimip_query.py   search/isimip_query.py  -- ISIMIPQuery, SearchFilters, DatasetInfo
     downloader.py     download/downloader.py  -- Downloader (one import re-pointed here)

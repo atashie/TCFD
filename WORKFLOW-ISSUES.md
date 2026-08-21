@@ -8,7 +8,7 @@ See [GUARDRAILS.md](GUARDRAILS.md) for the rules derived from these incidents.
 
 ## Incident Log
 
-**Index** (44 entries, chronological):
+**Index** (45 entries, chronological):
 
 - 2026-01-16: Fish TCB Downloaded Without Resolution Choice
 - 2026-01-20: Fish b30cm Processed Without Aggregation Choice
@@ -54,6 +54,7 @@ See [GUARDRAILS.md](GUARDRAILS.md) for the rules derived from these incidents.
 - 2026-08-20: Tornado QA pages were never human-reviewable
 - 2026-08-21: Date rollover split a delivery across two dated folders
 - 2026-08-21: Dashboard table rebuilt itself out from under its own dropdowns
+- 2026-08-21: Repo simplification — 89 files removed with receipts, and the audits that fenced the traps
 
 ### 2026-01-16: Fish TCB Downloaded Without Resolution Choice
 
@@ -1531,6 +1532,20 @@ I did. See the same-day entry above for how that error was made and caught.
 **Impact**: Repeated user-visible filter failures across three feedback rounds.
 
 **Prevention**: The stable-header pattern is now the rule (ASSET-CATALOG.md, dashboard section): controls are built once and never rebuilt — only `<tbody>` re-renders; handlers are delegated to a persistent ancestor; rendered rows are capped with the truncation stated; and a global error banner surfaces any uncaught page error as text a reviewer can report verbatim, so no control can fail silently again.
+
+### 2026-08-21: Repo simplification — 89 files removed with receipts, and the audits that fenced the traps
+
+**What happened**: A three-agent audit (documentation / scripts / package+config+hygiene) plus an external codex review drove a five-phase cleanup approved by the user. Removed from HEAD: 36 verified-dead files (~11.6k lines — the fish family, the Jan-2026 timber/loblolly/evgndltr/tebrsu family superseded by `conifer-npp`, the health and extraction-era scripts, `process_qg.py` + `generate_qa_report.py`, `reprocess_percentiles.py`, `utils/export_formatter.py`, six zero-reference config one-shots, root `TCFD_intersections_code_functions_v5.r` + `Export-Key.csv`, a stale HTML render twin, and the ex-locations-timber fixtures) and the entire `isimip-pipeline` package (52 files, ~12.6k lines) — unexecutable in this venv (Python 3.9.6 against requires-python ≥3.10, four deps absent), its processing half wrote the retired value_class contract, and `isimip-pipeline report` raised on every layer built to OUTPUT-SPEC.
+
+**Evidence standard**: every removal carried verified-empty inbound references (`git grep` receipts), and codex independently re-verified the riskiest claims and searched the sibling `waterRiskIndex_beta/` project (zero references to anything removed; it reads only its own `Data/` artifacts). Two traps the audits fenced off and KEPT: `utils/natural_earth.py` (a function-local import at `spatial_extract.py` for `extract_by_region` that both the audit and codex initially missed — caught by the pre-removal grep the plan required) and the dormant-but-load-bearing set (`build_slr_delta_field.py` — stage 1 of `sealevel-2b` with zero citations, `generate_hail_vlh_qa.py` — the evidence behind hail's QA sign-off, every `check_*_nature.py`, and the `sug`/`burntarea_fire` negative records).
+
+**Recovery**: the last commit carrying the 36 deleted files is `ff13204`; the last commit carrying the package is `164e9df`. `search/isimip_query.py` + `download/downloader.py` were vendored verbatim to `scripts/utils/isimip_api/` so the five `download_water_*.py` keep a real import path (they still need httpx + rich + isimip-client to execute — see `requirements.txt`). `tests/test_decadal_stats.py`, the only test pinning live product code, moved to `scripts/tests/` and passes there (42/42).
+
+**Docs**: Phase 2 corrected every measured-wrong claim — counts now point at their sources instead of restating them; the orphaned 166%/115% sensitivity figures were replaced by the superseding 44%–569% re-measurement; the second GUARDRAILS section numbered 14 became §18 with all eight cross-references updated. Phase 3 consolidated structure — CLAUDE.md 29.4→22.2 KB with every rule preserved, DATASET-ATTRIBUTES' 603 mis-nested TCFD lines returned to Product 1, and this file gained its index while the template moved to the end.
+
+**Verification** (baseline before Phase 1, re-run after every phase): `scripts/tests` 42/42; delivery verifier PASS on `deliveries/storefront-test/20260821` (62,202 checks); `test_shared_baseline` PASS on csoil and `test_observational_baseline` PASS on landslide; extraction pins PASS; the new `scripts/check_doc_refs.py` clean across 37 live docs/configs. Two pre-existing conditions recorded, NOT caused here: the 2026-08-13 `example-forestry-co` delivery fails verification against its since-reprocessed sources (conifer-npp rebuilt 2026-08-20 — the verifier working as designed on a stale delivery), and the package's `test_alignment.py` was reproducibly SIGKILLed (OOM) at its 13th test even before archival.
+
+**Files**: commits `164e9df`, `a10a510`, `b9ce2ac`, `a63b242`, `74197b6`, plus this entry's commit.
 
 ---
 
