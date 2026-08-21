@@ -24,11 +24,13 @@ SCOPING OF THE FILTER ROW
 One filter row scopes everything, per the dataviz rule against per-chart filters. Two
 deliberate exceptions, both because the view's whole purpose is to vary that dimension:
 
-  * Time series ignores the DECADE filter -- it plots every decade, and marks the selected
-    one. Filtering it by decade would leave a single point.
+  * Time series ignores the DECADE filter -- it plots every decade.
   * Summaries ignore the HAZARD filter -- "impacts by hazard" is the chart.
+  * The Values table (since 2026-08-21) answers to its OWN controls only -- per-column
+    dropdowns plus its search box -- because bar filters silently intersecting with
+    column filters produced empty results that read as broken filters.
 
-Both are stated on the page so a reader is never guessing what a chart is showing.
+All are stated on the page so a reader is never guessing what a chart is showing.
 """
 
 import argparse
@@ -358,8 +360,9 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
 
   <div class="card full">
     <h2>Values</h2>
-    <div class="note">Every row in the filtered slice. Click a header to sort; each
-        discrete column also has its own dropdown filter, composing with the search.</div>
+    <div class="note">Scoped by its <strong>own</strong> controls only — the per-column
+        dropdowns and the search box; the top filter bar does not apply here. Click a
+        header to sort.</div>
     <input type="search" id="f-search" placeholder="Filter rows…" style="margin-bottom:10px">
     <div class="scroll"><table id="table"></table></div>
   </div>
@@ -406,6 +409,24 @@ const $ = id => document.getElementById(id);
 // the script element; this covers what we then write into the DOM.)
 const esc = v => String(v ?? "").replace(/[&<>"\']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// Any uncaught page error becomes a visible banner instead of a silently dead control --
+// added 2026-08-21 while chasing a table-filter fault that never surfaced an error we
+// could be told about. If this banner ever appears, report its text verbatim.
+function showError(msg) {
+  let el = document.getElementById("err-banner");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "err-banner";
+    el.style.cssText = "position:fixed;bottom:0;left:0;right:0;z-index:99;" +
+      "background:#7f1d1d;color:#fff;font:12px/1.5 ui-monospace,monospace;padding:8px 16px;";
+    document.body.appendChild(el);
+  }
+  el.textContent = "Page error — please report this text: " + msg;
+}
+window.addEventListener("error",
+  e => showError((e.message || "?") + " @ line " + (e.lineno || "?")));
+window.addEventListener("unhandledrejection", e => showError(String(e.reason)));
 const locById = Object.fromEntries(DATA.locations.map(l => [l.id, l]));
 const fmt = (x, d=3) => x === null || x === undefined ? "—" :
     (Math.abs(x) >= 0.01 && Math.abs(x) < 1e5 ? Number(x).toFixed(d) : Number(x).toExponential(2));
@@ -602,6 +623,8 @@ function initControls() {
   $("counts").textContent = DATA.locations.length + " locations · " +
       DATA.assets.length + " assets · " + Object.keys(DATA.layers).length + " layers · " +
       DATA.values.length + " site-hazard-scenario-decade rows";
+
+  initTable();   // builds the table header + filter row ONCE; renderTable fills tbody
 }
 
 function fill(sel, pairs) {
@@ -1251,9 +1274,20 @@ function renderSeries() {
 }
 
 // ---- table --------------------------------------------------------------------------
-// [label, getter, numeric, filterable]. Filterable columns are the discrete ones -- they
-// get a dropdown in a second header row (user call, 2026-08-20), composing with the text
-// search and with each other.
+// SELF-CONTAINED SCOPING (2026-08-21). The Values table answers to its OWN controls
+// only -- the per-column dropdowns and the search box; the top filter bar does not reach
+// it. Earlier wirings scoped it by the bar's decade and tier, so a column-filter pick
+// could silently intersect with a bar filter to zero rows and read as "the filter does
+// not work". This is the third stated exception to the one-filter-row rule.
+//
+// STABLE HEADER (same date). The header -- label row and filter row -- is built ONCE in
+// initTable() and never rebuilt: only <tbody> re-renders on a change. Rebuilding the
+// whole table replaced the very <select> the user was interacting with while its change
+// event was still dispatching, which is the likeliest culprit for the reported
+// filter-resets, and it re-created every dropdown on every keystroke besides.
+//
+// [label, getter, numeric, filterable]. "Agree" dropped 2026-08-21 (user call); the
+// slopes it summarised remain as OLS and Sen columns.
 const COLS = [
   ["Location", r => locById[r.loc].name, false, true],
   ["Hazard", r => DATA.layers[r.lay].hazard, false, true],
@@ -1266,72 +1300,45 @@ const COLS = [
   ["Percentile", r => r.p, true, false],
   ["OLS", r => r.ols, true, false],
   ["Sen", r => r.sen, true, false],
-  ["Agree", r => r.ag === null ? "—" : String(r.ag), false, true],
   ["Members", r => r.nm, true, false],
   ["Status", r => r.st, false, true],
 ];
 
-function renderTable() {
-  let base = rows({allHazards: true});
+function tableRows() {
+  let base = DATA.values;
   if (state.search) {
     base = base.filter(r => (locById[r.loc].name + " " + DATA.layers[r.lay].hazard + " " +
         r.lay + " " + r.scn + " " + r.st).toLowerCase().includes(state.search));
   }
-  // Column filters compose: each dropdown narrows the rows the others act on, but its own
-  // OPTION LIST comes from the slice ignoring only itself, so a choice never deletes its
-  // own alternatives from the menu.
-  const passes = (r, skip) => COLS.every((c, i) => {
-    if (i === skip || !c[3]) return true;
+  return base.filter(r => COLS.every((c, i) => {
+    if (!c[3]) return true;
     const f = state.colFilters[i];
     return f === undefined || f === "__all" || String(c[1](r)) === f;
-  });
-  let data = base.filter(r => passes(r, -1));
-  if (state.sortCol !== null) {
-    const get = COLS[state.sortCol][1];
-    data = data.slice().sort((a,b) => {
-      const x = get(a), y = get(b);
-      if (x === null) return 1; if (y === null) return -1;
-      return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir;
-    });
-  }
-  // ROW CAP. Rebuilding a full ~7,000-row table as one innerHTML string on every filter
-  // change is what crashed the tab (reported 2026-08-21 as "the page refreshes or
-  // crashes"); the cap keeps the DOM small and the truncation is stated in the table
-  // itself, never silent.
-  const CAP = 800;
-  const shown = data.slice(0, CAP);
+  }));
+}
 
-  const head = "<tr>" + COLS.map((c,i) =>
-      `<th class="sorth" data-i="${i}">${esc(c[0])}` +
-      `${state.sortCol===i ? (state.sortDir>0?" ▲":" ▼") : ""}</th>`
-    ).join("") + "</tr>";
-  const filt = "<tr class='colf'>" + COLS.map((c,i) => {
-      if (!c[3]) return "<th></th>";
-      const vals = [...new Set(base.filter(r => passes(r, i)).map(r => String(c[1](r))))];
-      vals.sort((a,b) => {
-        const na = Number(a), nb = Number(b);
-        return isFinite(na) && isFinite(nb) ? na - nb : a.localeCompare(b);
-      });
-      const cur = state.colFilters[i] ?? "__all";
-      return `<th><select data-f="${i}"><option value="__all">All</option>` +
-        vals.map(v => `<option value="${esc(v)}"${v===cur ? " selected" : ""}>` +
-                      `${esc(v)}</option>`).join("") + `</select></th>`;
-    }).join("") + "</tr>";
-  const trunc = data.length > CAP
-    ? `<tr><td colspan="${COLS.length}" style="color:var(--text-muted)">Showing the ` +
-      `first ${CAP} of ${data.length} rows — narrow the filters or search to see the ` +
-      `rest. The CSVs carry every row.</td></tr>`
-    : "";
-  const body = "<tbody>" + shown.map(r => "<tr>" + COLS.map(c => {
-      const v = c[1](r);
-      const txt = c[2] ? (typeof v === "number" ? fmt(v) : (v ?? "—")) : (v ?? "—");
-      return `<td class="${c[2] ? "num" : ""}">${esc(txt)}</td>`;
-    }).join("") + "</tr>").join("") + trunc + "</tbody>";
+function initTable() {
   const t = $("table");
-  t.innerHTML = "<thead>" + head + filt + "</thead>" + body;
-  // DELEGATED handlers, attached once per render to the table element itself -- they
-  // survive the innerHTML rebuild by construction. Sort listens on the label row only
-  // (th.sorth); a change inside the filter row must never re-sort.
+  const head = "<tr>" + COLS.map((c, i) =>
+      `<th class="sorth" data-i="${i}">${esc(c[0])}</th>`).join("") + "</tr>";
+  const filt = "<tr class='colf'>" + COLS.map((c, i) => {
+      if (!c[3]) return "<th></th>";
+      // Options come from the FULL dataset, once. A static list can produce an honest
+      // "0 rows" for an unusual combination, which beats options that churn under the
+      // user's pointer.
+      const vals = [...new Set(DATA.values.map(r => String(c[1](r))))];
+      vals.sort((a, b) => {
+        const na = Number(a), nb = Number(b);
+        const an = isFinite(na), bn = isFinite(nb);
+        if (an && bn) return na - nb;
+        if (an !== bn) return an ? -1 : 1;
+        return a.localeCompare(b);
+      });
+      return `<th><select data-f="${i}"><option value="__all">All</option>` +
+        vals.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("") +
+        `</select></th>`;
+    }).join("") + "</tr>";
+  t.innerHTML = "<thead>" + head + filt + "</thead><tbody></tbody>";
   t.onclick = e => {
     const th = e.target.closest("th.sorth");
     if (!th || !t.contains(th)) return;
@@ -1342,10 +1349,43 @@ function renderTable() {
   };
   t.onchange = e => {
     const sel = e.target.closest("select[data-f]");
-    if (!sel) return;
+    if (!sel || !t.contains(sel)) return;
     state.colFilters[+sel.dataset.f] = sel.value;
     renderTable();
   };
+}
+
+function renderTable() {
+  const t = $("table");
+  if (!t.tHead) initTable();
+  let data = tableRows();
+  if (state.sortCol !== null) {
+    const get = COLS[state.sortCol][1];
+    data = data.slice().sort((a, b) => {
+      const x = get(a), y = get(b);
+      if (x === null) return 1; if (y === null) return -1;
+      return (x > y ? 1 : x < y ? -1 : 0) * state.sortDir;
+    });
+  }
+  // Sort indicators update IN PLACE on the label row; the filter row is never touched.
+  t.tHead.rows[0].querySelectorAll("th").forEach((th, i) => {
+    th.textContent = COLS[i][0] +
+      (state.sortCol === i ? (state.sortDir > 0 ? " ▲" : " ▼") : "");
+  });
+  // ROW CAP: keeps the DOM small however broad the filters; truncation is stated in the
+  // table itself, never silent.
+  const CAP = 800;
+  const shown = data.slice(0, CAP);
+  const trunc = data.length > CAP
+    ? `<tr><td colspan="${COLS.length}" style="color:var(--text-muted)">Showing the ` +
+      `first ${CAP} of ${data.length} rows — narrow the filters or search to see the ` +
+      `rest. The CSVs carry every row.</td></tr>`
+    : "";
+  t.tBodies[0].innerHTML = shown.map(r => "<tr>" + COLS.map(c => {
+      const v = c[1](r);
+      const txt = c[2] ? (typeof v === "number" ? fmt(v) : (v ?? "—")) : (v ?? "—");
+      return `<td class="${c[2] ? "num" : ""}">${esc(txt)}</td>`;
+    }).join("") + "</tr>").join("") + trunc;
 }
 
 function renderAll() {
