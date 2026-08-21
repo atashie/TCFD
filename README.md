@@ -97,10 +97,13 @@ TCFD/
 
 This project uses data from ISIMIP (Inter-Sectoral Impact Model Intercomparison Project):
 
-- **Simulation Rounds**: ISIMIP3b (SSP scenarios), ISIMIP2b (RCP scenarios)
-- **Climate Scenarios**: SSP126, SSP370, SSP585
-- **Variables**: Groundwater runoff (qg), drought exposure (led), burnt area, evapotranspiration, and more
-- **Models**: Multi-model ensembles (GFDL, IPSL, MPI, MRI, UKESM)
+- **Simulation Rounds**: ISIMIP3b (SSP scenarios), ISIMIP2b (RCP scenarios); plus non-ISIMIP
+  observational sources only where ISIMIP is structurally unable to carry a hazard (NOAA SPC
+  tornado, World Bank/GFDRR/Arup landslide, the Nature 2026 hail deposit)
+- **Climate Scenarios**: ssp126/370/585 and rcp26/45/60/85, per layer
+- **Layers**: the authoritative roster is `config/layer_registry.yaml`; what each layer is
+  lives in [DATASET-ATTRIBUTES.md](DATASET-ATTRIBUTES.md)
+- **Models**: multi-model, multi-GCM ensembles, enumerated per layer
 
 ## Documentation
 
@@ -108,10 +111,12 @@ This project uses data from ISIMIP (Inter-Sectoral Impact Model Intercomparison 
 |---|---|
 | [CLAUDE.md](CLAUDE.md) | Development guide — start here |
 | [OUTPUT-SPEC.md](OUTPUT-SPEC.md) | The processed-layer output contract |
+| [DATASET-ATTRIBUTES.md](DATASET-ATTRIBUTES.md) | What each shipped layer is — per-dataset facts |
 | [GUARDRAILS.md](GUARDRAILS.md) | Rules that must never be violated |
 | [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) | Incident log — what went wrong and what it cost |
 | [ASSET-CATALOG.md](ASSET-CATALOG.md) | Customer delivery, stages 1–2 |
 | [docs/reporting/](docs/reporting/README.md) | Customer delivery, stages 3–4 |
+| [docs/](docs/README.md) | Living reporting reference + frozen dated decision journals |
 | [Scripts README](scripts/README.md) | Standalone scripts |
 
 ## License

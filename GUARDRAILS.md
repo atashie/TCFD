@@ -202,25 +202,24 @@ See [WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md) for detailed incident documentation
 
 **Rule**: Before selecting the decadal statistic, aggregation, or percentile method, **inspect the actual raw values**. Do not infer a variable's data nature from its name, CF long_name, or a sibling variable.
 
-**Why this matters**:
-- The Lange 2020 exposure family shares a filename pattern and a "land area ... exposed to X" long_name, but the underlying values differ by member: `led` (drought) is a **binary {0,1}** per-cell flag, while `let` (tropical cyclone) is a **continuous fraction [0,1)** (~97% exact 0, remainder smooth over (0,1), never 1). Verified 2026-07-24 after a user challenge; assuming `let` inherited `led`'s binary nature would have mis-framed the product.
-- Binary vs fractional vs continuous changes the correct decadal statistic (mean vs median), the CI definition, and the percentile treatment.
-- **The metadata itself can be wrong or diverge across members of the same variable.** For `burntarea` (3 fire models): `lpj-guess` mislabels its `long_name` as "Fire Return Interval" though the values are burnt-area % (and floors at 0.1%, so it never emits a true zero); `mc2-usfs` encodes its time axis as **`days since 1661`** while the others use `years since 1661`, which silently breaks a naive year parser. Trust the values, not the labels; parse time axes defensively.
+**Why this matters** (measured instances — full detail in the processors' docstrings and WORKFLOW-ISSUES 2026-07-24):
+- Two members of one family sharing a filename pattern and long_name differ in kind: `led` is a **binary {0,1}** flag, `let` a **continuous fraction [0,1)**. Binary vs fractional vs continuous changes the correct decadal statistic, the CI definition, and the percentile treatment.
+- **The metadata itself can be wrong or diverge across members of the same variable** — a `long_name` mislabeled outright, a time axis in `days since 1661` beside siblings in `years since 1661` (silently breaks a naive year parser). Trust the values, not the labels; parse time axes defensively.
 
 **Required behavior**:
 - For any new variable, print min/max, the counts of exact-0 / exact-1 / interior values, and the number of unique values before processing. Two exact values = categorical/binary; a smooth interior distribution = continuous/fractional.
 - **Also verify per-member metadata**: units, `long_name`, and time-axis (`units`/`calendar`) — do NOT assume they match across members. Parse time robustly (years/days/months per calendar) and add a guard that skips/flags a member with zero in-window years rather than corrupting indices.
 - **Same unit ≠ needs normalization; different unit ≠ always poolable.** If ensemble members share a unit but differ in magnitude (e.g. `burntarea`: mc2-usfs ~5–7× hotter), that spread is genuine model uncertainty — pool in raw units (no normalization) and let it widen the CI. Reserve robust z-score normalization for members on genuinely different scales (e.g. water-index TWS). Decide per variable and record it.
-- **Verify the experiment tokens (soc / CO₂-sens) per model — a uniform treatment across the ensemble is NOT guaranteed.** For `csoil` (2026-07-25), `jules-es-vn6p3` publishes ONLY its fixed-2015-CO₂ run (`2015co2`) while `classic`/`mc2-usfs` publish the transient `default` run, and soc tokens differ (`2015soc-from-histsoc` vs the natural-veg `nat`). Enumerate each member's sens/soc token *before* committing to a "transient CO₂" (or any) ensemble; if you must mix treatments to preserve ensemble depth, get the user's call, record it (`co2_treatment: mixed`), and note the biased member. **Do NOT assume which DIRECTION a fixed-CO₂ member biases the trend — measure it.** This bullet asserted until 2026-08-15 that "a fixed-CO₂ model's stock trend is muted (no CO₂ fertilization)", which is the deduction from the mechanism's name and is measurably backwards on the layer it was written from. Measured on `csoil` ssp585, 2090s−2020s over each member's own footprint: `jules-es-vn6p3` (**fixed** CO₂) **−4.37%**, `lpjml5-7-10-fire` −2.75%, `mc2-usfs-r87g5c1` −0.05%, `classic` **+0.79%**. The fixed-CO₂ model is the **largest relative loser** — removing fertilization removes litter input, so the decline gets *stronger*, not weaker. A mechanism tells you a term exists; only a measurement tells you its sign and size.
+- **Verify the experiment tokens (soc / CO₂-sens) per model — a uniform treatment across the ensemble is NOT guaranteed.** Enumerate each member's sens/soc token *before* committing to any ensemble; if you must mix treatments to preserve depth, get the user's call, record it (`co2_treatment: mixed`), and note the biased member. **Do NOT assume which DIRECTION a mixed-treatment member biases the trend — measure it.** A mechanism tells you a term exists; only a measurement tells you its sign and size. (The pre-2026-08-15 version of this bullet deduced "muted" from the mechanism's name and was measurably backwards on `csoil` — the fixed-CO₂ member is the largest relative loser. Numbers: the csoil processor docstring and DATASET-ATTRIBUTES.)
 - Record the verified data nature in the catalog (`data_nature`) and in the output metadata.
 - Never copy a sibling variable's processor attributes verbatim — re-derive the framing from the verified values.
 
 **Related techniques** (documented in WORKFLOW-ISSUES.md 2026-07-24 and 2026-08-11; patterns, not hard rules):
 - **Thin ensembles** (few members, e.g. 1 impact model × 4 GCMs): apply spatial smoothing (5×5 exponential-decay, cos(lat)-scaled, normalized over non-NaN land neighbours) to each member's **annual** map before any pooling. Reference: `scripts/process_let_cyclone.py`.
-  - **The decay length `L` is a per-layer measurement, not a constant.** `L=0.7` keeps **32.1%** of the weight on the centre cell and preserves sparse structure; `L=2.5` keeps **8.1%** and dissolves it. On `let` the sharp kernel left the raw data reading as one-cell-wide storm tracks (roughness 0.389 raw → only 0.142). Measure roughness — mean |cell − its 4-neighbour mean| over exposed land, normalized by the mean — and pick `L` from it.
-  - **Prefer re-weighting inside the existing footprint over widening it.** Widening asserts that land further away is exposed: on `let`, 5×5→7×7 added 1,542 exposed cells and 9×9 added 3,940, whereas `L=0.7`→`L=2.5` at fixed 5×5 added **none** while cutting roughness to 0.044. Anchor any radius physically (2 cells = 111 km ≈ the hurricane-force wind radius) rather than by eye.
+  - **The decay length `L` is a per-layer measurement, not a constant** — measure roughness (mean |cell − its 4-neighbour mean| over exposed land, normalized by the mean) and pick `L` from it.
+  - **Prefer re-weighting inside the existing footprint over widening it** — widening asserts that land further away is exposed; anchor any radius physically, never by eye. (The `let` measurements behind both rules: the processor docstring and WORKFLOW-ISSUES 2026-08-11.)
 - **Zero-inflated hazards**: two-tier percentile (zeros → 1; non-zeros ranked against the non-zero 2020s baseline → [2,100]) so the exposed gradient isn't crushed into the top quantiles.
-- **EXTREMELY zero-inflated hazards** (`let`: 97.84% exact-zero annually) additionally take the **third decadal-statistic branch**, `pooled_mean_zero_inflated` — mean ± 1 SD on a *continuous* field. The median branch left 2,684 exposed cells vs 15,122, erasing 93% of exposed land. This is a **declared** deviation: measure the median branch's exact-zero share, record it in `decadal_statistic_rationale`, and never take this branch merely to improve contrast (`burntarea` at 29.2% does not qualify). See OUTPUT-SPEC.md "The third branch".
+- **EXTREMELY zero-inflated hazards** additionally take the **third decadal-statistic branch**, `pooled_mean_zero_inflated` — a **declared** deviation: measure the median branch's exact-zero share, record it in `decadal_statistic_rationale`, and never take this branch merely to improve contrast. The rule, the qualifying test, and the measured numbers are OUTPUT-SPEC.md "The third branch".
 - **Judge slope agreement on ACTIVE cells only** (either slope non-zero). Permanently-zero cells have a genuinely zero slope under both estimators, so counting them inflates agreement: on `let` the all-cell view reads 73% agreement / 99.2% Sen-zero while the active-cell view reads **3.0% / 97.0%**.
 
 ---
@@ -328,11 +327,10 @@ contradicting it was never reconciled**.
 
 **Rule**: For any layer describing something with a known real-world geography — a crop, a biome, a fishery, an industry, a hazard with a known footprint — check the field is non-trivial at a **named list of reference locations where that thing demonstrably exists**, before processing and again before shipping. Record the sites and their values in the processor docstring. §9 asks *what the values are*; this asks *where they are*, and the two failures are independent.
 
-**Why this matters** — measured 2026-08-11, the sugarcane layers:
+**Why this matters** — measured 2026-08-11, the sugarcane layers (full narrative: WORKFLOW-ISSUES 2026-08-11 *Sugarcane Layers WITHDRAWN*):
 
-- ISIMIP2b LPJmL `yield-sug-*` reads exactly **0 across the entire sugarcane belt** — São Paulo, Uttar Pradesh, Guangxi, Thailand, Pakistan Punjab, Veracruz, KwaZulu-Natal, Cauca, Queensland, Florida, Louisiana — with sentinel companions (`biom-sug` pinned at exactly 0.267 t ha-1, `plantday = matyday = 1`, i.e. no season simulated) on 19.2% of land, 0% of which has a non-zero yield. The same model's ISIMIP2a run gives Florida **19.49** and São Paulo **11.69** t ha-1.
-- Two layers were built from it, and **`test_shared_baseline.py` passed every check on both** — schema, shared baseline, CI ordering, percentile range and orientation, slope masks, ensemble depth. All of that was true. Contract conformance is a statement about form and says nothing about whether the input means what its name says.
-- The §9 data-nature check was run properly and still missed it: the 87% zero fraction was measured, classified as *structural*, and written up as "LPJmL grows no sugarcane there" — a true sentence whose implication was backwards. Counting zeros and testing whether they move over time does not locate them.
+- The model read exactly **0 across the entire sugarcane belt**, with sentinel companions showing no season was simulated — while the same model's previous-round run grew cane fine. **`test_shared_baseline.py` passed every check on both layers built from it.** Contract conformance is a statement about form and says nothing about whether the input means what its name says.
+- The §9 data-nature check was run properly and still missed it: the zero fraction was measured, classified as *structural*, and written up as a true sentence whose implication was backwards. Counting zeros and testing whether they move over time does not locate them.
 - The defect surfaced only because a **user looked at a map** and asked why the US Midwest out-yielded Florida.
 
 **Required behavior**:
@@ -353,31 +351,20 @@ can only ever return what you already knew. This applies the moment you touch a 
 regardless of what question you are answering — §8's "list every intermediate level" governs
 walking *down*; this governs the level you *started at*.
 
-**Why this matters** — measured 2026-08-14, the CaMa-Flood inundation suite:
+**Why this matters** — measured 2026-08-14, the CaMa-Flood inundation suite (full narrative:
+WORKFLOW-ISSUES 2026-08-14 *The CaMa-Flood Suite We Never Saw*):
 
-- Between 2026-07-24 and 2026-08-13 the repository held that river flood was evidenced only
-  by exposure flags: `ler` (2b) and `floodedarea` (3b), both 0.5°, both scoring *departure
-  from a preindustrial reference*. `config/hazard_taxonomy.yaml` recorded exactly those two
-  as the `isimip_candidate` list for the family it calls **the most consequential gap in
-  this pipeline**, and a blocker was written explaining why neither could ship.
-- **`ISIMIP2b/DerivedOutputData/` was never listed.** The catalog records
-  `enumerated: "2026-08-08 (ISIMIP2b/DerivedOutputData/Lange2020/{MODEL}/{gcm}/future/)"` —
-  we walked *into* the publication whose name we already had, from a variable-code search,
-  and never looked at the directory containing it. That directory has **two** entries.
-  The second, `Zimmer2023`, is CaMa-Flood hydrodynamic inundation at **150 arcsec (~4.6 km,
-  144× our grid)** with flood **depth in metres**, three protection variants, and **rcp85** —
-  a scenario the exposure family does not have at all.
-- The cost is not academic: `floodedarea` reads **0.000 across the Amazon floodplain** in all
-  45 members, while `Zimmer2023` puts the Amazon main stem at **6.11 m mean depth, 47.2% of
-  cells flooded** — the wettest box in a six-site check. A customer shown the first would
-  have rejected it on sight, correctly.
-- **The same failure then repeated inside the correction.** On 2026-08-13 a listing of the
-  3a and 3b `DerivedOutputData/` roots produced the claim *"no CaMa-Flood publication exists
-  under ISIMIP3a or 3b"* — written from **publication names**, not contents. Both were wrong:
-  `Quesada-Chacon2026` (3a) *is* CaMa-Flood, and `TipESM2025` (3b) is CaMa-Flood
-  `fldfrcmax` at 15 arcmin with **ssp126/370/585** and 32 members per scenario. The catalog
-  had `TipESM2025` filed as "water models" from a 2026-08-11 note that identified its models
-  and never asked what it published.
+- For three weeks the taxonomy called river flood **the most consequential gap in this
+  pipeline** while a hydrodynamic inundation suite — 144× our grid, flood depth in metres,
+  three protection variants, and a scenario the exposure family lacks — sat one directory
+  level above a path we had already walked. We entered the publication whose name we knew
+  and never listed its parent, which held **two** entries.
+- **The same failure then repeated inside the correction**: a listing of the 3a and 3b
+  `DerivedOutputData/` roots produced *"no CaMa-Flood publication exists"* from
+  **publication names**, not contents — and both names were wrong.
+- The cost was concrete: the exposure product reads 0.000 across the Amazon floodplain;
+  the suite we missed puts the main stem at 6.11 m mean depth. A customer shown the first
+  would have rejected it on sight, correctly.
 
 **Required behavior**:
 

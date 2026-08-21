@@ -97,10 +97,9 @@ the extraction parameters.
 
 ### Every processor, and where its facts live
 
-**This index is the complete list; the long-form sections below it are not.** They cover 8
-of the 27 `process_*.py` scripts, for historical reasons rather than by design, and a reader
-who treats them as the inventory will conclude that layers shipped since 2026-08-12 do not
-exist. **Nothing per-layer is restated here on purpose** — per
+**The index tables here are the complete inventory; the long-form sections below them are
+not.** Long-form coverage is a historical subset, and a reader who treats those sections as
+the inventory will conclude that recently shipped layers do not exist. **Nothing per-layer is restated here on purpose** — per
 [CLAUDE.md](../CLAUDE.md) *Where a fact belongs*, a fact about one dataset lives in
 [DATASET-ATTRIBUTES.md](../DATASET-ATTRIBUTES.md), its full detail in the processor's own
 module docstring plus a dated [WORKFLOW-ISSUES.md](../WORKFLOW-ISSUES.md) entry, and the
@@ -125,6 +124,10 @@ Shipped layers — every one is registered in `config/layer_registry.yaml`:
 | `process_csoil_soilcarbon.py` | `csoil` |
 | `process_prthresh.py` | `pluvial-r10mm/r20mm/r50mm/r100mm`, `pluvial-r95pd/r99pd`, `pluvial-rx1day/rx5day`, `pluvial-wetdays`, `pluvial-prcptot` — ten metrics from one ingest |
 | `process_tasthresh.py` | `heatdays-hd30/hd35/hd40/hd45`, `tropicalnights-tr20/tr25`, `icedays-id`, `frostdays-fd/fdm10` — nine rungs from one ladder |
+| `process_tornado_spc.py` | `tornado-all/f1plus/f2plus/f3plus` — the CONUS observational ladder (`observational-historical-v1`) |
+| `process_landslide_arup.py` | `landslide-arup` (observational; attribution required) |
+| `process_hail_vlh_battaglioli.py` | `hail-vlh` (observational) |
+| `process_waterstress_isimip3b.py` | `waterstress-3b-*` ×4 (`status: development` — held back) |
 
 Not registered — earlier or withdrawn work. **These are not shipped layers**, and passing the
 output contract never made one of them meaningful:
@@ -138,10 +141,67 @@ output contract never made one of them meaningful:
 Water Risk Index — **a different product**; none of the TCFD contract applies (see
 [CLAUDE.md](../CLAUDE.md)):
 
-| Processor | Scope |
+| Script | Scope |
 |---|---|
-| `process_water_tws.py` | total water storage |
-| `process_water_variable.py` | the generic monthly water variable processor |
+| `process_water_variable.py` | the generic monthly water-variable processor (all 6 variables) |
+| `process_water_tws.py` | total water storage — the ancestor that `process_water_variable.py` generalized |
+| `config_water_variables.py` / `config_water_tws.py` | per-variable configuration (`unit_conversion_factor` authoritative) |
+| `download_water_{tws,dis,potevap,qr,rootmoist}.py` | per-variable ISIMIP ingest via the vendored `utils/isimip_api/` client (needs httpx + rich + isimip-client) |
+| `diagnose_{tws,dis,potevap,qr,rootmoist}_models.py` | per-model raw-data diagnostics → `reports/{var}_model_diagnostics.html` |
+| `validate_water_tws.py` | QA/QC: quantile ordering, annual-mean consistency, seasonal sanity |
+| `compare_water_index.py` + `utils/water_index_compare.py` | RCP vs SSP trend comparison report |
+
+### Ingest, evidence, QA, and utilities — the rest of the roster
+
+**Ingest** (one per layer family; deterministic URLs, sidecar-verified, resumable):
+`download_led_drought.py`, `download_driedarea_isimip3b.py`, `download_let_cyclone.py`,
+`download_burntarea_isimip3b.py`, `download_cropfailure_isimip3b.py`,
+`download_heatwave_isimip3b.py`, `download_leh_isimip2b.py`, `download_thawdepth_isimip3b.py`,
+`download_csoil_isimip3b.py`, `download_fldfrcmax_isimip3b.py`, `download_tempnle_npp.py`,
+`download_sug_sugarcane.py` (the withdrawn layer's ingest record), `download_tornado_spc.py`,
+`download_landslide_arup.py`, `download_waterstress_isimip3b.py`; the streaming reducers
+`download_reduce_prthresh_isimip3b.py` / `download_reduce_tasthresh_isimip3b.py`; and stage 0
+`pr_baseline_percentiles.py` (load-bearing for all ten pluvial layers).
+
+**Nature checks** (GUARDRAILS §9 + §12 evidence gates, run before processing):
+`check_csoil_nature.py`, `check_cropfailure_nature.py`, `check_heatwave_nature.py`,
+`check_leh_nature.py`, `check_thawdepth_nature.py`, `check_fldfrcmax_nature.py`,
+`check_pr_nature.py`, `check_tas_thresholds_nature.py`, `check_slr_member_outliers.py`.
+
+**The coastal chain** (three stages → `sealevel-2b`): `build_slr_delta_field.py` →
+`build_coastal_hypsometry.py` → `process_coastal_inundation.py`, with the evidence in
+`measure_sealevelrise_support.py` and `measure_sealevelrise_isimip2b.py`.
+
+**Measurement receipts** (each reproduces a claim quoted somewhere):
+`measure_extraction_sensitivity.py` (see Customer delivery above),
+`measure_floodedarea_characteristics.py`, `measure_tornado_smoothing.py`, and the hail
+evidence gate `measure_hail_nature2026.py` + `build_hail_severity_fields.py` +
+`generate_hail_severity_maps.py` (evaluated 2026-08-18, **NOT** a layer).
+
+**QA/viz renderers**: `generate_maps.py` (every decadal layer), `generate_layer_qa.py`
+(markdown QA record), `generate_tornado_qa.py` / `generate_landslide_qa.py` /
+`generate_hail_vlh_qa.py` (narrow observational-contract renderers),
+`render_contact_sheet.py` (per-member PNG contact sheets), and
+`qa_prthresh_dashboards.sh` (precipitation QA orchestration).
+
+**Orchestration and registry emitters**: `run_pr_pipeline.py` (stage 0 → 1 driver with
+auto-retry), `emit_prthresh_registry.py` / `emit_tasthresh_registry.py` (PRINT registry
+blocks read from built files — they never write the registry), and
+`backfill_grid_attribute.py` (completed one-time migration, kept as the audit trail for
+`spatial_resolution_degrees`).
+
+**Verifiers** (CLI tools that exit non-zero — not pytest): `test_shared_baseline.py`,
+`test_observational_baseline.py`, `test_customer_delivery.py`,
+`test_extraction_resolution.py`. The pytest-collected contract tests live in
+`scripts/tests/` (`test_decadal_stats.py`, 42 tests — run `pytest` from the repo root).
+
+**`utils/`**: `decadal_stats.py` (the contract), `delivery.py` (extraction + star schema),
+`report_common.py` / `report_figures.py` / `report_profiles.py` (reports),
+`viz_common.py` (chart vocabulary), `spatial_extract.py` (point/polygon/region extraction),
+`land_mask.py` (ISIMIP land-sea masks), `hydro_extract.py` (river-snap extraction — built,
+not yet wired into `delivery.py`), `natural_earth.py` (region geometries; unusable in this
+venv — module-level geopandas import), `water_index_compare.py` (water product), and
+`isimip_api/` (the vendored ISIMIP API client used by the water downloads).
 
 ### process_tornado_spc.py — **the shipped CONUS tornado ladder** (NOT ISIMIP)
 
@@ -201,14 +261,15 @@ once a human opens the file.
 
 ### generate_maps.py
 
-Generates interactive Plotly maps from processed climate data.
+Generates the six-tab interactive Plotly dashboards from a processed layer.
 
 ```bash
-python scripts/generate_maps.py
+python scripts/generate_maps.py {variable} {processed_dir} {output_dir}
+# e.g. python scripts/generate_maps.py csoil data/processed/soilcarbon_csoil_annual reports/maps/soilcarbon
 ```
 
-**Input**: `data/processed/*.nc` (processed NetCDF files)
-**Output**: `reports/maps/{variable}/` (HTML map files)
+**Input**: a processed layer directory
+**Output**: `reports/maps/{hazard}/` (HTML dashboards)
 
 Features:
 - Per-scenario map files (SSP126, SSP370, SSP585)
@@ -413,7 +474,10 @@ python scripts/test_shared_baseline.py data/processed/{layer_dir}
 ## Dependencies
 
 Core: numpy, scipy, pandas, xarray, netCDF4, plotly, pyyaml — installed in the repo venv
-(`.venv`, Python 3.9).
+(`.venv`, Python 3.9). See `requirements.txt` at the repo root.
+
+The vendored ISIMIP API client (`utils/isimip_api/`, used only by `download_water_*.py`)
+additionally needs httpx, rich and isimip-client — **not** installed in this venv.
 
 **Not present on this machine, and the report tooling is built around their absence**: no
 pandoc, weasyprint, wkhtmltopdf, kaleido, node or headless Chrome. Report figures are

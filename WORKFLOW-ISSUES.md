@@ -8,6 +8,53 @@ See [GUARDRAILS.md](GUARDRAILS.md) for the rules derived from these incidents.
 
 ## Incident Log
 
+**Index** (44 entries, chronological):
+
+- 2026-01-16: Fish TCB Downloaded Without Resolution Choice
+- 2026-01-20: Fish b30cm Processed Without Aggregation Choice
+- 2026-01-20: Scenario rcp45 Excluded from Visualization
+- 2026-01-21: Loblolly Pine Search Missed Climate-Specific PFT Datasets
+- 2026-01-22: QA Report Map Alignment and Colorscale Issues
+- 2026-03-31: Comparison Report Maps Blank for Small-Valued Variables
+- 2026-04-07: Quantile Breakpoints 12x Too Large for Flux Variables
+- 2026-07-24: led Drought Exposure — Binary Variable Needed Dedicated Processing
+- 2026-07-24: Missed `let` Tropical-Cyclone Exposure by Guessing a Specifier Code
+- 2026-07-24: let Tropical-Cyclone Exposure — Fractional Data, Thin Ensemble, Two-Tier Percentile
+- 2026-07-24: burntarea Wildfire — Per-Member Metadata Divergence, No Normalization, Anchored Trend
+- 2026-07-25: csoil Soil-Carbon — Catalog Incompleteness, API Anti-Bot, Mixed-CO₂ Ensemble
+- 2026-08-07: Wildfire Availability Review Answered Against Other Layers, and Skipped Its Own Skill
+- 2026-08-08: Wildfire Inventory — Recommendation Stapled to the Inventory, and 75 Minutes of Avoidable Enumeration
+- 2026-08-10: ISIMIP3b burntarea Wildfire Layer — Memory Thrashing Cost 12 Hours, and Two Silent-Zero Bugs
+- 2026-08-10: HTML Dashboard Rework — Tab Structure, Zero-Centred Scales, and a Browser-Payload Ceiling
+- 2026-08-11: Tropical-Cyclone Inventory Missed the Newest Dataset by Path-Guessing; `let` Rebuilt With a Third Statistic Branch
+- 2026-08-11: `led` Drought Rebuilt — Mixed soc, a Mask Rule Worth 10% of Land, and a Hazard That Does Not Mean What Its Name Says
+- 2026-08-11: An Unverified Negative in Our Own Catalog Outlived Its Own Correction by Four Days
+- 2026-08-11: A Complete Enumeration Filtered by an Unverified Token — Sugarcane Nearly Reported Absent
+- 2026-08-11: `driedarea` — the ISIMIP3b/SSP Drought Layer the Catalog Said Did Not Exist
+- 2026-08-11: Sugarcane Layers WITHDRAWN — The Model Does Not Grow Cane in the Cane Belt, and the Contract Test Passed Anyway
+- 2026-08-11: Sugarcane Yield Layers Built (superseded by the withdrawal above) — Structural Zeros, and a From-the-END Offset That Merged Two Scenarios
+- 2026-08-12: Temperate Conifer NPP Layer — A Measured Denominator, a Per-Scenario Variable-Name Drift, and a Time-Varying Presence Mask
+- 2026-08-12: Customer Delivery Pipeline Built — External Review Found Eight Defects, One of Them in Shared Extraction Code
+- 2026-08-13: Climate Score — A Composition Artifact That Reappeared at a Second Level of Rollup After Being "Fixed" at the First
+- 2026-08-13: Delivery Dashboard — Customer Text That Could Execute, a Silent Plotly Failure, and Two Phantom Bugs From Browser Cache
+- 2026-08-13: Stages 3 and 4 Built — The Dangerous Failure Is a Correct Report That Reads as a Complete One
+- 2026-08-13: First Report Review — A Regional Narrative for the Wrong Region, a Metric That Should Not Have Been Published, and Two Figures Nobody Could Read
+- 2026-08-13: External Review of the Report Tooling — Nine Confirmed Overstatements, Including Three Regulatory Claims That Were Simply Wrong
+- 2026-08-13: Crop-Failure Ingest — A Recorded Negative That Blocked a Hazard for Weeks, a Product That Zero-Fills the Ocean, and a Contract Variable I Nearly Published as a Constant
+- 2026-08-14: The CaMa-Flood Suite We Never Saw — Three Weeks of Treating a Known Path as a Search
+- 2026-08-14: Heatwave Ingest — A Sidecar Trap That Downgraded a Shipped Layer's Provenance, a Layer Whose Flat Trend Means the Opposite, and an Index That Changed Between Rounds
+- 2026-08-14: Permafrost Layer — Four Estimator Traps, Three of Them Mine, and a Model I Nearly Dropped for the Wrong Reason
+- 2026-08-15: `csoil` rebuilt — a lost artifact, an ensemble understated by a third, and a parallel port that OOM-killed itself twice
+- 2026-08-16: The threshold ladder — a censoring result that was a continent, an invented caveat name, and a `git checkout` I should not have run
+- 2026-08-18: Nature 2026 Hail Deposit -- Evidence Gate Before Any Layer Decision
+- 2026-08-18: A Spatial Average Has a WEIGHTING, and Choosing It Wrong Flipped the Sign in Six Regions
+- 2026-08-18: The precipitation layers — a mask that published as a real zero, and a slope I chose for consistency instead of measurement
+- 2026-08-18: Water-stress build — five defects, three external review rounds
+- 2026-08-19: Landslide — the obvious aggregation was degenerate, and the licence is the real blocker
+- 2026-08-20: Tornado QA pages were never human-reviewable
+- 2026-08-21: Date rollover split a delivery across two dated folders
+- 2026-08-21: Dashboard table rebuilt itself out from under its own dropdowns
+
 ### 2026-01-16: Fish TCB Downloaded Without Resolution Choice
 
 **What happened**: When searching for fish catch abundance data, I found both monthly (~135-158 MB/file) and annual (~8-12 MB/file) data available. I proceeded to download 28 monthly files (3.62 GB total) without asking the user which resolution they preferred.
@@ -1302,21 +1349,7 @@ What found it was checking a *specific expected property of the one code path th
 
 ---
 
-## Adding New Incidents
-
-When documenting a new incident, include:
-
-1. **Date and title**: Brief description of what went wrong
-2. **What happened**: Detailed narrative of the error
-3. **Impact**: What was the consequence (data loss, incorrect results, wasted time)
-4. **Root cause**: Technical explanation of why it happened (if applicable)
-5. **Correct action**: What should have been done instead
-6. **Fix applied**: How was it resolved (if applicable)
-7. **Rule created**: Reference to the guardrail added/updated
-
----
-
-## 2026-08-18 — Water-stress build: five defects, three external review rounds
+### 2026-08-18: Water-stress build — five defects, three external review rounds
 
 Layer: `waterstress-3b-*`. Record: `docs/water-stress-status-2026-08-17.md`.
 Generalizable rules extracted to **GUARDRAILS §18**.
@@ -1498,3 +1531,19 @@ I did. See the same-day entry above for how that error was made and caught.
 **Impact**: Repeated user-visible filter failures across three feedback rounds.
 
 **Prevention**: The stable-header pattern is now the rule (ASSET-CATALOG.md, dashboard section): controls are built once and never rebuilt — only `<tbody>` re-renders; handlers are delegated to a persistent ancestor; rendered rows are capped with the truncation stated; and a global error banner surfaces any uncaught page error as text a reviewer can report verbatim, so no control can fail silently again.
+
+---
+
+## Adding New Incidents
+
+When documenting a new incident, include:
+
+1. **Date and title**: Brief description of what went wrong
+2. **What happened**: Detailed narrative of the error
+3. **Impact**: What was the consequence (data loss, incorrect results, wasted time)
+4. **Root cause**: Technical explanation of why it happened (if applicable)
+5. **Correct action**: What should have been done instead
+6. **Fix applied**: How was it resolved (if applicable)
+7. **Rule created**: Reference to the guardrail added/updated
+
+---

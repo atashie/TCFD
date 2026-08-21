@@ -21,6 +21,18 @@ measurements behind each decision, the reference sites — lives in **the proces
 docstring** and its dated **[WORKFLOW-ISSUES.md](WORKFLOW-ISSUES.md)** entry. Read the one
 layer you are working on; see *Scope discipline* in CLAUDE.md before reading the others.
 
+## Finding a layer in this file
+
+A layer's facts are cut across up to six cross-cutting sections, in this file order:
+**Identity** (layer_id ↔ variable ↔ processor — every layer has a row) → **Ensemble and
+framing** matrix → **Which slope to read** table → **Per-layer specifics worth knowing
+before use** → the dated **QA sign-off** sections → the **family deep dives** (precipitation,
+threshold ladder, heatwaves). The three observational layers (tornado, landslide, hail) each
+have a single consolidated section near the top of Product 1 instead — no framing/slope rows,
+because those concepts do not exist under their contract. `waterstress-3b-*` (development)
+sits at the end of Product 1. To find one layer fast: grep its `layer_id`; to find a family's
+QA evidence: grep `QA sign-off`.
+
 ---
 
 # Product 1 — TCFD / CDP layers
@@ -781,35 +793,11 @@ tropical-cyclone product sits in `InputData/climate/tropical_cyclones/`, outside
 
 ---
 
-# Product 2 — Water Risk Index
+## QA sign-offs and family deep dives
 
-Monthly ISIMIP data for 6 water variables → per-month ensemble means plus annual quantile
-breakpoints. **Standalone scripts only** (the CLI package was archived from HEAD 2026-08-21), and none of the
-TCFD contract applies: no trends, no percentile scoring, no kernel smoothing.
-
-- **Output** (historical path from the original Windows R pipeline): `C:\Cai_data\WaterIndex\waterIndexUnderlyingData_{var}_ssp.nc` — dims
-  `(lat=360, lon=720, scenario=3, value_type=20, decade=9)`
-- **Value types**: per-month ensemble means (vt 0–11), annual mean (vt 12), annual quantile
-  breakpoints Q05–Q95 (vt 13–19). Quantile annual aggregation **always uses mean, not sum**,
-  to keep vt 13–19 in the same units as vt 0–12.
-- **Normalization**: robust z-score per impact model (median/IQR from a 2015–2024 reference
-  period → target mean 1000, SD 200), applied before ensemble averaging **only when model
-  scales diverge significantly** (e.g. TWS). Decided per variable.
-- **Units**: output units match the original RCP files. Per-variable
-  `unit_conversion_factor` in `config_water_variables.py`.
-- **QA/QC**: `validate_water_tws.py` (quantile ordering, annual mean consistency, seasonal
-  sanity, cross-scenario checks); `compare_water_index.py` (RCP vs SSP comparison with
-  Theil-Sen slope maps and spatial Spearman R²).
-
-| Variable | Aggregation | Output Units | Notes |
-|---|---|---|---|
-| `tws` | **mean** | kg m-2 (normalized) | Stock; 4 models, normalized to synthetic units |
-| `rootmoist` | **mean** | % max capacity | Stock; WEB-DHM-SG only (÷1187.29 × 100) |
-| `qr` | **sum** | kg m-2 s-1 | Flux; 4 models, raw ISIMIP units, no normalization |
-| `dis` | **mean** | m3 s-1 | Stock; 5 models, no normalization, raw ISIMIP units |
-| `potevap` | **sum** | kg m-2 s-1 | Flux; 4 models, h08 selectively normalized to the reference ensemble (cwatm/miroc/watergap2-2e) |
-| `precip` | **sum** | TBD | TODO — climate forcing InputData, not model output |
-
+Dated evidence records, newest concepts last: what each human sign-off had in front of it,
+then the per-family deep dives. (Product 2 — the Water Risk Index — is at the end of this
+file.)
 
 ### QA sign-off: the threshold ladder, 2026-08-16
 
@@ -1412,3 +1400,34 @@ per-basin value).
 walking east from Aswan, points either stay in the Nile basin and return `SNAP_TOO_FAR` or
 cross the divide and return `NO_RIVER_IN_BASIN`; none receives Nile water. **Not yet wired
 into `delivery.py`**, whose four-cell Gaussian blend remains unsafe for river variables.
+
+---
+
+# Product 2 — Water Risk Index
+
+Monthly ISIMIP data for 6 water variables → per-month ensemble means plus annual quantile
+breakpoints. **Standalone scripts only** (the CLI package was archived from HEAD 2026-08-21), and none of the
+TCFD contract applies: no trends, no percentile scoring, no kernel smoothing.
+
+- **Output** (historical path from the original Windows R pipeline): `C:\Cai_data\WaterIndex\waterIndexUnderlyingData_{var}_ssp.nc` — dims
+  `(lat=360, lon=720, scenario=3, value_type=20, decade=9)`
+- **Value types**: per-month ensemble means (vt 0–11), annual mean (vt 12), annual quantile
+  breakpoints Q05–Q95 (vt 13–19). Quantile annual aggregation **always uses mean, not sum**,
+  to keep vt 13–19 in the same units as vt 0–12.
+- **Normalization**: robust z-score per impact model (median/IQR from a 2015–2024 reference
+  period → target mean 1000, SD 200), applied before ensemble averaging **only when model
+  scales diverge significantly** (e.g. TWS). Decided per variable.
+- **Units**: output units match the original RCP files. Per-variable
+  `unit_conversion_factor` in `config_water_variables.py`.
+- **QA/QC**: `validate_water_tws.py` (quantile ordering, annual mean consistency, seasonal
+  sanity, cross-scenario checks); `compare_water_index.py` (RCP vs SSP comparison with
+  Theil-Sen slope maps and spatial Spearman R²).
+
+| Variable | Aggregation | Output Units | Notes |
+|---|---|---|---|
+| `tws` | **mean** | kg m-2 (normalized) | Stock; 4 models, normalized to synthetic units |
+| `rootmoist` | **mean** | % max capacity | Stock; WEB-DHM-SG only (÷1187.29 × 100) |
+| `qr` | **sum** | kg m-2 s-1 | Flux; 4 models, raw ISIMIP units, no normalization |
+| `dis` | **mean** | m3 s-1 | Stock; 5 models, no normalization, raw ISIMIP units |
+| `potevap` | **sum** | kg m-2 s-1 | Flux; 4 models, h08 selectively normalized to the reference ensemble (cwatm/miroc/watergap2-2e) |
+| `precip` | **sum** | TBD | TODO — climate forcing InputData, not model output |
