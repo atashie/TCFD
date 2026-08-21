@@ -176,6 +176,13 @@ def esc(text) -> str:
 def render(delivery: Path, payload: dict, manifest: dict, warnings: list) -> Path:
     customer = esc(manifest.get("customer", delivery.parent.name))
     generated = manifest.get("generated_utc", "")
+    try:
+        generated = datetime.fromisoformat(generated).strftime("%Y-%m-%d %H:%M UTC")
+    except ValueError:
+        pass
+    counts_line = (f'{len(payload["locations"])} locations · '
+                   f'{len(payload["assets"])} assets · '
+                   f'{len(payload["layers"])} layers')
     unreviewed = [lid for lid, m in payload["layers"].items() if m["qa"] == "NOT CONFIRMED"]
 
     banner = ""
@@ -220,9 +227,22 @@ def render(delivery: Path, payload: dict, manifest: dict, warnings: list) -> Pat
 * {{ box-sizing: border-box; }}
 body {{ margin:0; background: var(--plane); color: var(--text-primary);
        font-family: {FONT_STACK}; font-size: 14px; line-height: 1.5; }}
-header {{ padding: 20px 24px 12px; }}
+header {{ padding: 20px 24px 12px; position: relative; }}
 header h1 {{ margin:0 0 4px; font-size: 20px; font-weight: 600; }}
 header .sub {{ color: var(--text-secondary); font-size: 13px; }}
+.faq {{ position:absolute; top:20px; right:24px; }}
+.faq summary {{ list-style:none; cursor:pointer; font-size:13px; padding:6px 14px;
+    border:1px solid var(--axis); border-radius:6px; background:var(--surface);
+    color:var(--text-secondary); user-select:none; }}
+.faq summary::-webkit-details-marker {{ display:none; }}
+.faq[open] summary {{ background: var(--series-1); color:#fff; }}
+.faq-panel {{ position:absolute; right:0; top:40px; width:min(480px, 90vw);
+    max-height:70vh; overflow:auto; background:var(--surface);
+    border:1px solid var(--border); border-radius:8px; padding:14px 16px;
+    box-shadow:0 8px 30px rgba(0,0,0,0.18); z-index:40; font-size:13px; }}
+.faq-panel h3 {{ margin:12px 0 4px; font-size:13px; color: var(--text-primary); }}
+.faq-panel h3:first-child {{ margin-top:0; }}
+.faq-panel p {{ margin:0 0 6px; color: var(--text-secondary); }}
 .banner {{ margin: 8px 24px; padding: 10px 14px; border-radius: 6px;
           background: color-mix(in srgb, #fab219 18%, var(--surface));
           border: 1px solid var(--border); font-size: 13px; }}
@@ -282,13 +302,51 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
 <body>
 <header>
   <h1>{customer} — climate hazard QA dashboard</h1>
-  <div class="sub">Delivery {delivery.name} &nbsp;·&nbsp; generated {generated}
-      &nbsp;·&nbsp; <span id="counts"></span></div>
-  <div class="sub" style="margin-top:4px">
-      dashboard build <code style="font-variant-numeric:tabular-nums">{build}</code>
-      &nbsp;·&nbsp; {built_at}
-      &nbsp;·&nbsp; <span style="color:var(--text-muted)">if this does not match
-      <code>--check-stamp</code>, the page is cached — hard-reload</span></div>
+  <div class="sub">Generated {generated} &nbsp;·&nbsp; {counts_line}</div>
+  <details class="faq">
+    <summary>FAQ</summary>
+    <div class="faq-panel">
+      <h3>What is a risk percentile?</h3>
+      <p>How a site compares with the rest of the world on one hazard, from 1 (lowest
+         risk) to 100 (highest). Every hazard is already oriented so 100 is always worst,
+         including ones where "more" is good.</p>
+      <h3>What is an emissions pathway?</h3>
+      <p>The low / medium / high scenario tiers. They group the two climate-scenario
+         families (RCP and SSP) from different model generations; the tiers are only
+         approximately comparable, which any narrative built on them should say.</p>
+      <h3>What is the Climate Score?</h3>
+      <p>The average risk percentile across the hazard families relevant to an asset type
+         (each family counts 0 or 1). A hazard with no data at a site is left out of that
+         site's average, and the hover shows how many hazards were included of how many
+         are weighted.</p>
+      <h3>Why do some hazards look identical in every decade and pathway?</h3>
+      <p>Tornado, landslide and hail come from measured historical records, not climate
+         models. They enter the score as the same "current conditions" value everywhere,
+         which also slightly damps how much the score moves between pathways.</p>
+      <h3>What are OLS and Sen?</h3>
+      <p>Two methods of estimating a trend per decade. Each hazard has a recommended one
+         (in layers.csv); where the two disagree, treat the trend as uncertain.</p>
+      <h3>Why is a panel blank, or flat at zero?</h3>
+      <p>Blank with "no coverage" = the observing record does not cover that site
+         (tornado outside the United States) — unknown, not safe. A flat dotted zero
+         marked "absent" = the hazard physically does not occur there (permafrost outside
+         permafrost regions).</p>
+      <h3>Why do time comparisons mention "the same assets"?</h3>
+      <p>Any change over time or gap between pathway lines is computed only over assets
+         with identical hazard coverage in everything compared — otherwise a change in
+         coverage would read as a change in risk.</p>
+      <h3>What do the map colours mean?</h3>
+      <p>Percentile views: green (low) → yellow → orange → red (high). The Climate Score
+         map: blue (low) → white → red (high). Trend views: red = worsening, blue =
+         improving, capped so a few extreme sites don't wash out the rest.</p>
+      <h3>Why does the table stop at 800 rows?</h3>
+      <p>To keep the page fast. The truncation is stated in the table, and the delivered
+         CSVs always carry every row.</p>
+      <h3>Where is the full documentation?</h3>
+      <p>README.md, delivered alongside the CSVs, including how the score is built and
+         the delivery's caveats.</p>
+    </div>
+  </details>
 </header>
 {banner}
 
@@ -317,8 +375,7 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
   </div>
 
   <div class="card"><h2>Average risk percentile by hazard</h2>
-    <div class="note">Average across all sites for the selected decade and pathway.
-        Green = low risk, red = high. Shows every hazard, whatever the hazard filter.</div>
+    <div class="note">All hazards, selected decade and pathway.</div>
     <div id="bar-hazard" style="height:300px"></div></div>
 
   <div class="card"><h2>Average risk percentile by asset type</h2>
@@ -340,9 +397,8 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
 
   <div class="card full">
     <h2>Time series by location</h2>
-    <div class="note">One location at a time: one small chart per hazard, plus the
-        Climate Score. Lines are emissions pathways (low / medium / high). All decades
-        are always shown. Hidden by default — this section draws 30+ charts.</div>
+    <div class="note">One location at a time: one chart per hazard, plus the Climate
+        Score. Lines are pathways; all decades shown. Hidden by default.</div>
     <div style="margin-bottom:10px">
       <button id="series-show" class="showbtn" aria-pressed="false">Show plots</button>
       <label for="f-loc" style="font-size:11px;text-transform:uppercase;
@@ -355,15 +411,16 @@ footer {{ padding: 8px 24px 32px; color: var(--text-muted); font-size:12px; }}
 
   <div class="card full">
     <h2>Values</h2>
-    <div class="note">Scoped by its <strong>own</strong> controls only — the per-column
-        dropdowns and the search box; the top filter bar does not apply here. Click a
-        header to sort.</div>
+    <div class="note">Filter with the dropdowns and search (the page filters above don't
+        apply here); click a heading to sort.</div>
     <input type="search" id="f-search" placeholder="Filter rows…" style="margin-bottom:10px">
     <div class="scroll"><table id="table"></table></div>
   </div>
 </div>
 
-<footer id="foot"></footer>
+<footer><span id="foot"></span>
+  <span style="color:var(--text-muted)">· build
+  <code style="font-variant-numeric:tabular-nums">{build}</code></span></footer>
 
 <script>
 const DATA = {data_json};
@@ -625,10 +682,6 @@ function initControls() {
   $("score-sel").value = state.scoreMetric;
   $("score-sel").onchange = e => { state.scoreMetric = e.target.value; renderScoreSeries(); };
 
-  $("counts").textContent = DATA.locations.length + " locations · " +
-      DATA.assets.length + " assets · " + Object.keys(DATA.layers).length + " layers · " +
-      DATA.values.length + " site-hazard-scenario-decade rows";
-
   initTable();   // builds the table header + filter row ONCE; renderTable fills tbody
 }
 
@@ -706,13 +759,11 @@ function renderMap() {
     // Red always means WORSE. On a higher_is_better layer (stored carbon, productivity)
     // an increase is an improvement, so the scale reverses.
     rev = lay.direction === "higher_is_better";
-    note = `Trend per decade. Red = worsening, blue = improving. Colour scale capped at ` +
-           `±${fmt(L)} so a few extreme sites don't wash out the rest` +
-           (clamped ? ` (${clamped} site(s) at the cap)` : "") + ".";
+    note = `Trend per decade. Red = worsening, blue = improving; colour capped at ` +
+           `±${fmt(L)}` + (clamped ? ` (${clamped} site(s) at the cap)` : "") + ".";
   } else if (state.metric === "percentile") {
     cs = PCT_RAMP; cmin = 1; cmax = 100;
-    note = "Risk percentile: how this site compares with the rest of the world on this " +
-           "hazard, from 1 (lowest risk) to 100 (highest). Green = low, red = high.";
+    note = "Risk percentile, 1 (lowest) – 100 (highest). Green = low, red = high.";
   } else {
     cs = SEQ_VALUE; cmin = null; cmax = null;
     note = `${lay.measure} [${lay.units || "—"}] · darker = larger`;
@@ -720,8 +771,7 @@ function renderMap() {
 
   const nonRobust = pts.filter(r => r.ag === false).length;
   if (isSlope && nonRobust)
-    note += ` ${nonRobust} of ${pts.length} sites: the two trend methods disagree — ` +
-            `treat those trends as uncertain.`;
+    note += ` ${nonRobust} of ${pts.length} sites: trend uncertain.`;
   $("map-note").textContent = note;
 
   const trace = {
@@ -769,13 +819,10 @@ function renderScoreMap() {
   }));
 
   $("map-note").textContent =
-    `Overall climate risk per location: the average risk percentile across the hazards ` +
-    `relevant to its asset type, ${state.decade}s` +
+    `Overall climate risk per location, ${state.decade}s` +
     (state.tier === "__all" ? ", all pathways" :
        `, ${TIER_LABELS[state.tier].toLowerCase()} pathway`) +
-    ". Blue = low, white = middle, red = high. Hazards with no data at a site are left " +
-    "out of its average — hover shows how many were included. The hazard filter does " +
-    "not apply here.";
+    ". Blue = low, white = middle, red = high.";
 
   const trace = {
     type: "scattergeo", mode: "markers",
@@ -836,11 +883,9 @@ function renderTiles() {
 
   const gaps = tierGaps();
   $("tiles-note").textContent =
-    `The Climate Score is the average risk percentile (1 = lowest risk, 100 = highest) ` +
-    `across the hazards relevant to each asset type. Hazards with no data at a site are ` +
-    `left out of its average. Uses the pathway, asset-type and decade filters.` +
-    (gaps.length ? ` Note: some hazards have no data for some pathways (${gaps.join("; ")}).`
-                 : "");
+    `Average risk percentile across the hazards relevant to each asset type. Uses the ` +
+    `pathway, asset-type and decade filters.` +
+    (gaps.length ? ` Some hazards lack data for some pathways.` : "");
   $("tiles").innerHTML = [
     tile("Portfolio Climate Score", score === null ? "—" : score.toFixed(1),
          `${state.decade}s · ` + (state.tier === "__all" ? "all tiers"
@@ -908,11 +953,8 @@ function renderScoreSeries() {
   }
 
   $("score-note").textContent =
-    `Portfolio average over time, one line per emissions pathway. Averages only the ` +
-    `${panel.size} of ${candidates} asset(s) whose hazard coverage stays the same across ` +
-    `these decades, so each line tracks one consistent set of assets.` +
-    (gaps.length ? ` Some hazards have no data for some pathways, so the pathway lines ` +
-      `cover slightly different hazard mixes.` : "");
+    `Portfolio average over time, one line per pathway ` +
+    `(${panel.size} of ${candidates} assets on a consistent basis).`;
 
   Plotly.react("score-series", traces, baseLayout({
     showlegend: true,
@@ -958,10 +1000,8 @@ function renderHazardScoreSeries() {
 
   const missing = TIER_ORDER.filter(t => !tiers.includes(t));
   $("score-note").textContent =
-    `${lay.hazard}: average risk percentile across ${locs.size} site(s), one line per ` +
-    `emissions pathway.` +
-    (missing.length ? ` No ${missing.join("/")} line — this hazard's data does not ` +
-      `cover that pathway.` : "");
+    `${lay.hazard}: average percentile across ${locs.size} site(s), per pathway.` +
+    (missing.length ? ` No ${missing.join("/")} line (no data for that pathway).` : "");
 
   Plotly.react("score-series", traces, baseLayout({
     showlegend: true,
@@ -1415,9 +1455,8 @@ function renderAll() {
 initControls();
 renderAll();
 $("foot").textContent =
-  "Risk percentiles run 1–100, and 100 is always the highest risk. OLS and Sen are two " +
-  "ways of estimating a trend; where they disagree, treat the trend as uncertain. Full " +
-  "guidance on reading this delivery is in README.md, alongside the CSVs.";
+  "Full guidance on reading this delivery: README.md, alongside the CSVs. " +
+  "Quick definitions: FAQ, top right.";
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
 """
 
