@@ -2,7 +2,7 @@
 facet: use_case
 id: acquisition-screening
 name: Acquisition and site screening
-also_known_as: [deal screening, site selection, pre-acquisition diligence, pipeline triage]
+aliases: [deal screening, site selection, pre-acquisition diligence, pipeline triage]
 confirmed_on: null
 sources: []
 ---

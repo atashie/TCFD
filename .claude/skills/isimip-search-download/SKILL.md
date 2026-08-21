@@ -579,7 +579,7 @@ directory's name.**
 `water_abstraction/2015soc/domww` carries `comment = "prepared from ISIMIP2a data (H08,
 PCR-GLOBWB, WaterGAP) for ISIMIP2b"`. It is a three-model average from a *previous round*.
 A comparison against an ISIMIP3b model output is not "the same quantity published twice", and
-treating it as one produced a confidently wrong conclusion (GUARDRAILS §14.1). Its `history`
+treating it as one produced a confidently wrong conclusion (GUARDRAILS §18.1). Its `history`
 also records the `cdo setmisstoc,0` that zero-fills the globe — 138,264 of 201,600 cells are
 exact zeros, all finite, so `isfinite` is not a mask.
 

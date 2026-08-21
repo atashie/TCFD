@@ -26,10 +26,12 @@ If you have not confirmed the above, say so in the delivery rather than implying
 `scripts/utils/spatial_extract.py` provides:
 
 - **`extract_by_point(ds, lat, lon)`** — Gaussian distance-weighted average over nearby cell
-  centres (σ = 0.25, half a cell). Longitudes are normalized to [-180, 180]. NaN cells are
-  excluded and the remaining weights re-normalized.
+  centres. σ is half **that layer's own cell size** — the geometry derives from each layer's
+  `spatial_resolution_degrees` per [OUTPUT-SPEC.md](../../../OUTPUT-SPEC.md), never a
+  constant. Longitudes are normalized to [-180, 180]. NaN cells are excluded and the
+  remaining weights re-normalized.
 - **`extract_by_polygon(...)`** — area-weighted average using shapely intersection of the
-  polygon with each 0.5° cell.
+  polygon with each grid cell (cell size read per layer).
 
 **Respect `percentile_direction`.** A layer declaring `higher_is_better` (stored carbon,
 biomass — assets, where the risk is *loss*) carries an inverted percentile. Use

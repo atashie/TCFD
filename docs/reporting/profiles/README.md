@@ -65,6 +65,7 @@ facet: asset            # asset | region | persona | vertical | use_case | compa
 id: timber-land-conifer    # must equal the filename stem
 name: Temperate conifer timberland
 aliases: [...]          # optional
+catalog_entry: ...      # optional — the config/asset_catalog.yaml key this profile maps to
 matches: {...}          # REQUIRED for region profiles, ignored elsewhere
 confirmed_on: null      # null until a human signs it off
 sources: [...]          # required for any factual claim; see ../research/method.md
@@ -121,10 +122,12 @@ Where a hazard ranking depends on region — wind dominates southeastern pine an
 in the Pacific Northwest — the **region profile owns the ranking** and the asset profile says
 so rather than assuming. This is why the two are separate facets.
 
-## Open catalog question
+## Resolved catalog question (2026-08-20)
 
-The `timber land` entry in `config/asset_catalog.yaml` omits `cyclone`. That is right for the
-Pacific Northwest and wrong for the southeastern US, and the catalog has no region dimension
-to express the difference. It has not been changed globally, because doing so would attach a
-hazard with no transmission channel to inland holdings. **Raise it before the next timber
-delivery.**
+An earlier version of this file flagged that the `timber land` catalog entry omitted
+`cyclone` and that the catalog had no region dimension to express "wind matters in the
+southeast, not the Pacific Northwest". The catalog-v2 decision of 2026-08-20 resolved it:
+routing is no longer per asset type — every delivery carries the full standard layer set,
+and the catalog's 0/1 weights shape only the Climate Score. A regional wind-relevance
+judgement now belongs in the customer-specific score-weights walk-through, where the region
+is known; the region profile still owns the *narrative* ranking, as above.

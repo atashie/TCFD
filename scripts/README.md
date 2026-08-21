@@ -172,7 +172,7 @@ geopandas is not installed in this venv.)
 ### test_observational_baseline.py
 
 Contract check for `observational-historical-v1`. Separate from `test_shared_baseline.py` on
-purpose — that one guards 23 projected layers and its strictness is the product, so an
+purpose — that one guards every projected layer in the registry and its strictness is the product, so an
 observational layer failing it is correct behaviour, not something to relax.
 
 Beyond shape, it enforces three rules this repo learned the hard way: decadal-contract

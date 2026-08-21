@@ -73,6 +73,7 @@ TCFD/
 
 | Skill | When to Use | Product |
 |-------|-------------|---------|
+| `/customer-delivery` | Any client deliverable — site extraction, dashboard, caveats, reports | TCFD/CDP |
 | `/isimip-search-download` | Searching ISIMIP repository, downloading data | TCFD/CDP |
 | `/isimip-process-visualize` | Processing annualized NetCDF, generating QA reports | TCFD/CDP |
 | `/isimip-extract-aggregate` | Extracting data by location/region for CSV export | TCFD/CDP |

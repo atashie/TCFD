@@ -106,8 +106,9 @@ masking is uncertain, check `data_status` and the coastal caveat in ASSET-CATALO
 - Weights that proved wrong in use → fix `family_weights` and date it.
 - A user approving an existing entry → set its `confirmed_on`.
 
-`confirmed_on: null` means **nobody has ever reviewed that entry**. Everything seeded
-2026-08-12 is still null. Filling the date in to quiet the warning, without the user
+`confirmed_on: null` means **nobody has ever reviewed that entry**. Read the state per entry
+from the file — the first walk-throughs were confirmed 2026-08-20; the rest of the
+2026-08-12 seed is still null. Filling the date in to quiet the warning, without the user
 actually approving it, is the one failure this field exists to prevent.
 
 ### Then show the plan and get agreement
@@ -292,10 +293,12 @@ python scripts/test_customer_delivery.py deliveries/{customer}/{date}
 open deliveries/{customer}/{date}/report_compliance.html
 ```
 
-The verifier recomputes the vulnerable-asset count independently and compares it to the
-number the report printed, checks every `must_disclose` caveat appears, re-validates the
-narrative and its citations, and refuses a report leaking internal vocabulary or an HTML
-comment.
+The verifier checks every `must_disclose` caveat appears, re-validates the narrative and its
+citations, and refuses a report leaking internal vocabulary or an HTML comment. For a
+headline metric it is two-state: while the method sits in `TBD_SECTIONS` (the
+vulnerable-asset count today) it checks the section renders the deferral block and publishes
+**no figure**; once a method is agreed and a figure is published, it recomputes that count
+independently and compares.
 
 It does not check layout. **No browser can be driven on this machine**, so a report that has
 not been opened is *unreviewed* and must be reported as such — the same rule the layer

@@ -38,8 +38,9 @@ ever delivered, which is exactly the failure this design removes.
 ## Resolution: what "at this site" actually means
 
 - The model grid is **0.5°** (~55 km at the equator) **for most layers**. Resolution is a
-  per-layer property, not a product-wide constant — the CaMa-Flood inundation layers are
-  **0.25°** (~28 km). `manifest.json` records the grid and the extraction geometry for every
+  per-layer property, not a product-wide constant — the CaMa-Flood inundation layers and the
+  observational layers (tornado, landslide, hail) are **0.25°** (~28 km). `manifest.json`
+  records the grid and the extraction geometry for every
   layer in the delivery, and the delivered README states them per layer whenever they differ.
 - Extraction blends the **four surrounding cell centres** with a Gaussian weighting, where
   the search window scales with that layer's own cell size — 20,000 random sites, 100%
@@ -78,8 +79,9 @@ decided on it.
 - An expected financial loss, a loss probability, a return impact, or a valuation effect.
   We have hazard exposure. Converting it to money needs vulnerability functions and asset
   values we do not have.
-- That a hazard is immaterial because it does not appear in the report. Sixteen of nineteen
-  hazard families are not assessed at all — see `config/hazard_taxonomy.yaml`.
+- That a hazard is immaterial because it does not appear in the report. Most hazard families
+  are not assessed at all — the authoritative roster of covered and uncovered families is
+  `config/hazard_taxonomy.yaml`.
 - That a site is low-risk because a value is missing. `NOT_ASSESSED` is not
   `NOT_VULNERABLE`, and the two are separate statuses in `vulnerability_frame()` precisely so
   they cannot be conflated.

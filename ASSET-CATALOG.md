@@ -63,7 +63,8 @@ preference, a new asset class — all of it is written back to `config/asset_cat
 the same session it was learned, with `confirmed_on` set to the date the user approved it.
 
 An entry with `confirmed_on: null` has **not** been reviewed by anyone. `--list-layers`
-prints that status explicitly. The catalog seeded on 2026-08-12 is entirely unconfirmed.
+prints that status explicitly. Read confirmation state per entry from the file — the first
+walk-throughs were confirmed 2026-08-20; the rest of the 2026-08-12 seed remains null.
 
 ---
 
@@ -376,9 +377,9 @@ view carries every value. Identity is never colour-alone.
 Light and dark modes use different steps for the red ramps — the near-black end vanishes on
 `#1a1a19`, so the dark variant is truncated at a step measured at 2.42:1.
 
-**If a JS runtime ever becomes available, re-run `scripts/validate_palette.js` on the tier
-triple and the red ramps.** Everything above is the subset of the checks that pure-Python
-luminance math can reach; it does not cover CVD ΔE.
+**If a JS runtime ever becomes available, port a proper contrast/CVD validator for the tier
+triple and the red ramps** (no such script exists in this repo today). Everything above is
+the subset of the checks that pure-Python luminance math can reach; it does not cover CVD ΔE.
 
 ## Verifying a delivery
 
@@ -404,9 +405,10 @@ violations across 3,106 checks).
 
 ## Five things that are easy to get wrong
 
-**`value` is not always a median.** Three of five shipped layers are boolean or extreme
+**`value` is not always a median.** Many shipped layers are boolean or extreme
 zero-inflated and carry a pooled *mean*. The column is named `value` rather than `median` for
-exactly this reason; `layers.csv:decadal_statistic` says which branch produced it.
+exactly this reason; `layers.csv:decadal_statistic` says which branch produced each layer —
+read it, never count from memory.
 
 **Do not re-invert the percentile.** Layers declaring `higher_is_better` applied the
 inversion at processing time. `spatial_extract.apply_percentile_inversion()` exists for
@@ -418,7 +420,8 @@ under transformations that are still wrong.
 
 **Slopes are per decade on every shipped layer, and that is read from the file.**
 `OUTPUT-SPEC.md` fits per year and requires the layer to declare what it stored in
-`slope_units`. All five shipped layers declare `decade-1`, so no conversion is applied here.
+`slope_units`. Every shipped layer to date declares `decade-1`, so no conversion is applied
+here — but that is read from the file per layer, never assumed.
 Multiplying by 10 would inflate every trend tenfold — a mistake this codebase has made.
 
 **`slopes_agree` has three states, not two.** True when both slopes are non-zero and share a
@@ -447,7 +450,8 @@ disagrees with itself stops the delivery rather than having one scenario speak f
 ## QA review status travels with the delivery
 
 Each registry layer carries `qa_reviewed_on` — the date a human read the QA report warnings
-and viewed the maps. It is `null` on every layer today, which surfaces as `NOT CONFIRMED` in
+and viewed the maps. The current state is read from `config/layer_registry.yaml`, never from
+this sentence; any `null` surfaces as `NOT CONFIRMED` in
 `layers.csv` and as an explicit warning block in the delivered README. A layer nobody has
 looked at and a reviewed one must not produce indistinguishable deliverables.
 
@@ -598,9 +602,11 @@ site-specific in a customer narrative.
 
 ### Coordinate precision matters
 
-Because the footprint is ~1°, a wrong coordinate is not a rounding error. Measured
-2026-08-12, moving a site by ±0.25° — one grid cell — changed 2090s burnt area at Shasta from
-1.248 to 3.979, a swing of **166% of the centre value**; Mobile swung 115%.
+Because the footprint is ~1°, a wrong coordinate is not a rounding error. Re-measured
+2026-08-15 with `scripts/measure_extraction_sensitivity.py`: moving a site by ±0.25° — one
+grid cell — swings the delivered value by **44% to 569% of the centre value** depending on
+site and layer. (The 166%/115% figures an earlier version of this section quoted were
+superseded by that re-measurement — WORKFLOW-ISSUES 2026-08-15.)
 
 **Reproduce it rather than quoting it from here**, and re-measure after any reprocessing:
 

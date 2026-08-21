@@ -17,7 +17,7 @@ claims, so an auditor can rebuild it and get the same document.
 | 7 | Direction of change | one trend strip per hazard — units differ, so never one axis |
 | 8 | Sections the entity must complete | governance, risk management, financial effects, targets |
 | 9 | Limitations | every `must_disclose` caveat, then the `should_note` table |
-| 10 | Hazards not assessed | the 16 uncovered families with customer-facing notes |
+| 10 | Hazards not assessed | every uncovered family in `config/hazard_taxonomy.yaml`, with customer-facing notes |
 | A | Framework mapping | IFRS S2, CDP 3.1.1, ESRS E1-9, SB 261 |
 | B | Per-asset results | the full table at three horizons × three tiers |
 

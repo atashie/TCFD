@@ -2,7 +2,7 @@
 facet: use_case
 id: annual-disclosure
 name: Annual climate disclosure
-also_known_as: [TCFD report, IFRS S2 filing, CDP response, CSRD reporting, SB 261 report]
+aliases: [TCFD report, IFRS S2 filing, CDP response, CSRD reporting, SB 261 report]
 confirmed_on: null
 sources: []
 ---

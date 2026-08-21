@@ -155,8 +155,10 @@ python scripts/measure_extraction_sensitivity.py
 Every `must_disclose` caveat appears in every built report · no unfilled narrative slot · no
 uncited paragraph in a cited slot · every citation resolves · no HTML comment survived · no
 internal vocabulary leaked · the build stamp is present · a stage claiming to be built has
-its file · **and the vulnerable-asset count printed in the compliance report is recomputed
-independently and compared**. That last one is the end-to-end proof for the headline metric;
+its file · **and any published headline metric is recomputed independently and compared** —
+for the vulnerable-asset count that applies only once its method leaves `TBD_SECTIONS`
+(deferred today; while deferred, the check is that the section renders the deferral block
+and publishes no figure). The recomputation is the end-to-end proof for a headline metric;
 everything else about a report can be right while the table says something else.
 
 All of it has been shown to fail on injected corruption. A check nobody has watched fail is a

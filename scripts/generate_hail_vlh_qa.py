@@ -6,10 +6,10 @@ WHY NOT generate_maps.py
     builds a Trend tab from the two slopes and a Members tab from `n_members`, none of
     which exist here. Same reasoning as `generate_tornado_qa.py`, which is the other
     renderer for `observational-historical-v1`. This is deliberately a third narrow tool
-    rather than a branch through the one that renders 23 shipped layers.
+    rather than a branch through the one that renders every shipped decadal layer.
 
 WHY IT EXISTS
-    `qa_reviewed_on` is null. The registry convention is that the date goes in only after
+    `qa_reviewed_on` starts null. The registry convention is that the date goes in only after
     a human has looked at the maps, and nobody can look without maps. This makes them. It
     does not perform the review.
 

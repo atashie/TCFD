@@ -2,7 +2,7 @@
 facet: vertical
 id: investment-manager
 name: Investment manager
-also_known_as: [asset manager, TIMO, fund manager, natural capital manager, institutional investor]
+aliases: [asset manager, TIMO, fund manager, natural capital manager, institutional investor]
 confirmed_on: null
 sources: []
 ---

@@ -541,12 +541,12 @@ claim. `test_observational_baseline.py` asserts it on every published field, not
 
 ---
 
-## §14 — Verification traps measured on the water-stress build (2026-08-18)
+## §18 — Verification traps measured on the water-stress build (2026-08-18)
 
-Six rules, each earned by an error that reached a written conclusion before it was caught.
+Seven rules, each earned by an error that reached a written conclusion before it was caught.
 The full incident trail is `docs/water-stress-status-2026-08-17.md`.
 
-### 14.1 A global-total agreement cannot distinguish "correct" from "two errors cancelling"
+### 18.1 A global-total agreement cannot distinguish "correct" from "two errors cancelling"
 
 The area convention was settled TWICE, in opposite directions. The first pass compared a
 model's domestic withdrawal against a published forcing and found 0.6% global agreement —
@@ -562,7 +562,7 @@ flattened to 0.84 → 0.71. A scalar cannot show you that.
 Corollary: **before comparing two products, read both files' provenance attributes.** A
 "same quantity published twice" comparison is only that if it actually is.
 
-### 14.2 `np.asarray()` silently discards a masked array's mask
+### 18.2 `np.asarray()` silently discards a masked array's mask
 
 `netCDF4`'s `set_auto_mask(True)` works correctly. The fill values reappear the moment the
 MaskedArray passes through `np.asarray()`, and a 1e20 fill is **finite** — it sails through
@@ -571,14 +571,14 @@ MaskedArray passes through `np.asarray()`, and a 1e20 fill is **finite** — it 
 **Mask by magnitude explicitly (`abs(x) >= 1e19`) before any arithmetic.** Do not blame the
 library, and do not trust that a masked read stays masked through a conversion.
 
-### 14.3 Read the calendar per file — it is heterogeneous across models
+### 18.3 Read the calendar per file — it is heterogeneous across models
 
 WaterGAP2-2e declares `365_day`; H08 declares `proleptic_gregorian` for the same variable
 and period. Annual weighting differs; monthly *ratios* are unaffected because the duration
 cancels. These files also carry **no `time` bounds and no `cell_methods`**, so "monthly
 values are monthly means" is an assumption the processor must record, not a fact it reads.
 
-### 14.4 A mask built from an ensemble mean licenses one member's data with another's
+### 18.4 A mask built from an ensemble mean licenses one member's data with another's
 
 A river mask built from *pooled* baseline discharge let a cell at 70.75N 154.25W pass a
 0.1 m3/s cut on a pooled 0.31 m3/s while **that member's own** flow there was 3e-14 m3/s.
@@ -588,7 +588,7 @@ the pooled mask with their own member baseline below the threshold.
 **Any per-member operation needs a per-member mask.** Keep it fixed in time if the contract
 requires that; do not also make it fixed across members.
 
-### 14.5 A file's attributes are a hypothesis, not gospel — and the failure runs both ways
+### 18.5 A file's attributes are a hypothesis, not gospel — and the failure runs both ways
 
 Same file family, same session: `contfrac` carries `units = "1"` while its values are
 **percent** (max exactly 100.0) — taking the attribute at face value is a 100x error. And
@@ -600,7 +600,7 @@ claim to be checked against the values.** Where CLAUDE.md says a processed file'
 attributes outrank the docs, that holds for *our* files, which we wrote from measurements.
 It does not extend to upstream publishers' metadata.
 
-### 14.6 Locate the actual worst case before proposing a fix
+### 18.6 Locate the actual worst case before proposing a fix
 
 Three successive masks were proposed against extreme ratios, and each time the cause moved:
 first "tiny rivers" (wrong — the offending cells had a median baseline of 5.0 m3/s), then
@@ -612,7 +612,7 @@ inputs).
 series — before reasoning about the population.** A max value tells you nothing about how
 many cells produce it: here the whole pathology was 0.016% of cell-years in 174 cells.
 
-### 14.7 A single named-site probe is not a valid test for a ROUTED variable
+### 18.7 A single named-site probe is not a valid test for a ROUTED variable
 
 The Indus reads **1.75** in its upper reach and **0.24** downstream, and both are correct:
 upstream is where withdrawal concentrates, downstream is where that same accumulated demand

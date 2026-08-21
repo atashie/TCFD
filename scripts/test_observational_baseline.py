@@ -6,7 +6,7 @@ WHY THIS EXISTS AS A SEPARATE VERIFIER
     dimension, two slopes, and an ensemble. An observational layer built from a
     single historical record has none of those and never will, so it fails that
     verifier BY DESIGN. The wrong fix is to relax the shared verifier -- it guards
-    23 shipped layers and its strictness is the product. The right fix is a second
+    every projected layer in the registry, and its strictness is the product. The right fix is a second
     contract with its own check, which is this file.
 
     Neither verifier substitutes for the other, and neither is a sanity check on

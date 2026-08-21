@@ -7,7 +7,7 @@ WHY THIS IS NOT generate_maps.py
     selects on `ds.decade`, builds a Trend tab from `ols_slope`/`sen_slope` and a
     Members tab from `n_members`, none of which exist on an
     `observational-historical-v1` layer. Teaching it a second contract would put a
-    branch through the tool that renders 23 shipped layers, to serve 8 that have no
+    branch through the tool that renders every shipped decadal layer, to serve the observational layers that have no
     decade axis at all. This is a narrow QA renderer for that one contract instead.
 
 WHAT IT IS FOR

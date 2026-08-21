@@ -107,9 +107,9 @@ definition we have not yet agreed.
 ## Hazard coverage
 
 **Not restated here.** `config/hazard_taxonomy.yaml` is authoritative: it enumerates the
-nineteen families a physical-risk disclosure is expected to address, which of them each
-registry layer evidences, and for each gap what would close it. Three families are covered
-today.
+hazard families a physical-risk disclosure is expected to address, which of them each
+registry layer evidences, and for each gap what would close it. Coverage is read from the
+file — any count written here would go stale the moment a layer ships.
 
 That file also carries the customer-facing / internal split. `customer_note` is rendered into
 reports; `materiality_note`, `blocker` and `isimip_candidate` are ours and must never be —

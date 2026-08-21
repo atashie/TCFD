@@ -1319,25 +1319,25 @@ When documenting a new incident, include:
 ## 2026-08-18 — Water-stress build: five defects, three external review rounds
 
 Layer: `waterstress-3b-*`. Record: `docs/water-stress-status-2026-08-17.md`.
-Generalizable rules extracted to **GUARDRAILS §14**.
+Generalizable rules extracted to **GUARDRAILS §18**.
 
 **1. Area convention settled twice, in opposite directions.** Concluded `cellarea` alone on
 0.6% global agreement; reversed to `cellarea × contfrac/100` after an external review
 challenged the comparison's provenance. The reference was a three-model average from a
 previous simulation round; the model ran 26% low and the missing factor 27% high, and they
 cancelled. Resolved by a stratified residual (structured signature) plus a global total that
-only one candidate satisfies across all 15 members. → §14.1
+only one candidate satisfies across all 15 members. → §18.1
 
 **2. Calendar asserted from a sidecar, wrong for the model in use.** Wrote
 `proleptic_gregorian`; all 45 WaterGAP files declare `365_day`. H08 genuinely declares
-`proleptic_gregorian`, so it is heterogeneous per model. → §14.3
+`proleptic_gregorian`, so it is heterogeneous per model. → §18.3
 
 **3. `np.asarray()` dropped a mask; 1e20 fills passed `isfinite`.** Global sum returned
-3.6e41. Initially misdiagnosed as a `netCDF4` defect; the library was innocent. → §14.2
+3.6e41. Initially misdiagnosed as a `netCDF4` defect; the library was innocent. → §18.2
 
 **4. River mask built from the ensemble mean.** Let one member's water license another's
 ratio — 686 cells passed a pooled mask while their own baseline was below it; one returned
-6e9 in every year. → §14.4
+6e9 in every year. → §18.4
 
 **5. Three masks proposed against extreme ratios, each on a wrong hypothesis.** "Tiny
 rivers" (the offending cells had a median baseline of 5.0 m³/s), then "year-specific
@@ -1345,7 +1345,7 @@ collapse" (excluding collapses left the max untouched). Only inspecting the sing
 cell-year found the real cause. A proposed 50 m³/s mask was rejected by the user on the
 grounds that it is the Thames at London and would delete exactly the stressed dryland
 basins — correct, and it had been proposed from a max value without checking how many cells
-produced it (0.016%, 174 cells). → §14.6
+produced it (0.016%, 174 cells). → §18.6
 
 **Process note.** Three Codex review rounds. Round 2 raised 4 blockers, round 3 confirmed the
 reversal but found the precedence table still ordered the river mask after the zero rules,

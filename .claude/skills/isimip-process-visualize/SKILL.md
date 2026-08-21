@@ -209,8 +209,9 @@ of a monthly member at ~year+0.96, and rounding pushes it into the next year.
 
 Each goes in the output's global attrs:
 
-- `statistic` — median for continuous variables; **mean** for the Lange 2020 exposure family
-  and for smooth stocks.
+- `decadal_statistic` / `field_nature` — the branch actually used, under the contract's own
+  attribute names (OUTPUT-SPEC.md): median for continuous variables; **mean** for the Lange
+  2020 exposure family and for smooth stocks.
 - `normalization` — `none` when members share a unit and comparable magnitudes ("model
   democracy"); robust z-score only when scales genuinely differ. **Compare the statistic you
   actually pool with**: medians can agree within 1.8× while means differ 2.6×.
@@ -388,7 +389,7 @@ in the NetCDF. Do not "fix" this by writing full float64.
 It selects on `ds.decade`, builds Trend from `ols_slope`/`sen_slope` and Members from
 `n_members`. An `observational-historical-v1` layer has none of those, so it cannot be
 rendered by it, and teaching it a second contract would put a branch through the tool that
-renders 23 shipped layers. Such layers get a **narrow per-contract renderer** instead:
+renders every shipped decadal layer. Such layers get a **narrow per-contract renderer** instead:
 
 | Renderer | Layers | Writes |
 |---|---|---|
@@ -401,7 +402,7 @@ renders 23 shipped layers. Such layers get a **narrow per-contract renderer** in
 `KeyError: 'decade'` on any `observational-historical-v1` file. The contract check for those
 is `scripts/test_observational_baseline.py`; there is currently **no markdown QA record** for
 an observational layer, so the HTML page has to carry the summary table and the caveats
-itself. Do not "fix" `test_shared_baseline.py` by relaxing it — its strictness guards 23 layers.
+itself. Do not "fix" `test_shared_baseline.py` by relaxing it — its strictness guards every projected layer in the registry.
 
 ## Review the QA report before claiming success
 
@@ -455,14 +456,16 @@ cells to keep that affordable.
 Three things it does that are easy to omit and must not be:
 
 - **Classify the field from its VALUES** with `is_boolean_field`, and record the branch in
-  `decadal_statistic` / `field_nature`. §9 — never from the name. There are **three**
-  branches, not two: continuous → `pooled_median`, boolean → `pooled_mean_boolean`, and
-  extreme zero-inflation → `pooled_mean_zero_inflated` (pass `central="mean"`). The third
-  exists because the boolean/continuous test is only a proxy for "is the decade pool
-  degenerate at zero" — on `let` (97.84% annual zeros) the median branch erased 93% of
-  exposed land. It is a **declared** deviation: measure the median's exact-zero share,
-  put the numbers in `decadal_statistic_rationale`, and do not take it to improve
-  contrast. `burntarea` at 29.2% zeros does not qualify; only `let` does today.
+  `decadal_statistic` / `field_nature`. §9 — never from the name. There are **four**
+  branches, not two: continuous → `pooled_median`, boolean → `pooled_mean_boolean`,
+  extreme zero-inflation → `pooled_mean_zero_inflated` (pass `central="mean"`), and
+  multimodal ensemble → `pooled_mean_multimodel` — OUTPUT-SPEC.md is authoritative for all
+  four. The third exists because the boolean/continuous test is only a proxy for "is the
+  decade pool degenerate at zero" — on `let` (97.84% annual zeros) the median branch erased
+  93% of exposed land. Every adoption is a **declared** deviation: measure the median's
+  exact-zero share, put the numbers in `decadal_statistic_rationale`, and do not take it to
+  improve contrast — `burntarea` at 29.2% zeros does not qualify. Which layers ride which
+  branch is recorded in DATASET-ATTRIBUTES.md, not a roster to memorize here.
 - **Assert the slope and median masks agree** after assembly. A bare `np.zeros()` for the
   baseline panel makes the entire ocean a finite zero, and the QA report does *not* catch
   it (it only checks that *finite* baseline trends equal zero). The reference

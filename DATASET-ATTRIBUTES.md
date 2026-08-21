@@ -36,8 +36,8 @@ amount of precision in the number changes that.
 
 | Grid | Layers |
 |---|---|
-| **0.5°** (~55 km) — the default and preferred grid | every layer except the three below |
-| **0.25°** (~28 km, 15 arcmin) | `flood-3b-flopros`, `flood-3b-40yr`, `flood-3b-none` |
+| **0.5°** (~55 km) — the default and preferred grid | every layer not listed below |
+| **0.25°** (~28 km, 15 arcmin) | `flood-3b-flopros`, `flood-3b-40yr`, `flood-3b-none`; the observational layers — the four `tornado-*` rungs, `landslide-arup`, `hail-vlh` |
 
 Each file declares its own `spatial_resolution_degrees`, `test_shared_baseline.py` checks
 that it matches the coordinates, and delivery geometry follows each layer's own cell size —
@@ -237,10 +237,10 @@ Bank DDH record says CC BY-NC 4.0, its own energydata.info mirror says CC-BY-4.0
 determination 2026-08-19; **attribution to World Bank / GFDRR and Arup is required wherever a
 value from this layer is published**, and the layer carries it in `attribution_required`.
 
-**`qa_reviewed_on` is still null.** QA maps exist — `scripts/generate_landslide_qa.py` writes
-`reports/maps/landslide/landslide-qa.html` — but nobody has read them yet. The page states what
-to look for; the first item is whether the deliberate `median`/`percentile` divergence produces
-a sensible pattern, since that is the design decision most likely to be wrong.
+**`qa_reviewed_on`: signed 2026-08-19** (read the current state from the registry, not from
+here). The QA maps are `scripts/generate_landslide_qa.py` → `reports/maps/landslide/landslide-qa.html`.
+The page states what to look for; the first item is whether the deliberate `median`/`percentile`
+divergence produces a sensible pattern, since that is the design decision most likely to be wrong.
 
 
 ### `hail-vlh` — a frequency we can publish, at a size that is not the one that hurts
@@ -372,7 +372,6 @@ first scenario. Reproduce with `python scripts/generate_customer_delivery.py --m
 | `icedays-id` | 40,439 | 0.182 | 0.817 | `ols_slope` |
 | `frostdays-fd` | 49,267 | 0.209 | 0.790 | `ols_slope` |
 | `frostdays-fdm10` | 40,632 | 0.182 | 0.818 | `ols_slope` |
-
 | `pluvial-r10mm` | 65,790 | 0.789 | 0.210 | `ols_slope` |
 | `pluvial-r20mm` | 65,649 | 0.934 | 0.066 | `ols_slope` |
 | `pluvial-r50mm` | 56,923 | 0.998 | 0.002 | `ols_slope` |
@@ -788,7 +787,7 @@ Monthly ISIMIP data for 6 water variables → per-month ensemble means plus annu
 breakpoints. **Standalone scripts only** (the CLI package was archived from HEAD 2026-08-21), and none of the
 TCFD contract applies: no trends, no percentile scoring, no kernel smoothing.
 
-- **Output**: `C:\Cai_data\WaterIndex\waterIndexUnderlyingData_{var}_ssp.nc` — dims
+- **Output** (historical path from the original Windows R pipeline): `C:\Cai_data\WaterIndex\waterIndexUnderlyingData_{var}_ssp.nc` — dims
   `(lat=360, lon=720, scenario=3, value_type=20, decade=9)`
 - **Value types**: per-month ensemble means (vt 0–11), annual mean (vt 12), annual quantile
   breakpoints Q05–Q95 (vt 13–19). Quantile annual aggregation **always uses mean, not sum**,
@@ -815,8 +814,9 @@ TCFD contract applies: no trends, no percentile scoring, no kernel smoothing.
 ### QA sign-off: the threshold ladder, 2026-08-16
 
 **Signed off by the user on 2026-08-16**, recorded as `qa_reviewed_on: '2026-08-16'` on all
-nine rungs in `config/layer_registry.yaml`. Only one other layer carries a human QA date
-(`heatwave-3b`, 2026-08-14), so a null elsewhere is a real gap, not a formality.
+nine rungs in `config/layer_registry.yaml`. At the time, only one other layer carried a
+human QA date (`heatwave-3b`, 2026-08-14); the current signed set is read from the registry,
+not from this entry.
 
 A date is only auditable if the evidence behind it is recorded, so this is what the review had
 in front of it:
@@ -845,8 +845,9 @@ built by the same script does not inherit this date.
 ### QA sign-off: the precipitation family, 2026-08-19
 
 **Signed off by the user on 2026-08-19** after reviewing the rendered dashboards, recorded as
-`qa_reviewed_on: '2026-08-19'` on all ten layers in `config/layer_registry.yaml`. Twenty of
-thirty-seven layers now carry a human QA date; the other seventeen nulls are real gaps.
+`qa_reviewed_on: '2026-08-19'` on all ten layers in `config/layer_registry.yaml`. At the
+time of this sign-off, twenty of thirty-seven layers carried a human QA date; the current
+count is read from the registry, and a null there is a real gap, not a formality.
 
 What the review had in front of it — a date whose evidence is not written down is worth
 little more than a null:
@@ -1403,7 +1404,7 @@ dropping cells it should not. Fix before any delivery.
 **Reference-site status.** Low-stress 5/5 (Amazon, Congo, Lena, boreal Canada, New Guinea all
 0.000–0.002). High-stress 5/8 — Colorado 4.99, Central Valley 3.56, North China Plain 1.98,
 Tigris–Euphrates 1.15, Ganges 0.82 all pass; Nile fails on the defect above; Indus and Murray
-"fail" a **mis-specified test** (see GUARDRAILS §14.7 — a routed variable has no single
+"fail" a **mis-specified test** (see GUARDRAILS §18.7 — a routed variable has no single
 per-basin value).
 
 **Point extraction.** `scripts/utils/hydro_extract.py` — snap to the nearest river cell

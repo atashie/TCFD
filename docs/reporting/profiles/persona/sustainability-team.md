@@ -2,7 +2,7 @@
 facet: persona
 id: sustainability-team
 name: Sustainability team
-also_known_as: [ESG team, sustainability lead, responsible investment team]
+aliases: [ESG team, sustainability lead, responsible investment team]
 confirmed_on: null
 sources: []
 ---
