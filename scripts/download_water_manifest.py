@@ -27,6 +27,14 @@ from netCDF4 import Dataset
 
 RETRIES = 3
 CHUNK = 1024 * 1024
+# Stall guard: a degraded TCP connection can trickle bytes forever without ever
+# tripping the read timeout (measured overnight 2026-08-21: one pooled connection
+# went bad and throttled ~14h of transfers to ~KB/s while a fresh connection ran
+# at ~5 MB/s). Each attempt gets a FRESH client/connection, a minimum-rate check,
+# and a hard wall-clock deadline.
+MIN_RATE_BPS = 500_000       # abort if slower than this after the grace period
+RATE_GRACE_S = 60
+ATTEMPT_DEADLINE_S = 900
 
 
 def verify_open(path: Path) -> bool:
@@ -39,35 +47,46 @@ def verify_open(path: Path) -> bool:
         return False
 
 
-def head_length(client: httpx.Client, url: str) -> int | None:
+def head_length(url: str) -> int | None:
     try:
-        r = client.head(url)
-        r.raise_for_status()
-        return int(r.headers.get("content-length", -1))
+        with httpx.Client(timeout=60, follow_redirects=True) as client:
+            r = client.head(url)
+            r.raise_for_status()
+            return int(r.headers.get("content-length", -1))
     except Exception:
         return None
 
 
-def fetch(client: httpx.Client, url: str, dest: Path) -> tuple[int, str]:
-    """Stream url -> dest.part with sha256; verify length; rename. Returns (bytes, sha256)."""
+def fetch(url: str, dest: Path) -> tuple[int, str]:
+    """Stream url -> dest.part on a FRESH connection with sha256, stall guard,
+    length verification, NetCDF-open check, atomic rename. Returns (bytes, sha256)."""
     part = dest.with_suffix(dest.suffix + ".part")
     dest.parent.mkdir(parents=True, exist_ok=True)
     h = hashlib.sha256()
-    with client.stream("GET", url) as r:
-        r.raise_for_status()
-        expected = int(r.headers.get("content-length", -1))
-        n = 0
-        with open(part, "wb") as f:
-            for chunk in r.iter_bytes(CHUNK):
-                f.write(chunk)
-                h.update(chunk)
-                n += len(chunk)
-    if expected >= 0 and n != expected:
+    try:
+        with httpx.Client(timeout=httpx.Timeout(60, read=60), follow_redirects=True) as client, \
+             client.stream("GET", url) as r:
+            r.raise_for_status()
+            expected = int(r.headers.get("content-length", -1))
+            n = 0
+            t0 = time.time()
+            with open(part, "wb") as f:
+                for chunk in r.iter_bytes(CHUNK):
+                    f.write(chunk)
+                    h.update(chunk)
+                    n += len(chunk)
+                    elapsed = time.time() - t0
+                    if elapsed > ATTEMPT_DEADLINE_S:
+                        raise IOError(f"stalled: deadline {ATTEMPT_DEADLINE_S}s exceeded at {n/2**20:.0f} MB")
+                    if elapsed > RATE_GRACE_S and n / elapsed < MIN_RATE_BPS:
+                        raise IOError(f"stalled: {n/elapsed/1024:.0f} KB/s after {elapsed:.0f}s")
+        if expected >= 0 and n != expected:
+            raise IOError(f"length mismatch: got {n}, expected {expected}")
+        if not verify_open(part):
+            raise IOError("downloaded file failed NetCDF open check")
+    except BaseException:
         part.unlink(missing_ok=True)
-        raise IOError(f"length mismatch: got {n}, expected {expected}")
-    if not verify_open(part):
-        part.unlink(missing_ok=True)
-        raise IOError("downloaded file failed NetCDF open check")
+        raise
     part.rename(dest)
     return n, h.hexdigest()
 
@@ -91,36 +110,36 @@ def main() -> None:
     failed = 0
     t0 = time.time()
 
-    with httpx.Client(timeout=120, follow_redirects=True) as client:
-        for i, row in enumerate(rows, 1):
-            url, dest = row["url"], base / row["dest"]
-            status, nbytes, digest = "", 0, ""
-            for attempt in range(1, RETRIES + 1):
-                try:
-                    if dest.exists():
-                        expected = head_length(client, url)
-                        actual = dest.stat().st_size
-                        if expected is not None and actual == expected and verify_open(dest):
-                            status, nbytes = "verified-existing", actual
-                            break
-                        print(f"[{i}/{len(rows)}] stale/short existing file, re-fetching: {dest.name}")
-                        dest.unlink()
-                    nbytes, digest = fetch(client, url, dest)
-                    status = "downloaded"
-                    break
-                except Exception as e:
-                    print(f"[{i}/{len(rows)}] attempt {attempt}/{RETRIES} failed: {dest.name}: {e}")
-                    time.sleep(2 * attempt)
-            else:
-                status = "FAILED"
-                failed += 1
-            elapsed = time.time() - t0
-            print(f"[{i}/{len(rows)}] {status:18s} {row['variable']:9s} "
-                  f"{row['model']}/{row['gcm']}/{row['scenario']} "
-                  f"({nbytes/2**20:.0f} MB, t+{elapsed/60:.1f}m)", flush=True)
-            results.append({**row, "status": status, "bytes": nbytes,
-                            "sha256": digest,
-                            "utc": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    for i, row in enumerate(rows, 1):
+        url, dest = row["url"], base / row["dest"]
+        status, nbytes, digest = "", 0, ""
+        for attempt in range(1, RETRIES + 1):
+            try:
+                if dest.exists():
+                    expected = head_length(url)
+                    actual = dest.stat().st_size
+                    if expected is not None and actual == expected and verify_open(dest):
+                        status, nbytes = "verified-existing", actual
+                        break
+                    print(f"[{i}/{len(rows)}] stale/short existing file, re-fetching: {dest.name}", flush=True)
+                    dest.unlink()
+                nbytes, digest = fetch(url, dest)
+                status = "downloaded"
+                break
+            except Exception as e:
+                print(f"[{i}/{len(rows)}] attempt {attempt}/{RETRIES} failed: {dest.name}: {e}", flush=True)
+                time.sleep(30 * attempt)
+        else:
+            status = "FAILED"
+            failed += 1
+        elapsed = time.time() - t0
+        print(f"[{i}/{len(rows)}] {status:18s} {row['variable']:9s} "
+              f"{row['model']}/{row['gcm']}/{row['scenario']} "
+              f"({nbytes/2**20:.0f} MB, t+{elapsed/60:.1f}m)", flush=True)
+        results.append({**row, "status": status, "bytes": nbytes,
+                        "sha256": digest,
+                        "utc": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+        time.sleep(1)
 
     with open(results_path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(results[0].keys()))
