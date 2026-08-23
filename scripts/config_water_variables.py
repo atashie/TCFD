@@ -111,13 +111,19 @@ WATER_VARIABLES: Dict[str, WaterVariableConfig] = {
         name="pr",
         long_name="Precipitation",
         units_raw="kg m-2 s-1",
-        units_output="mm month-1",
+        units_output="kg m-2 s-1",
         aggregation="sum",
-        unit_conversion_factor=KG_M2_S_TO_MM_MONTH,
-        models=[],  # Climate forcing, not model output
+        unit_conversion_factor=1.0,
+        models=["w5e5"],  # bias-adjusted forcing; one pseudo-model, 5 GCMs
         sector="",
         product="InputData",
-        notes="Climate forcing (InputData), not model output. Different download path.",
+        notes=(
+            "Climate forcing (InputData daily), aggregated to monthly-MEAN flux by "
+            "download_and_aggregate_precip.py (WS1 Gate B decision 2026-08-21: raw "
+            "flux units kept, engine converts; B0 synthetic test guards the "
+            "aggregation). Value types then computed by process_water_variable.py "
+            "from the monthly intermediates."
+        ),
     ),
 }
 
