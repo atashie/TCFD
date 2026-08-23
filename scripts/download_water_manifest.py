@@ -96,6 +96,10 @@ def main() -> None:
     ap.add_argument("manifest")
     ap.add_argument("--base-dir", default=str(Path(__file__).resolve().parents[1]))
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--burst", type=int, default=20,
+                    help="files per burst before cooling down (server resets connections on sustained pulls; measured 2026-08-22 after ~28 files)")
+    ap.add_argument("--cooldown", type=int, default=90,
+                    help="seconds to pause between bursts")
     args = ap.parse_args()
 
     base = Path(args.base_dir)
@@ -108,6 +112,7 @@ def main() -> None:
     )
     results = []
     failed = 0
+    burst_count = 0
     t0 = time.time()
 
     for i, row in enumerate(rows, 1):
@@ -140,6 +145,11 @@ def main() -> None:
                         "sha256": digest,
                         "utc": datetime.now(timezone.utc).isoformat(timespec="seconds")})
         time.sleep(1)
+        if status == "downloaded":
+            burst_count += 1
+            if args.burst and burst_count % args.burst == 0:
+                print(f"--- burst of {args.burst} complete, cooling down {args.cooldown}s ---", flush=True)
+                time.sleep(args.cooldown)
 
     with open(results_path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(results[0].keys()))
