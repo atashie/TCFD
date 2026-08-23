@@ -8,7 +8,7 @@ See [GUARDRAILS.md](GUARDRAILS.md) for the rules derived from these incidents.
 
 ## Incident Log
 
-**Index** (45 entries, chronological):
+**Index** (46 entries, chronological):
 
 - 2026-01-16: Fish TCB Downloaded Without Resolution Choice
 - 2026-01-20: Fish b30cm Processed Without Aggregation Choice
@@ -55,6 +55,7 @@ See [GUARDRAILS.md](GUARDRAILS.md) for the rules derived from these incidents.
 - 2026-08-21: Date rollover split a delivery across two dated folders
 - 2026-08-21: Dashboard table rebuilt itself out from under its own dropdowns
 - 2026-08-21: Repo simplification — 89 files removed with receipts, and the audits that fenced the traps
+- 2026-08-22: Ingest licensing audit — one disputed licence, and a CC BY layer whose credit reaches no customer
 
 ### 2026-01-16: Fish TCB Downloaded Without Resolution Choice
 
@@ -1454,6 +1455,14 @@ registry `delivery_note` and the ingest sidecars. The publisher's own inconsiste
 retained in `source_licence` rather than deleted — it is a real defect in the source's records
 and the next person to check provenance will hit it.
 
+**Follow-up, 2026-08-22.** The full ingest licensing audit re-verified both publisher records
+live: still contradictory (DDH: CC BY-NC 4.0; energydata.info: CC BY 4.0). A same-day user
+decision added an option that did not exist on 2026-08-19 — an NC-restricted layer always
+serves free rather than leaving the product — so the recommended posture is now
+free-lane-only until the World Bank help desk resolves the record. Not yet ruled. Roster and
+receipts: [docs/licensing-audit-2026-08-22.md](docs/licensing-audit-2026-08-22.md); see the
+2026-08-22 entry below.
+
 QA maps were built (`scripts/generate_landslide_qa.py` → `reports/maps/landslide/`), which is a
 third renderer for the observational contract after `generate_maps.py` (decadal only) and
 `generate_tornado_qa.py` (CONUS rungs). **`generate_layer_qa.py` and `test_shared_baseline.py`
@@ -1546,6 +1555,45 @@ I did. See the same-day entry above for how that error was made and caught.
 **Verification** (baseline before Phase 1, re-run after every phase): `scripts/tests` 42/42; delivery verifier PASS on `deliveries/storefront-test/20260821` (62,202 checks); `test_shared_baseline` PASS on csoil and `test_observational_baseline` PASS on landslide; extraction pins PASS; the new `scripts/check_doc_refs.py` clean across 37 live docs/configs. Two pre-existing conditions recorded, NOT caused here: the 2026-08-13 `example-forestry-co` delivery fails verification against its since-reprocessed sources (conifer-npp rebuilt 2026-08-20 — the verifier working as designed on a stale delivery), and the package's `test_alignment.py` was reproducibly SIGKILLed (OOM) at its 13th test even before archival.
 
 **Files**: commits `164e9df`, `a10a510`, `b9ce2ac`, `a63b242`, `74197b6`, plus this entry's commit.
+
+### 2026-08-22: Ingest licensing audit — one disputed licence, and a CC BY layer whose credit reaches no customer
+
+**What happened**: Storefront build item 1 executed — every ingested source's licence
+re-verified against the live publisher record, per-dataset for ISIMIP via the repository
+API's `rights` field. Roster, receipts and the obligations table:
+[docs/licensing-audit-2026-08-22.md](docs/licensing-audit-2026-08-22.md). Outcome: nothing
+ingested forbids serving. ISIMIP3 products are CC0 per dataset; 2b Lange2020
+(`drought-2b`/`cyclone`/`heatwave-2b`) is CC0, not the CC BY the round default implied; 2b
+`sealevelrise` and 2b biomes are CC BY 4.0; NOAA SPC, GEBCO_2026 and Natural Earth are
+public domain; `hail-vlh` is CC BY 4.0 strictly via the article Source-Data route (its
+Zenodo twin is CC BY-NC-ND — never ingest it). The one dispute, unchanged since 2026-08-19:
+`landslide-arup`'s two publisher records still contradict (DDH: CC BY-NC 4.0;
+energydata.info mirror: CC BY 4.0).
+
+**Two findings that outlive the audit**:
+
+1. **`hail-vlh` legally requires attribution (CC BY) and nothing customer-visible carries
+   it.** `attribution_required` is absent from its file, the attribute is not on
+   `LAYER_ATTRS_EXPORTED` anyway (closed allowlist — even landslide's is silently dropped
+   as a structured field, surviving only as `delivery_note` prose), and hail's
+   `delivery_note` says nothing. Compliance currently rides on prose for one layer and on
+   nothing for the other.
+2. **An ISIMIP2 dataset can individually be CC BY-NC or CC BY-SA** ("on request" per
+   model), and our 2b download sidecars carry no `rights` field — a restriction would have
+   been discovered only after processing. The rights check is now a download-time step in
+   the `/isimip-search-download` skill.
+
+**Decisions (user, 2026-08-22)**: a non-commercial restriction is not a blocker — such a
+layer is served in the free lane beside the for-sale data. Recommended and not yet ruled:
+`landslide-arup` free-lane-only until the World Bank help desk resolves its record.
+Standing rule: raw ISIMIP file mirrors are never paywalled (ISIMIP's blanket "sale of the
+data is strictly forbidden" sentence, read against per-dataset CC0/CC BY, forbids exactly
+that and nothing we sell).
+
+**Not yet built**: registry `license`/`attribution`/free-lane fields (`LayerSpec` is a
+closed schema), promotion of attribution into `LAYER_ATTRS_EXPORTED` and the report
+builders on the `relative_baseline` pattern, and the interim hail `delivery_note` credit.
+Tracked in the audit doc and [docs/storefront/DECISIONS.md](docs/storefront/DECISIONS.md).
 
 ---
 

@@ -121,4 +121,13 @@ This project uses data from ISIMIP (Inter-Sectoral Impact Model Intercomparison 
 
 ## License
 
-[Add license information]
+- **Repository code**: no licence chosen yet — an open user decision.
+- **Ingested data**: audited per source, with receipts, in
+  [docs/licensing-audit-2026-08-22.md](docs/licensing-audit-2026-08-22.md). Summary:
+  ISIMIP3 is CC0 and ISIMIP2b is CC0 / CC BY 4.0 per dataset; NOAA SPC, GEBCO_2026 and
+  Natural Earth are public domain; `hail-vlh` is CC BY 4.0 strictly via the article
+  Source-Data route; `landslide-arup`'s publisher records are contradictory (CC BY-NC vs
+  CC BY) and the free-lane-only call is open. A non-commercial restriction routes a layer
+  to the always-free lane, never out of the product (user decision 2026-08-22).
+  Attribution obligations ride with serving, free or paid — the audit's obligations table
+  is authoritative.

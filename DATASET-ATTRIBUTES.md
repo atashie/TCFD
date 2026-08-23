@@ -32,7 +32,11 @@ heatwaves). The three observational layers (tornado, landslide, hail) each have 
 consolidated section instead, between Identity and the framing matrix — no framing/slope
 rows, because those concepts do not exist under their contract. `waterstress-3b-*`
 (development) sits at the end of Product 1. To find one layer fast: grep its `layer_id`; to
-find a family's QA evidence: grep `QA sign-off`.
+find a family's QA evidence: grep `QA sign-off`. Licence, commercial-use verdict and
+attribution for **every** ingested source — ISIMIP rounds and the non-ISIMIP observational
+sources alike — are audited with receipts in
+[docs/licensing-audit-2026-08-22.md](docs/licensing-audit-2026-08-22.md); the per-layer
+licence facts below defer to it for verification dates.
 
 ---
 
@@ -249,6 +253,12 @@ Bank DDH record says CC BY-NC 4.0, its own energydata.info mirror says CC-BY-4.0
 113-page project report says neither. Cleared for our limited commercial use by user
 determination 2026-08-19; **attribution to World Bank / GFDRR and Arup is required wherever a
 value from this layer is published**, and the layer carries it in `attribution_required`.
+Re-verified live 2026-08-22 in the full ingest licensing audit
+([docs/licensing-audit-2026-08-22.md](docs/licensing-audit-2026-08-22.md)): the publisher's
+records still contradict. A same-day user decision changed the option space — an
+NC-restricted layer is servable but must always serve free — so the recommended posture is
+now **free-lane-only until the World Bank help desk says which record is authoritative**.
+That call is open; the 2026-08-19 determination stands until it is made.
 
 **`qa_reviewed_on`: signed 2026-08-19** (read the current state from the registry, not from
 here). The QA maps are `scripts/generate_landslide_qa.py` → `reports/maps/landslide/landslide-qa.html`.
@@ -277,7 +287,13 @@ trends and is **CC BY-NC-ND 4.0** on every version — NC rules it out, ND separ
 regridding. The article's **Source Data is CC BY 4.0** and is *not* figure summaries: each
 file carries the full 813,600-cell grid. So the baseline is the **1950–2023 mean**, not a
 recent decade: a 2014–2023 window would need the annual fields, which we cannot use. The
-parked licence route is `reports/maps/hail-vlh/essl_licence_query.md`.
+parked licence route is `reports/maps/hail-vlh/essl_licence_query.md`. Both licences were
+re-verified live 2026-08-22 in the ingest licensing audit
+([docs/licensing-audit-2026-08-22.md](docs/licensing-audit-2026-08-22.md)), which also
+flagged a wiring gap: this layer's CC BY credit is required yet not carried anywhere a
+customer sees — `attribution_required` is absent from the file and from
+`LAYER_ATTRS_EXPORTED`, and the registry `delivery_note` says nothing. The interim fix and
+the structured fix (registry `license`/`attribution` fields) are listed in the audit.
 
 **A units trap in the source, measured.** The climatology field describes itself as *"Mean
 annual number of hail ≥ 5 cm events per ERA5 grid box (1950-2023)"* and is the 74-year

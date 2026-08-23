@@ -16,6 +16,9 @@ conclusions are recorded in the configs, DATASET-ATTRIBUTES.md, and WORKFLOW-ISS
 - [water-stress-status-2026-08-17.md](water-stress-status-2026-08-17.md) — plus its earlier
   design note [water-stress-formulations.md](water-stress-formulations.md)
 - [landslide-data-options-2026-08-19.md](landslide-data-options-2026-08-19.md)
+- [licensing-audit-2026-08-22.md](licensing-audit-2026-08-22.md) — every ingested source's
+  licence and commercial-use verdict, the always-serve-free list, and the attribution
+  obligations that ride with serving
 
 A dated journal is never edited retroactively; corrections append. A cross-cutting rule
 extracted from one belongs in GUARDRAILS.md, not here.

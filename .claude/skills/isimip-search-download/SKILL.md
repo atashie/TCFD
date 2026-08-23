@@ -526,6 +526,11 @@ archived from HEAD 2026-08-21.)
 - Make the downloader resumable — skip a file already present and matching.
 - Record each file's `source_url` and checksum. The API being behind anti-bot means an
   unrecorded source may not be casually re-downloadable.
+- Record the dataset's licence at download time: the repository API response carries a
+  per-dataset `rights` field (the file sidecars often do not — verified 2026-08-22).
+  ISIMIP3 is CC0 across the board, but **an ISIMIP2 dataset can individually be CC BY-NC
+  or CC BY-SA** ("on request" per model) — a restriction discovered after processing is a
+  relicense-or-rebuild. Roster and receipts: `docs/licensing-audit-2026-08-22.md`.
 - Use ISIMIP's server-side masking (`mask_landonly`, `select_bbox`, `mask_country`) to cut
   download volume where the product only needs land or a region.
 
