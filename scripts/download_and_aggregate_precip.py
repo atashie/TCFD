@@ -184,7 +184,17 @@ def run_pipeline(manifest_csv: Path, limit: int | None) -> None:
         out_dir = INTERIM_DIR / "w5e5" / f"{row['gcm'].lower()}_{row['scenario']}"
         out_path = out_dir / monthly_name(row["file"])
         try:
-            nbytes, digest = fetch(row["url"], raw)
+            last_err = None
+            for attempt in range(1, 4):
+                try:
+                    nbytes, digest = fetch(row["url"], raw)
+                    break
+                except Exception as e:
+                    last_err = e
+                    print(f"[{i}/{len(rows)}] attempt {attempt}/3 failed: {row['file']}: {e}", flush=True)
+                    time.sleep(30 * attempt)
+            else:
+                raise last_err
             ds = xr.open_dataset(raw)
             monthly = aggregate_daily_to_monthly(ds)
             n_months = int(monthly.shape[0])
