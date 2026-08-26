@@ -173,9 +173,11 @@ def main() -> None:
         out.setncattr("land_mask_source", f"{MASK_SOURCE.name} ({MASK_VAR}), "
                                           f"{EXPECTED_LAND_CELLS} cells, slice-invariant")
         out.setncattr("land_mask_rationale",
-                      "precip is global atmospheric forcing; masked to the LSM land mask so "
-                      "all six variables share one IDW stencil at coastal sites (matches legacy "
-                      "RCP-generation behaviour). See v2/enumeration/A3_precip_mask_finding.md")
+                      "precip is global atmospheric forcing; masked to the LSM land mask so it "
+                      "shares the IDW stencil used by dis/qr/potevap/tws at coastal sites "
+                      "(matches legacy RCP-generation behaviour). NOTE: this does NOT make all "
+                      "six variables identical -- rootmoist is 324 cells short of this mask, so "
+                      "those cells still differ. See v2/enumeration/A3_precip_mask_finding.md")
         out.setncattr("land_mask_applied_date", "2026-08-26")
         out.setncattr("unmasked_source_file", UNMASKED.name)
         out.setncattr("unmasked_source_sha256", src_sha)

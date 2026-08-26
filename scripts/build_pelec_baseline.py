@@ -119,38 +119,76 @@ def main() -> None:
         elif not (np.array_equal(lat, lat_v) and np.array_equal(lon, lon_v)):
             raise SystemExit(f"REFUSING: {var} grid differs from {VARS[0]}")
 
-        # --- the invariance contract: every member identical to the reference ---
-        ref_first = load_clean(ref_path, var, slice(0, 1))[0]
-        differing = []
-        for m in members[1:]:
-            if not np.allclose(np.nan_to_num(load_clean(m, var, slice(0, 1))[0]),
-                               np.nan_to_num(ref_first), equal_nan=True):
-                differing.append(Path(m).parent.name)
-        print(f"  cross-member identity: {len(members) - len(differing)}/{len(members)} identical"
-              + (f"  DIFFERING: {differing}" if differing else ""))
+        # --- the invariance contract ---
+        # This must be a PROOF, not a spot check: the whole justification for
+        # collapsing 1032 months x 15 members to one map is that nothing varies.
+        # Comparing only month 0, or only two period means, would pass a field with
+        # seasonality or with compensating trends. So every month of every member is
+        # compared against the reference month 0, and the measured maximum deviation
+        # is recorded in provenance rather than asserted away.
+        #
+        # Tolerance: the source is float32, and the published values genuinely differ
+        # by up to one ULP in a few calendar months (measured 5.8e-11 absolute on
+        # pelecww, 8.4e-08 relative). That is storage rounding, not signal, so the
+        # contract is "constant to within float32 rounding", not "bit-identical".
+        ref_all = load_clean(ref_path, var)
+        ref_map = ref_all[0]
+        finite = np.isfinite(ref_map)
+        scale = float(np.nanmax(np.abs(ref_map))) if finite.any() else 1.0
+        rel_tol = 1e-5                      # >> float32 eps, << any real signal
+        abs_tol = rel_tol * scale
 
-        base = np.nanmean(load_clean(ref_path, var, slice(i0, i1)), axis=0)
-        allp = np.nanmean(load_clean(ref_path, var), axis=0)
-        static = bool(np.allclose(np.nan_to_num(base), np.nan_to_num(allp), equal_nan=True))
-        print(f"  2020s mean == all-period mean: {static}")
-        if not static:
+        def max_dev(arr: np.ndarray) -> float:
+            """Largest |value - reference month 0| over every time step."""
+            d = np.abs(np.nan_to_num(arr) - np.nan_to_num(ref_map))
+            return float(d.max()) if d.size else 0.0
+
+        temporal_dev = max_dev(ref_all)
+        print(f"  temporal: max |month_t - month_0| over {len(ref_all)} months = "
+              f"{temporal_dev:.3e}  (tolerance {abs_tol:.3e})")
+        if temporal_dev > abs_tol:
             raise SystemExit(
-                "REFUSING: pelec is no longer time-invariant — a real temporal signal "
-                "exists and must not be collapsed to a static baseline. Re-assess.")
-        if differing:
+                f"REFUSING: {var} varies in time by {temporal_dev:.3e} "
+                f"(> {abs_tol:.3e}). A real temporal signal exists and must not be "
+                "collapsed to a static baseline. Re-assess.")
+
+        member_dev = {}
+        for m in members[1:]:
+            dev = max_dev(load_clean(m, var))
+            member_dev[Path(m).parent.name] = dev
+        worst = max(member_dev.values()) if member_dev else 0.0
+        bad = {k: v for k, v in member_dev.items() if v > abs_tol}
+        print(f"  cross-member: {len(members)} members, max deviation over ALL months "
+              f"= {worst:.3e}  (tolerance {abs_tol:.3e})")
+        if bad:
             raise SystemExit(
-                "REFUSING: members are no longer identical — a GCM/SSP signal exists "
-                "and the single-map assumption is void. Re-assess.")
+                f"REFUSING: {var} differs across members {sorted(bad)} — a GCM/SSP "
+                "signal exists and the single-map assumption is void. Re-assess.")
+
+        base = np.nanmean(ref_all[i0:i1], axis=0)
+        # With constancy proven above, the 2020s mean must equal the all-period mean.
+        allp = np.nanmean(ref_all, axis=0)
+        if not np.allclose(np.nan_to_num(base), np.nan_to_num(allp),
+                           rtol=rel_tol, atol=abs_tol):
+            raise SystemExit(f"REFUSING: {var} 2020s mean != all-period mean despite the "
+                             "constancy check passing — contradictory, investigate.")
 
         fields[var] = base
         prov[var] = {
             "n_member_files": len(members),
-            "members_identical": True,
             "reference_file": Path(ref_path).name,
             "reference_sha256": sha256(ref_path),
             "units_native": units,
             "long_name": long_name,
-            "time_invariant_verified": True,
+            # Measured, not asserted. Files are NOT byte-identical (each carries its
+            # own GCM/SSP metadata and its own sha256); the DATA VARIABLE is what
+            # matches, to within float32 rounding.
+            "data_variable_equivalence": "all members equal to within float32 rounding",
+            "max_temporal_deviation": temporal_dev,
+            "max_cross_member_deviation": worst,
+            "tolerance_abs": abs_tol,
+            "files_byte_identical": False,
+            "n_distinct_file_sha256": len(members),
         }
 
     area = cell_area_m2(lat, len(lon))
@@ -201,18 +239,22 @@ def main() -> None:
             "Potential thermoelectric water withdrawal (pelecww) and consumption "
             "(pelecuse), WaterGAP2-2e, 2015soc, averaged over 2020-2029.")
         ds.WHAT_THIS_SHOWS = (
-            "A present-day SPATIAL BASELINE of thermoelectric water demand. "
-            "Magnitude validated: contiguous-US withdrawal 186.3 km3/yr vs USGS 2015 "
-            "~184 km3/yr (within ~1%). Consumption is ~2.3% of withdrawal, the "
-            "once-through-dominated ratio.")
+            "A present-day SPATIAL BASELINE of thermoelectric water demand. Magnitude is "
+            "PLAUSIBILITY-CHECKED, not formally validated: a rectangular 25-49N/125-66W "
+            "box sums to 186.3 km3/yr against USGS 2015 US thermoelectric withdrawal of "
+            "~184 km3/yr. That box is not CONUS -- it includes ~4 km3/yr of northern "
+            "Mexico plus ocean cells -- so treat the agreement as order-of-magnitude "
+            "support, not a calibration. A proper check needs a country mask. "
+            "Consumption is ~2.3% of withdrawal, the once-through-dominated ratio.")
         ds.WHAT_THIS_DOES_NOT_SHOW = (
-            "NOT a projection and NOT an uncertainty range. The source field is "
-            "constant in time (Jan 2015 == Jan 2100, seasonal max/min ratio 1.000) "
-            "and all 15 GCM x SSP files are byte-identical, so there is no temporal "
-            "trend, no seasonality, no scenario differentiation and no model spread. "
-            "ISIMIP3b publishes no ssp*soc variant for pelec, so no transient "
-            "thermoelectric pathway exists. Do not read change over time from this "
-            "layer, and do not present it as scenario-dependent.")
+            "NOT a projection and NOT an uncertainty range. The source data variable is "
+            "constant in time and equal across all 15 GCM x SSP members to within "
+            "float32 rounding (measured max deviation recorded in provenance_json; the "
+            "FILES are not byte-identical -- each carries its own metadata and sha256). "
+            "So there is no temporal trend, no seasonality, no scenario differentiation "
+            "and no model spread. ISIMIP3b publishes no ssp*soc variant for pelec, so no "
+            "transient thermoelectric pathway exists. Do not read change over time from "
+            "this layer, and do not present it as scenario-dependent.")
         ds.INTENDED_USE = (
             "Baseline context for scenario / mitigation analysis: the existing "
             "thermoelectric demand a new or modified water user competes with. "
