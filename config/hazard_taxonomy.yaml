@@ -161,7 +161,7 @@ families:
       most likely to assume was covered, and for built assets near a watercourse it usually
       dominates.
     customer_note: >-
-      Not assessed. River flooding is frequently the dominant physical risk for assets near a watercourse, and its absence here should not be read as a low result. A dedicated flood dataset is required.
+      Assessed via three protection-standard variants of one river-routing model: flooded area behind real-world defence standards (the delivered default), under a uniform hypothetical standard, and with no defences assumed. This is river (fluvial) flooding only -- storm surge, coastal flood and short-duration surface-water flooding are separate hazards and are not covered by this or any other layer here. A near-zero value under the defended variant means the site is protected to its country's standard, not that no flood hazard exists.
     candidates_enumerated_on: >-
       2026-08-14 -- listed the DerivedOutputData/ root of ALL FOUR rounds and opened every
       publication to file level (config/isimip_search_catalog.yaml repository_publication_map).
@@ -206,7 +206,7 @@ families:
       worker safety limits or wet-bulb thresholds needs that layer, or a constructed index
       from daily tasmax+hurs -- not this one.
     customer_note: >-
-      Not assessed. Extreme heat drives workforce safety limits, equipment derating and cooling demand, and is often the leading hazard for occupied buildings and data centres.
+      Assessed as land area exposed to heat that is unprecedented relative to each location's own pre-industrial history, not to a fixed temperature. It carries no humidity term, so it cannot support a workforce-safety, wet-bulb, or equipment-derating claim -- a fixed physical heat threshold is assessed separately under "Chronic heat / rising mean temperature". Because a relative threshold is crossed sooner where year-to-year temperature variance is naturally low, some tropical locations score higher here than hotter, more variable mid-latitude locations at the same point in time.
     isimip_candidate:
       - "ISIMIP2b DerivedOutputData/Lange2020/HWMId-humidex `leh` (+`peh` population twin) -- 1 impact model x 4 CMIP5 GCMs x rcp26/rcp60 = 8 projection files, annual 2006-2099, uniform nosoc/co2, ~35 MB. Enumerated 2026-08-13."
       - "ISIMIP3b DerivedOutputData/Zantout2025/HWMID-NONE `heatwave` -- 1 impact model x 5 CMIP6 GCMs x ssp126/370/585 = 15 projection files, annual 2015-2100, uniform 2015soc/default, ~63 MB. Declared long_name 'heatwave area share', units '1'. Enumerated 2026-08-13."

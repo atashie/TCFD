@@ -8,7 +8,7 @@ See [GUARDRAILS.md](GUARDRAILS.md) for the rules derived from these incidents.
 
 ## Incident Log
 
-**Index** (46 entries, chronological):
+**Index** (47 entries, chronological):
 
 - 2026-01-16: Fish TCB Downloaded Without Resolution Choice
 - 2026-01-20: Fish b30cm Processed Without Aggregation Choice
@@ -56,6 +56,7 @@ See [GUARDRAILS.md](GUARDRAILS.md) for the rules derived from these incidents.
 - 2026-08-21: Dashboard table rebuilt itself out from under its own dropdowns
 - 2026-08-21: Repo simplification — 89 files removed with receipts, and the audits that fenced the traps
 - 2026-08-22: Ingest licensing audit — one disputed licence, and a CC BY layer whose credit reaches no customer
+- 2026-08-27: Two taxonomy customer_note fields contradicted their own covered_by
 
 ### 2026-01-16: Fish TCB Downloaded Without Resolution Choice
 
@@ -1594,6 +1595,14 @@ that and nothing we sell).
 closed schema), promotion of attribution into `LAYER_ATTRS_EXPORTED` and the report
 builders on the `relative_baseline` pattern, and the interim hail `delivery_note` credit.
 Tracked in the audit doc and [docs/storefront/DECISIONS.md](docs/storefront/DECISIONS.md).
+
+### 2026-08-27: Two taxonomy customer_note fields contradicted their own covered_by
+
+**What happened**: `flood-riverine` and `heatwave` in `config/hazard_taxonomy.yaml` both had `covered_by` populated 2026-08-20 (the v2 standard-set model), but their customer-facing `customer_note` field was never updated to match — both still read "Not assessed", the pre-2026-08-20 text. `heatwave`'s internal `blocker` field is stale in the same way ("COVERAGE IS STILL EMPTY ON PURPOSE"); left as-is since it is internal, never rendered to a customer. Found while researching per-hazard facts for a data-offerings dashboard (the Hazard Atlas, `reports/hazard-atlas.html`), not by any delivery or report run.
+
+**Impact**: `report_common.coverage_summary()` reads `customer_note` for exactly the families a delivery's own layers cover — verified directly against `deliveries/storefront-test/20260821`, both families correctly land in `covered` with `by` populated, so any compliance or bespoke report built from that delivery (or any delivery carrying the standard set) would have asserted "Not assessed" for two hazards it was actually delivering values for. No shipped report is known to have carried the stale text; the risk was latent, not confirmed realized.
+
+**Prevention**: Both `customer_note` fields rewritten to describe actual coverage, in the same voice as the already-correct families (`heat-stress-chronic`, `crop-failure`); re-verified by loading `deliveries/storefront-test/20260821` through `report_common.coverage_summary()` directly rather than trusting the YAML edit alone. General rule: when `covered_by` is populated on a family, `customer_note` must be edited in the *same* change — `flood-riverine`'s `materiality_note` got a "(GAP RESOLVED …)" prefix on 2026-08-20 while its `customer_note` did not, which is exactly the kind of partial edit that leaves two internally-contradictory claims sitting in the same file.
 
 ---
 
