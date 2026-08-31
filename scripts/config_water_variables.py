@@ -1,4 +1,4 @@
-"""Configuration for all 6 water variables in the water index pipeline.
+"""Configuration for all water variables (7 with evap) in the water index pipeline.
 
 Defines per-variable parameters: aggregation method, unit conversion,
 impact models, and data source. Shared constants (decades, grid, value_types)
@@ -35,6 +35,14 @@ class WaterVariableConfig:
     timestep: str = "monthly"
     social_forcing: str = "2015soc"
     notes: str = ""
+    #: Per-model raw-file variable-name overrides (model -> in-file name).
+    #: None = every model publishes under `name`. Needed first for evap:
+    #: H08 publishes 'evap', the other managed models 'evap-total'.
+    input_var_names: Optional[Dict[str, str]] = None
+
+    def raw_var_name(self, model: str) -> str:
+        """The variable name expected inside MODEL's raw files."""
+        return (self.input_var_names or {}).get(model, self.name)
 
     @property
     def download_subdir(self) -> str:
@@ -123,6 +131,36 @@ WATER_VARIABLES: Dict[str, WaterVariableConfig] = {
             "flux units kept, engine converts; B0 synthetic test guards the "
             "aggregation). Value types then computed by process_water_variable.py "
             "from the monthly intermediates."
+        ),
+    ),
+    "evap": WaterVariableConfig(
+        name="evap",
+        long_name="Actual (Total) Evapotranspiration",
+        units_raw="kg m-2 s-1",
+        units_output="kg m-2 s-1",
+        aggregation="sum",
+        unit_conversion_factor=1.0,
+        models=["cwatm", "h08", "miroc-integ-land", "watergap2-2e", "lpjml5-7-10-fire"],
+        input_var_names={
+            "h08": "evap",
+            "cwatm": "evap-total",
+            "watergap2-2e": "evap-total",
+            "miroc-integ-land": "evap-total",
+            "lpjml5-7-10-fire": "evap-total",
+        },
+        notes=(
+            "Seventh family member (S1 decided 2026-08-28; WRI engine-split plan + "
+            "SPEC_anchoring_control_volume.md rev 4): mass-balance lane ONLY — PET "
+            "remains the plant-demand driver by user doctrine. Managed-model roster "
+            "for the GRACE closure (JULES-W2 deliberately excluded: no "
+            "water-management module; lpjml flagged irrigation-managed-only). "
+            "Naming asymmetry is real and receipted "
+            "(waterRiskIndex_beta/v2/enumeration/evap_enumeration_findings.md): "
+            "H08 publishes 'evap', the rest 'evap-total' — the hardened wrapper "
+            "asserts the per-model expected name AND sole-data-variable per file, "
+            "after which the shared processor's name-or-first-variable read "
+            "provably selects the audited variable. CWatM soc token is "
+            "2015soc-from-histsoc (its convention across the family); others 2015soc."
         ),
     ),
 }

@@ -89,9 +89,19 @@ def audit_raw(var: str, manifest_rows: list[dict], results_by_dest: dict,
                     rec["sha256"] = sha256_file(dest)
             nc = Dataset(str(dest))
             try:
-                if cfg.name not in nc.variables:
-                    raise AssertionError(f"variable '{cfg.name}' absent (has: {list(nc.variables)[:6]})")
-                v = nc.variables[cfg.name]
+                expected_var = cfg.raw_var_name(row["model"])
+                if expected_var not in nc.variables:
+                    raise AssertionError(f"variable '{expected_var}' absent (has: {list(nc.variables)[:6]})")
+                dims = set(nc.dimensions)
+                data_vars = [name for name in nc.variables
+                             if name not in dims
+                             and name not in ("lat_bnds", "lon_bnds", "time_bnds")]
+                if set(data_vars) != {expected_var}:
+                    raise AssertionError(
+                        f"expected sole data variable '{expected_var}', file has "
+                        f"{data_vars} — the processor's name-or-first-variable read "
+                        f"is only safe when the audited variable is the only one")
+                v = nc.variables[expected_var]
                 units = getattr(v, "units", "MISSING")
                 if units.replace("/", " ").replace("kg m-2 s-1", "kg m-2 s-1") != cfg.units_raw and units != cfg.units_raw:
                     raise AssertionError(f"units '{units}' != expected '{cfg.units_raw}'")
