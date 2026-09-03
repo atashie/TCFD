@@ -124,7 +124,15 @@ def main() -> None:
                     expected = head_length(url)
                     actual = dest.stat().st_size
                     if expected is not None and actual == expected and verify_open(dest):
-                        status, nbytes = "verified-existing", actual
+                        # Hash the surviving file so the results receipt
+                        # always carries a digest (Role-1 review 2026-09-02
+                        # H2: 33 verified-existing rows shipped with an empty
+                        # sha256, leaving those files self-hashed only).
+                        h = hashlib.sha256()
+                        with open(dest, "rb") as fh:
+                            for chunk in iter(lambda: fh.read(CHUNK), b""):
+                                h.update(chunk)
+                        status, nbytes, digest = "verified-existing", actual, h.hexdigest()
                         break
                     print(f"[{i}/{len(rows)}] stale/short existing file, re-fetching: {dest.name}", flush=True)
                     dest.unlink()
