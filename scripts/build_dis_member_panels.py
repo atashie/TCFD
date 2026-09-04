@@ -136,9 +136,12 @@ def main() -> None:
     t0 = time.time()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUT_DIR / "dis_member_panels_v1.nc"
+    # write-then-rename so an interrupted build can never masquerade as
+    # the finished artifact (WRI second-pass review B1)
+    tmp_path = OUT_DIR / "dis_member_panels_v1.nc.building"
     members = [f"{m}/{g}" for m in MODELS for g in GCMS]
 
-    onc = netCDF4.Dataset(out_path, "w")
+    onc = netCDF4.Dataset(tmp_path, "w")
     onc.createDimension("member", len(members))
     onc.createDimension("scenario", len(SCENARIOS))
     onc.createDimension("decade", len(DECADES))
@@ -204,6 +207,7 @@ def main() -> None:
     onc.title = "Member-resolved dis panels (paired-ledger roster)"
     onc.provenance = json.dumps(prov)
     onc.close()
+    tmp_path.replace(out_path)
     (OUT_DIR / "dis_member_panels_v1.receipts.json").write_text(
         json.dumps({"receipts": receipts, "provenance": prov}, indent=2))
     print(f"\nBUILT {out_path}\nwall {time.time() - t0:.0f}s")
