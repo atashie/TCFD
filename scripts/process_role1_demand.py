@@ -303,7 +303,23 @@ def write_output(out_path: Path, var: str, members: list[tuple[str, str]],
 
 def validate_output(out_path: Path, var: str,
                     members: list[tuple[str, str]]) -> None:
-    """Stage 4 (fatal): per-panel finiteness, nonnegativity, vt12 identity."""
+    """Stage 4 (fatal): per-panel finiteness, nonnegativity, vt12 identity.
+
+    Nonnegativity contract (extended DELIBERATELY 2026-09-03, never
+    silently): potential demand (p*) can never be negative — fatal.
+    ACTUAL consumption (a*use) is computed by the models as a residual
+    (abstraction − return flows) and is legitimately negative in
+    return-dominated cells — measured on WaterGAP atotuse: 1.54% of
+    finite values, clustered in canal-irrigation regions (Punjab ~30N
+    73-74E), −5.8 vs +86 km³ in the probe month. For a* variables the
+    negatives are ALLOWED and a per-member census is printed and stamped
+    into provenance by main(); wholesale negativity (>10% of finite
+    values) still refuses.
+    """
+    # exactly the documented a*use class — a future a*ww must NOT inherit
+    # the exception silently (lane-review H3)
+    allow_negative = var.startswith("a") and var.endswith("use")
+    neg_census = {}
     ds = Dataset(str(out_path))
     try:
         vv = ds.variables[f"{var}_km3"]
@@ -329,24 +345,72 @@ def validate_output(out_path: Path, var: str,
                                   f"{scen} {dec}s: finite mask of vt{vt} "
                                   f"differs from vt12")
                             sys.exit(1)
-                    if np.nanmin(panel[di]) < 0:
+                    n_neg = int((panel[di] < 0).sum())
+                    if n_neg and not allow_negative:
                         print(f"VALIDATE FAIL: {var} {model}/{gcm} {scen} "
                               f"{dec}s: negative volume")
                         sys.exit(1)
+                    if n_neg:
+                        # the wholesale gate runs PER VALUE TYPE — pooling
+                        # all 13 lets an all-negative annual layer hide at
+                        # 1/13 = 7.7% (lane-review H3)
+                        for vt in range(13):
+                            layer = panel[di, vt]
+                            nv = int((layer < 0).sum())
+                            nf = int(np.isfinite(layer).sum())
+                            if nf and nv > 0.10 * nf:
+                                print(f"VALIDATE FAIL: {var} {model}/{gcm} "
+                                      f"{scen} {dec}s vt{vt}: {nv}/{nf} "
+                                      f"negative (>10% — wholesale, not "
+                                      f"return-credit)")
+                                sys.exit(1)
+                        n_fin = int(np.isfinite(panel[di]).sum())
+                        k = f"{model}/{gcm}"
+                        c = neg_census.setdefault(
+                            k, {"n_negative_values": 0,
+                                "min_km3": 0.0,
+                                "negative_annual_km3_worst_decade": 0.0})
+                        c["n_negative_values"] += n_neg
+                        c["min_km3"] = min(c["min_km3"],
+                                           float(np.nanmin(panel[di])))
+                        neg_ann = float(np.nansum(
+                            np.where(vt12 < 0, vt12, 0.0)))
+                        c["negative_annual_km3_worst_decade"] = min(
+                            c["negative_annual_km3_worst_decade"], neg_ann)
                     monthly_sum = np.nansum(panel[di, 0:12], axis=0)
-                    if not np.allclose(monthly_sum[finite], vt12[finite],
-                                       rtol=1e-4, atol=1e-9):
+                    # tolerance scales with the SUM OF ABSOLUTE months, not
+                    # the net: in return-credit cells (a*use) positive and
+                    # negative months cancel, so a net-relative tolerance
+                    # explodes near zero while the arithmetic is fine. For
+                    # all-positive variables sum|months| equals the monthly
+                    # sum (not the stored vt12), so this bound is EQUIVALENT
+                    # up to that scale basis — marginally more permissive
+                    # only when vt12 < sum(months) by more than the
+                    # tolerance itself (lane-review L2).
+                    month_abs = np.nansum(np.abs(panel[di, 0:12]), axis=0)
+                    bad = (np.abs(monthly_sum[finite] - vt12[finite])
+                           > 1e-4 * month_abs[finite] + 1e-9)
+                    if bool(bad.any()):
                         print(f"VALIDATE FAIL: {var} {model}/{gcm} {scen} "
-                              f"{dec}s: vt12 != sum(vt0-11)")
+                              f"{dec}s: vt12 != sum(vt0-11) "
+                              f"({int(bad.sum())} cells)")
                         sys.exit(1)
             first = vv[mi, 0, 0, 12]
             first = first.filled(np.nan) if hasattr(first, "filled") \
                 else np.asarray(first)
             print(f"    {model}/{gcm}: valid cells {int(np.isfinite(first).sum())}, "
-                  f"global {np.nansum(first):,.1f} km3/yr (2010s, ssp126)")
+                  f"global {np.nansum(first):,.1f} km3/yr "
+                  f"(2010s, {SCENARIOS[0]})")
     finally:
         ds.close()
+    if neg_census:
+        print(f"  negative-value census ({var} — return-credit cells, "
+              f"allowed for actuals): "
+              + "; ".join(f"{k}: n={v['n_negative_values']:,}, worst-decade "
+                          f"negative sum {v['negative_annual_km3_worst_decade']:.1f} km3/yr"
+                          for k, v in sorted(neg_census.items())))
     print(f"  validation PASSED: {var}")
+    return neg_census
 
 
 def main() -> None:
@@ -357,10 +421,27 @@ def main() -> None:
                     default=BASE / "data" / "processed" / "ws2_role1")
     ap.add_argument("--variables", type=str, default=None,
                     help="comma-separated subset; default = all in manifest")
+    ap.add_argument("--scenarios", type=str, default="ssp126,ssp370,ssp585",
+                    help="comma-separated scenario scope (default: the full "
+                         "family). The rev-6 balance lane acquires ssp370 "
+                         "only (baseline-only, ACTUALUSE_20260903) — the "
+                         "ensemble assertion and output dims follow this "
+                         "scope; the scope is stamped into provenance")
     ap.add_argument("--skip-hash", action="store_true")
     args = ap.parse_args()
 
+    global SCENARIOS
+    SCENARIOS = tuple(s.strip() for s in args.scenarios.split(",") if s.strip())
+    if not SCENARIOS:
+        print("REFUSED: empty --scenarios")
+        sys.exit(1)
+
     rows = list(csv.DictReader(open(args.manifest)))
+    off_scope = sorted({r["scenario"] for r in rows} - set(SCENARIOS))
+    if off_scope:
+        print(f"REFUSED: manifest contains scenarios outside --scenarios: "
+              f"{off_scope}")
+        sys.exit(1)
     results_by_dest = {r["dest"]: r for r in csv.DictReader(open(args.results))}
     unresolved = [r for r in csv.DictReader(open(args.results))
                   if r["status"] not in ("downloaded", "verified-existing")]
@@ -415,6 +496,7 @@ def main() -> None:
             "members_resolved": [f"{m}/{g}" for m, g in members],
             "soc_by_model": soc_by_model,
             "calendar_by_member": cal_by_member,
+            "scenario_scope": list(SCENARIOS),
             "source_manifest": str(args.manifest),
             "source_results": str(args.results),
             "manifest_sha256": sha256_file(args.manifest),
@@ -442,7 +524,18 @@ def main() -> None:
                 timespec="seconds"),
         }
         write_output(out_path, var, members, data, area, provenance)
-        validate_output(out_path, var, members)
+        neg_census = validate_output(out_path, var, members)
+        if neg_census:
+            # attributes-only amendment (the established in-place pattern):
+            # the return-credit census becomes part of the product's record
+            with Dataset(str(out_path), "a") as dsa:
+                dsa.negative_value_census = json.dumps(neg_census)
+                dsa.negative_value_policy = (
+                    "actual consumption (a*use) is a model residual "
+                    "(abstraction - return flows); locally negative values "
+                    "are return-credit cells, retained as-is (contract "
+                    "extended deliberately 2026-09-03; wholesale negativity "
+                    ">10% refuses)")
         print(f"=== {var} complete: {out_path} ===", flush=True)
 
     print("\nALL VARIABLES COMPLETE")
